@@ -1,0 +1,9 @@
+# 微信云托管 / 本地开发忽略
+node_modules/
+.env
+.env.local
+*.log
+.DS_Store
+coverage/
+dist/
+tmp/
