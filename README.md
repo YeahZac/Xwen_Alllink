@@ -106,10 +106,12 @@ npm start
 2. 在 MySQL 中执行 `sql/01_schema.sql`、存量库再执行 `sql/03_patch.sql`、最后 `sql/02_seed.sql`（含闭环演示订单/流水）  
 3. 创建服务，选择「通过 Dockerfile 部署」，上传本目录或关联本 Git 仓库  
 4. **构建目录填 `backend`**（若仓库是 monorepo 根）；若仓库根就是 backend 则填 `.`  
-5. 服务环境变量按 `.env.example` 配置（`DB_*` 用云托管内网地址，`ADMIN_CODE` 建议改掉）  
-6. 发布后访问：  
-   - API：`https://你的域名/api/health`  
-   - 运营台：`https://你的域名/admin/`  
+5. 服务环境变量（**必填，否则会连 127.0.0.1:3306 报 ECONNREFUSED**）：  
+   - 云托管推荐：`MYSQL_ADDRESS`（如 `10.36.107.20:3306`）、`MYSQL_USERNAME`、`MYSQL_PASSWORD`  
+   - 或：`DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME=wanyehulian`  
+   - 另配：`JWT_SECRET`、`ADMIN_CODE`（建议改掉默认 A001）  
+6. 发布后先访问：`/api/health`，确认返回里 `db.ok: true`  
+7. 运营台：`https://你的域名/admin/` 
 
 详见 [docs/微信云托管-所需资料清单.md](docs/微信云托管-所需资料清单.md)。
 

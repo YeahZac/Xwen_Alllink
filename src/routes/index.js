@@ -11,8 +11,32 @@ const { getCashRate, pointsToCash } = require('../services/configService')
 const router = express.Router()
 const adminOnly = [authRequired, requireRoles('admin')]
 
-router.get('/health', (_req, res) => {
-  res.json(ok({ service: 'xwen-alllink-api', ts: Date.now() }))
+router.get('/health', async (_req, res) => {
+  let db = { ok: false }
+  try {
+    const config = require('../config')
+    await query('SELECT 1 AS ok')
+    db = {
+      ok: true,
+      host: config.db.host,
+      port: config.db.port,
+      database: config.db.database
+    }
+  } catch (e) {
+    db = {
+      ok: false,
+      error: e.code || e.message,
+      hint:
+        '无法连接 MySQL。云托管请在服务环境变量配置 MYSQL_ADDRESS / MYSQL_USERNAME / MYSQL_PASSWORD（或 DB_HOST/DB_USER/DB_PASSWORD），并执行 sql 初始化脚本。'
+    }
+  }
+  res.status(db.ok ? 200 : 503).json(
+    ok({
+      service: 'xwen-alllink-api',
+      ts: Date.now(),
+      db
+    })
+  )
 })
 
 // ---------- Auth ----------
