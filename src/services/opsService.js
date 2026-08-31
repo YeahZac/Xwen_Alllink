@@ -292,8 +292,9 @@ async function setUserStatus(id, status) {
 }
 
 /** 商品 SKU 列表（三类） */
-async function listSkus({ type, merchantId, includeDeleted } = {}) {
+async function listSkus({ type, merchantId, shopName, includeDeleted } = {}) {
   const types = type ? [type] : ['stall', 'cross', 'supply']
+  const typeLabel = { stall: '地摊', cross: '异业门店', supply: '供应链门店' }
   const out = []
   for (const t of types) {
     const table = t === 'stall' ? 'stall_goods' : t === 'cross' ? 'cross_goods' : 'supply_goods'
@@ -306,12 +307,17 @@ async function listSkus({ type, merchantId, includeDeleted } = {}) {
       sql += ` AND g.merchant_id=:mid`
       params.mid = Number(merchantId)
     }
+    if (shopName && String(shopName).trim()) {
+      sql += ` AND m.name LIKE :shopName`
+      params.shopName = `%${String(shopName).trim()}%`
+    }
     sql += ` ORDER BY g.id DESC LIMIT 200`
     const rows = await query(sql, params)
     for (const g of rows) {
       out.push({
         id: g.id,
         goodsType: t,
+        goodsTypeLabel: typeLabel[t] || t,
         merchantId: g.merchant_id,
         shopName: g.shopName,
         name: g.name,

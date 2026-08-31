@@ -593,6 +593,7 @@ router.get('/admin/ops/skus', ...adminOnly, async (req, res, next) => {
         await opsService.listSkus({
           type: req.query.type,
           merchantId: req.query.merchantId,
+          shopName: req.query.shopName,
           includeDeleted: req.query.includeDeleted === '1'
         })
       )

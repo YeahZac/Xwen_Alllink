@@ -194,6 +194,11 @@ label { display: block; font-size: 13px; color: var(--muted); }
 .stat .n { font-size: 24px; font-weight: 700; }
 .stat .l { color: var(--muted); font-size: 12px; margin-top: 4px; }
 
+.toolbar label {
+  font-size: 13px;
+  color: var(--muted, #667);
+  white-space: nowrap;
+}
 .toolbar {
   display: flex;
   flex-wrap: wrap;

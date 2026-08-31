@@ -486,24 +486,68 @@ async function renderGoodsSku() {
   const editable = canEdit('goods_sku')
   content().innerHTML = `
     <div class="toolbar">
+      <label for="gType">供应商类型</label>
       <select id="gType">
-        <option value="">全部类型</option>
+        <option value="">全部</option>
         <option value="stall">地摊</option>
-        <option value="cross">异业</option>
-        <option value="supply">供应链</option>
+        <option value="cross">异业门店</option>
+        <option value="supply">供应链门店</option>
       </select>
-      <button class="btn" id="btnReload">刷新</button>
+      <label for="gShop">店铺名称</label>
+      <select id="gShop"><option value="">全部店铺</option></select>
+      <input id="gShopName" placeholder="搜索店名" style="min-width:140px" />
+      <button class="btn" id="btnReload">查询</button>
     </div>
     <div id="list"></div>`
+
+  const refreshShops = async () => {
+    const type = $('gType').value
+    const prev = $('gShop').value
+    const role = type || 'all'
+    let shops = []
+    try {
+      if (type) {
+        shops = await api(`/admin/ops/identities?role=${type}&limit=200`)
+      } else {
+        const [stall, cross, supply] = await Promise.all([
+          api('/admin/ops/identities?role=stall&limit=100'),
+          api('/admin/ops/identities?role=cross&limit=100'),
+          api('/admin/ops/identities?role=supply&limit=100')
+        ])
+        shops = [...stall, ...cross, ...supply]
+      }
+    } catch (_) {
+      shops = []
+    }
+    shops = shops.filter((s) => s.identity !== 'consumer')
+    $('gShop').innerHTML =
+      `<option value="">全部店铺</option>` +
+      shops
+        .map(
+          (s) =>
+            `<option value="${s.merchantId || s.id}">${esc(s.name)}（${esc(s.identityLabel || s.identity)}）</option>`
+        )
+        .join('')
+    if (prev && [...$('gShop').options].some((o) => o.value === prev)) $('gShop').value = prev
+    void role
+  }
+
   const load = async () => {
     const type = $('gType').value
-    const rows = await api(`/admin/ops/skus${type ? `?type=${type}` : ''}`)
+    const merchantId = $('gShop').value
+    const shopName = ($('gShopName').value || '').trim()
+    const qs = new URLSearchParams()
+    if (type) qs.set('type', type)
+    if (merchantId) qs.set('merchantId', merchantId)
+    if (shopName) qs.set('shopName', shopName)
+    const q = qs.toString()
+    const rows = await api(`/admin/ops/skus${q ? `?${q}` : ''}`)
     $('list').innerHTML = table(
-      ['类型', '店名', 'SKU', '品名', '价格', '销量', '库存', '上架', '操作'],
+      ['供应商类型', '店铺名称', 'SKU', '品名', '价格', '销量', '库存', '上架', '操作'],
       rows
         .map(
           (g) => `<tr>
-        <td>${esc(g.goodsType)}</td><td>${esc(g.shopName)}</td>
+        <td>${esc(g.goodsTypeLabel || g.goodsType)}</td><td>${esc(g.shopName)}</td>
         <td><code>${esc(g.sku)}</code></td><td>${esc(g.name)}</td>
         <td>${g.price}</td><td>${g.sales}</td><td>${g.stock ?? '-'}</td><td>${g.onSale}</td>
         <td class="actions">
@@ -575,7 +619,15 @@ async function renderGoodsSku() {
     })
   }
   $('btnReload').onclick = load
-  $('gType').onchange = load
+  $('gType').onchange = async () => {
+    await refreshShops()
+    await load()
+  }
+  $('gShop').onchange = load
+  $('gShopName').onkeydown = (e) => {
+    if (e.key === 'Enter') load()
+  }
+  await refreshShops()
   await load()
 }
 
