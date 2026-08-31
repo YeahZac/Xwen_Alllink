@@ -31,6 +31,15 @@ app.use(notFound)
 app.use(errorHandler)
 
 if (require.main === module) {
+  const db = config.db
+  console.log(
+    `[xwen-alllink-api] db target: ${db.host}:${db.port}/${db.database} user=${db.user}`
+  )
+  if (db.host === '127.0.0.1' || db.host === 'localhost') {
+    console.warn(
+      '[xwen-alllink-api] WARNING: DB host is localhost. On WeChat Cloud Hosting set MYSQL_ADDRESS / MYSQL_USERNAME / MYSQL_PASSWORD (or DB_HOST) in service env, then republish.'
+    )
+  }
   app.listen(config.port, () => {
     console.log(`[xwen-alllink-api] listening on :${config.port}`)
     console.log(`[xwen-alllink-api] admin UI: http://127.0.0.1:${config.port}/admin/`)
