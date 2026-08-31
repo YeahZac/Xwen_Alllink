@@ -62,3 +62,7 @@ INSERT INTO `banners` (`role_scope`, `title`, `sub_title`, `image_url`, `link_ur
 ('cross', '承接积分客', '自定兑换规则 · 全现金兜底', '/assets/banners/cross-1.png', '/merchant/goods/goods', 'navigate', 1, 1),
 ('supply', '拓展地摊客户', '货款与积分权益分账户', '/assets/banners/supply-1.png', '/merchant/customers/customers', 'navigate', 1, 1),
 ('login', '商户入驻', '地摊 / 异业 / 供应链', '/assets/banners/login-2.png', '/pages/apply/apply', 'navigate', 1, 1);
+
+-- 运营后台登录码默认 A001（环境变量 ADMIN_CODE，不写入 merchants 表）
+-- 演示码：C001 消费者 / D001 地摊 / Y001 异业 / G001 供应链 / A001 运营
+

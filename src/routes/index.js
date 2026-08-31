@@ -74,6 +74,42 @@ router.post(
   }
 )
 
+router.post(
+  '/admin/apply/:id/reject',
+  authRequired,
+  requireRoles('admin'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await applyService.rejectApply(Number(req.params.id), {
+            reason: req.body.reason,
+            reviewerId: req.auth.userId
+          })
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get('/admin/applies', authRequired, requireRoles('admin'), async (req, res, next) => {
+  try {
+    res.json(ok(await applyService.listApplies({ status: req.query.status, limit: req.query.limit })))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/merchants', authRequired, requireRoles('admin'), async (req, res, next) => {
+  try {
+    res.json(ok(await applyService.listMerchants({ role: req.query.role, limit: req.query.limit })))
+  } catch (e) {
+    next(e)
+  }
+})
+
 // ---------- Banners ----------
 router.get('/banners', async (req, res, next) => {
   try {

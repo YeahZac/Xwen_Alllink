@@ -9,6 +9,7 @@ RUN npm install --omit=dev
 COPY src ./src
 COPY sql ./sql
 COPY scripts ./scripts
+COPY public ./public
 COPY .env.example ./
 
 ENV NODE_ENV=production

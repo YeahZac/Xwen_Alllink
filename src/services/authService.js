@@ -9,6 +9,24 @@ async function loginByInviteCode(code) {
   const invite = String(code || '').trim()
   if (!invite) throw new HttpError(400, '请输入邀请码/账号')
 
+  // 平台运营账号（环境变量 ADMIN_CODE，默认 A001）
+  const adminCode = String(process.env.ADMIN_CODE || 'A001').trim()
+  if (invite === adminCode) {
+    const token = signToken({
+      role: 'admin',
+      userId: 0,
+      merchantId: null,
+      shopName: '平台运营'
+    })
+    return {
+      token,
+      role: 'admin',
+      userId: 0,
+      name: '平台运营',
+      shopName: '万业互联云运营台'
+    }
+  }
+
   // 商户邀请码
   const merchants = await query(
     `SELECT id, role, name, invite_code FROM merchants
@@ -112,6 +130,15 @@ async function loginAsConsumer({ nickname } = {}) {
 
 async function getProfile(auth) {
   const rate = await getCashRate()
+  if (auth.role === 'admin') {
+    return {
+      role: 'admin',
+      userId: 0,
+      name: '平台运营',
+      shopName: '万业互联云运营台',
+      cashRate: rate
+    }
+  }
   if (auth.role === 'consumer') {
     const rows = await query(
       'SELECT id, nickname, invite_code, points_balance, phone FROM users WHERE id = :id',

@@ -40,12 +40,18 @@ npm start
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
+| GET | `/` | 服务信息（含运营台入口提示） |
+| GET | `/admin/` | **运营后台网页**（邀请码 `A001`） |
 | GET | `/api/health` | 健康检查 |
-| POST | `/api/auth/login` | 邀请码登录 `{code}` |
+| POST | `/api/auth/login` | 邀请码登录 `{code}`（`A001`=运营） |
 | POST | `/api/auth/wx-login` | 微信快捷登录（演示） |
 | GET | `/api/auth/profile` | 当前身份资料（需 Bearer Token） |
 | POST | `/api/apply/submit` | 商户入驻申请 |
 | GET | `/api/apply/status?phone=` | 查询入驻审核 |
+| GET | `/api/admin/applies` | 入驻申请列表（运营） |
+| POST | `/api/admin/apply/:id/approve` | 审核通过（运营） |
+| POST | `/api/admin/apply/:id/reject` | 审核驳回（运营） |
+| GET | `/api/admin/merchants` | 商户列表（运营） |
 | GET | `/api/banners?role=` | 广告 Banner |
 | GET | `/api/stalls` | 附近地摊 |
 | GET | `/api/stalls/:id/menu` | 点餐菜单 |
@@ -57,20 +63,23 @@ npm start
 | GET | `/api/orders/mine` | 我的订单 |
 | POST | `/api/merchant/purchase` | 采购成交获额度 |
 | GET | `/api/merchant/points-pool` | 商家额度池 |
-| POST | `/api/admin/points-pool/grant` | 后台发放额度（演示） |
+| POST | `/api/admin/points-pool/grant` | 后台发放额度 |
 | GET | `/api/config/cash-rate` | 积分抵现汇率 |
 
 统一响应：`{ code: 0, message: 'ok', data }`；失败 `code != 0`。
 
-演示邀请码（种子数据）：`C001` 消费者 / `D001` 地摊 / `Y001` 异业 / `G001` 供应链。
+演示邀请码（种子数据）：`C001` 消费者 / `D001` 地摊 / `Y001` 异业 / `G001` 供应链 / **`A001` 运营后台**。
 
 ## 微信云托管部署
 
 1. 控制台创建环境 → 开通 **MySQL**  
 2. 在 MySQL 中执行 `sql/01_schema.sql`、`sql/02_seed.sql`  
 3. 创建服务，选择「通过 Dockerfile 部署」，上传本目录或关联本 Git 仓库  
-4. 服务环境变量按 `.env.example` 配置（`DB_*` 用云托管内网地址）  
-5. 发布后路径前缀建议：`/api`  
+4. **构建目录填 `backend`**（若仓库是 monorepo 根）；若仓库根就是 backend 则填 `.`  
+5. 服务环境变量按 `.env.example` 配置（`DB_*` 用云托管内网地址，`ADMIN_CODE` 建议改掉）  
+6. 发布后访问：  
+   - API：`https://你的域名/api/health`  
+   - 运营台：`https://你的域名/admin/`  
 
 详见 [docs/微信云托管-所需资料清单.md](docs/微信云托管-所需资料清单.md)。
 

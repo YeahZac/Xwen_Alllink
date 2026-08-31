@@ -159,9 +159,91 @@ async function approveApply(applyId, { reviewerId } = {}) {
   })
 }
 
+async function listApplies({ status, limit = 50 } = {}) {
+  const lim = Math.min(Number(limit) || 50, 200)
+  let sql = `SELECT id, apply_no, role, shop_name, contact_name, contact_phone, city,
+                    status, reject_reason, merchant_id, created_at, reviewed_at
+             FROM merchant_applications`
+  const params = {}
+  if (status && ['pending', 'approved', 'rejected'].includes(status)) {
+    sql += ` WHERE status = :status`
+    params.status = status
+  }
+  sql += ` ORDER BY id DESC LIMIT ${lim}`
+  const rows = await query(sql, params)
+  const statusMap = { pending: '审核中', approved: '已通过', rejected: '已驳回' }
+  const roleMap = { stall: '地摊', cross: '异业', supply: '供应链' }
+  return rows.map((r) => ({
+    id: r.id,
+    applyNo: r.apply_no,
+    role: r.role,
+    roleLabel: roleMap[r.role] || r.role,
+    shopName: r.shop_name,
+    contactName: r.contact_name,
+    contactPhone: r.contact_phone,
+    city: r.city,
+    status: r.status,
+    statusText: statusMap[r.status] || r.status,
+    rejectReason: r.reject_reason,
+    merchantId: r.merchant_id,
+    createdAt: r.created_at,
+    reviewedAt: r.reviewed_at
+  }))
+}
+
+async function rejectApply(applyId, { reason, reviewerId } = {}) {
+  const rows = await query(`SELECT id, status FROM merchant_applications WHERE id = :id`, {
+    id: applyId
+  })
+  if (!rows.length) throw new HttpError(404, '申请不存在')
+  if (rows[0].status !== 'pending') throw new HttpError(400, '申请状态不可审核')
+  await query(
+    `UPDATE merchant_applications
+     SET status='rejected', reject_reason=:reason, reviewer_id=:rid, reviewed_at=NOW()
+     WHERE id=:id`,
+    {
+      id: applyId,
+      reason: String(reason || '资料不符合要求').slice(0, 255),
+      rid: reviewerId || null
+    }
+  )
+  return { id: applyId, status: 'rejected' }
+}
+
+async function listMerchants({ role, limit = 100 } = {}) {
+  const lim = Math.min(Number(limit) || 100, 200)
+  let sql = `SELECT m.id, m.merchant_no, m.role, m.name, m.city, m.invite_code, m.status,
+                    m.contact_phone, IFNULL(p.balance, 0) AS pool_balance
+             FROM merchants m
+             LEFT JOIN merchant_points_pool p ON p.merchant_id = m.id`
+  const params = {}
+  if (role && ['stall', 'cross', 'supply'].includes(role)) {
+    sql += ` WHERE m.role = :role`
+    params.role = role
+  }
+  sql += ` ORDER BY m.id ASC LIMIT ${lim}`
+  const rows = await query(sql, params)
+  const roleMap = { stall: '地摊', cross: '异业', supply: '供应链' }
+  return rows.map((r) => ({
+    id: r.id,
+    merchantNo: r.merchant_no,
+    role: r.role,
+    roleLabel: roleMap[r.role] || r.role,
+    name: r.name,
+    city: r.city,
+    inviteCode: r.invite_code,
+    status: r.status,
+    contactPhone: r.contact_phone,
+    poolBalance: r.pool_balance
+  }))
+}
+
 module.exports = {
   ROLE_LICENSE_RULES,
   submitApply,
   queryByPhone,
-  approveApply
+  approveApply,
+  listApplies,
+  rejectApply,
+  listMerchants
 }
