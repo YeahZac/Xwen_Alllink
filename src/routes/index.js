@@ -166,6 +166,14 @@ router.get('/admin/applies', ...adminOnly, async (req, res, next) => {
   }
 })
 
+router.get('/admin/applies/:id', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await applyService.getApplyDetail(Number(req.params.id))))
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.get('/admin/merchants', ...adminOnly, async (req, res, next) => {
   try {
     res.json(ok(await applyService.listMerchants({ role: req.query.role, limit: req.query.limit })))
@@ -289,6 +297,52 @@ router.get('/admin/orders/cross', ...adminOnly, async (req, res, next) => {
 router.get('/admin/orders/purchase', ...adminOnly, async (req, res, next) => {
   try {
     res.json(ok(await adminService.listPurchaseOrders(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/orders/:type/:id', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.getOrderDetail(req.params.type, Number(req.params.id))))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/settlements/commissions', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.listCommissions({ limit: req.query.limit })))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/settlements/accounts', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(
+      ok(await adminService.listAccountLedgers({ limit: req.query.limit, merchantId: req.query.merchantId }))
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/points/user-ledger', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(
+      ok(await adminService.listUserPointsLedger({ limit: req.query.limit, userId: req.query.userId }))
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/points/pool-ledger', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(
+      ok(await adminService.listPoolLedger({ limit: req.query.limit, merchantId: req.query.merchantId }))
+    )
   } catch (e) {
     next(e)
   }
@@ -789,30 +843,21 @@ router.get(
   }
 )
 
-router.post(
-  '/admin/points-pool/grant',
-  authRequired,
-  requireRoles('admin', 'stall', 'cross'),
-  async (req, res, next) => {
-    try {
-      // 演示：商户也可调此接口模拟后台发放；正式环境仅 admin
-      const merchantId = req.auth.role === 'admin'
-        ? Number(req.body.merchantId)
-        : req.auth.merchantId
-      res.json(
-        ok(
-          await orderService.adminGrantPool({
-            merchantId,
-            points: Number(req.body.points) || 500,
-            title: req.body.title
-          })
-        )
+router.post('/admin/points-pool/grant', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(
+      ok(
+        await adminService.grantPool({
+          merchantId: Number(req.body.merchantId),
+          points: Number(req.body.points) || 500,
+          title: req.body.title
+        })
       )
-    } catch (e) {
-      next(e)
-    }
+    )
+  } catch (e) {
+    next(e)
   }
-)
+})
 
 // ---------- Merchant accounts / withdraw / purchase fulfill ----------
 router.get(

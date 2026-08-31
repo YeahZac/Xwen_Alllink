@@ -124,11 +124,11 @@ async function getMerchantDetail(id) {
 /* ---------- users ---------- */
 async function listUsers({ q, limit = 100 } = {}) {
   const lim = Math.min(Number(limit) || 100, 300)
-  let sql = `SELECT id, nickname, invite_code, phone, points_balance, status, created_at
-             FROM users`
+  let sql = `SELECT id, nickname, invite_code, phone, points_balance, status, avatar_url, created_at
+             FROM users WHERE deleted_at IS NULL`
   const params = {}
   if (q) {
-    sql += ` WHERE nickname LIKE :q OR invite_code LIKE :q OR phone LIKE :q`
+    sql += ` AND (nickname LIKE :q OR invite_code LIKE :q OR phone LIKE :q)`
     params.q = `%${q}%`
   }
   sql += ` ORDER BY id DESC LIMIT ${lim}`
@@ -140,6 +140,7 @@ async function listUsers({ q, limit = 100 } = {}) {
     phone: u.phone,
     points: u.points_balance,
     status: u.status,
+    avatarUrl: u.avatar_url,
     createdAt: u.created_at
   }))
 }
@@ -176,11 +177,13 @@ async function listStallGoods({ merchantId, limit = 200 } = {}) {
   const lim = Math.min(Number(limit) || 200, 500)
   let sql = `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name, g.price,
                     g.points_grant AS pointsGrant, g.category, g.desc_text AS description,
-                    g.image_url AS imageUrl, g.stock, g.on_sale AS onSale
-             FROM stall_goods g JOIN merchants m ON m.id=g.merchant_id`
+                    g.image_url AS imageUrl, g.stock, g.on_sale AS onSale, g.sku_code AS sku,
+                    g.sales_count AS sales
+             FROM stall_goods g JOIN merchants m ON m.id=g.merchant_id
+             WHERE g.deleted_at IS NULL`
   const params = {}
   if (merchantId) {
-    sql += ` WHERE g.merchant_id=:merchantId`
+    sql += ` AND g.merchant_id=:merchantId`
     params.merchantId = Number(merchantId)
   }
   sql += ` ORDER BY g.id DESC LIMIT ${lim}`
@@ -231,11 +234,13 @@ async function listCrossGoods({ merchantId, limit = 200 } = {}) {
   const lim = Math.min(Number(limit) || 200, 500)
   let sql = `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name,
                     g.points_need AS pointsNeed, g.cash_price AS cashPrice,
-                    g.desc_text AS description, g.image_url AS imageUrl, g.on_sale AS onSale
-             FROM cross_goods g JOIN merchants m ON m.id=g.merchant_id`
+                    g.desc_text AS description, g.image_url AS imageUrl, g.on_sale AS onSale,
+                    g.sku_code AS sku, g.sales_count AS sales
+             FROM cross_goods g JOIN merchants m ON m.id=g.merchant_id
+             WHERE g.deleted_at IS NULL`
   const params = {}
   if (merchantId) {
-    sql += ` WHERE g.merchant_id=:merchantId`
+    sql += ` AND g.merchant_id=:merchantId`
     params.merchantId = Number(merchantId)
   }
   sql += ` ORDER BY g.id DESC LIMIT ${lim}`
@@ -283,11 +288,12 @@ async function listSupplyGoodsAdmin({ merchantId, limit = 200 } = {}) {
   const lim = Math.min(Number(limit) || 200, 500)
   let sql = `SELECT g.id, g.merchant_id AS merchantId, m.name AS vendor, g.name, g.price, g.stock,
                     g.points_grant AS pointsGrant, g.points_ratio_text AS pointsRatio,
-                    g.image_url AS imageUrl, g.status
-             FROM supply_goods g JOIN merchants m ON m.id=g.merchant_id`
+                    g.image_url AS imageUrl, g.status, g.sku_code AS sku, g.sales_count AS sales
+             FROM supply_goods g JOIN merchants m ON m.id=g.merchant_id
+             WHERE g.deleted_at IS NULL`
   const params = {}
   if (merchantId) {
-    sql += ` WHERE g.merchant_id=:merchantId`
+    sql += ` AND g.merchant_id=:merchantId`
     params.merchantId = Number(merchantId)
   }
   sql += ` ORDER BY g.id DESC LIMIT ${lim}`
@@ -376,7 +382,8 @@ async function listPurchaseOrders({ limit = 100 } = {}) {
 async function listAllBanners() {
   return query(
     `SELECT id, role_scope AS roleScope, title, sub_title AS subTitle, image_url AS imageUrl,
-            link_url AS linkUrl, link_type AS linkType, sort_order AS sortOrder, status
+            link_url AS linkUrl, link_type AS linkType, sort_order AS sortOrder, status,
+            start_at AS startAt, end_at AS endAt
      FROM banners ORDER BY role_scope, sort_order, id`
   )
 }
@@ -385,7 +392,8 @@ async function saveBanner(body) {
   if (body.id) {
     await query(
       `UPDATE banners SET role_scope=:role, title=:title, sub_title=:sub, image_url=:img,
-       link_url=:link, link_type=:lt, sort_order=:sort, status=:status WHERE id=:id`,
+       link_url=:link, link_type=:lt, sort_order=:sort, status=:status,
+       start_at=:startAt, end_at=:endAt WHERE id=:id`,
       {
         id: Number(body.id),
         role: body.roleScope || 'consumer',
@@ -395,14 +403,16 @@ async function saveBanner(body) {
         link: body.linkUrl || '',
         lt: body.linkType || 'none',
         sort: Number(body.sortOrder) || 0,
-        status: body.status === 0 ? 0 : 1
+        status: body.status === 0 ? 0 : 1,
+        startAt: body.startAt || null,
+        endAt: body.endAt || null
       }
     )
     return { id: Number(body.id) }
   }
   const r = await query(
-    `INSERT INTO banners (role_scope, title, sub_title, image_url, link_url, link_type, sort_order, status)
-     VALUES (:role, :title, :sub, :img, :link, :lt, :sort, :status)`,
+    `INSERT INTO banners (role_scope, title, sub_title, image_url, link_url, link_type, sort_order, status, start_at, end_at)
+     VALUES (:role, :title, :sub, :img, :link, :lt, :sort, :status, :startAt, :endAt)`,
     {
       role: body.roleScope || 'consumer',
       title: body.title,
@@ -411,7 +421,9 @@ async function saveBanner(body) {
       link: body.linkUrl || '',
       lt: body.linkType || 'none',
       sort: Number(body.sortOrder) || 0,
-      status: body.status === 0 ? 0 : 1
+      status: body.status === 0 ? 0 : 1,
+      startAt: body.startAt || null,
+      endAt: body.endAt || null
     }
   )
   return { id: r.insertId }
@@ -557,6 +569,138 @@ async function grantPool(body) {
   })
 }
 
+async function getOrderDetail(type, id) {
+  if (type === 'consumer') {
+    const rows = await query(
+      `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount, o.points_want AS pointsWant,
+              o.points_allocated AS pointsAllocated, o.pay_status AS payStatus, o.order_status AS orderStatus,
+              o.created_at AS createdAt, u.nickname AS userName, u.phone AS userPhone,
+              m.name AS shopName, m.cover_url AS shopCover
+       FROM consumer_orders o
+       JOIN users u ON u.id=o.user_id
+       JOIN merchants m ON m.id=o.merchant_id
+       WHERE o.id=:id`,
+      { id }
+    )
+    if (!rows.length) throw new HttpError(404, '订单不存在')
+    const items = await query(
+      `SELECT goods_id AS goodsId, goods_name AS goodsName, price, points_grant AS pointsGrant, qty
+       FROM consumer_order_items WHERE order_id=:id`,
+      { id }
+    )
+    return { ...rows[0], type: 'consumer', items }
+  }
+  if (type === 'cross') {
+    const rows = await query(
+      `SELECT o.id, o.order_no AS orderNo, o.pay_mode AS payMode, o.points_spend AS pointsSpend,
+              o.cash_amount AS cashAmount, o.status, o.goods_name AS goodsName, o.goods_id AS goodsId,
+              o.created_at AS createdAt, u.nickname AS userName, m.name AS shopName,
+              m.cover_url AS shopCover, g.image_url AS goodsImage
+       FROM cross_orders o
+       JOIN users u ON u.id=o.user_id
+       JOIN merchants m ON m.id=o.merchant_id
+       LEFT JOIN cross_goods g ON g.id=o.goods_id
+       WHERE o.id=:id`,
+      { id }
+    )
+    if (!rows.length) throw new HttpError(404, '订单不存在')
+    return {
+      ...rows[0],
+      type: 'cross',
+      items: [
+        {
+          goodsId: rows[0].goodsId,
+          goodsName: rows[0].goodsName,
+          imageUrl: rows[0].goodsImage,
+          qty: 1,
+          pointsSpend: rows[0].pointsSpend,
+          cashAmount: rows[0].cashAmount
+        }
+      ]
+    }
+  }
+  if (type === 'purchase') {
+    const rows = await query(
+      `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount, o.points_grant AS pointsGrant,
+              o.fulfill_type AS fulfillType, o.status, o.created_at AS createdAt,
+              b.name AS buyerName, s.name AS sellerName, s.cover_url AS sellerCover
+       FROM purchase_orders o
+       JOIN merchants b ON b.id=o.buyer_merchant_id
+       JOIN merchants s ON s.id=o.seller_merchant_id
+       WHERE o.id=:id`,
+      { id }
+    )
+    if (!rows.length) throw new HttpError(404, '订单不存在')
+    const items = await query(
+      `SELECT goods_id AS goodsId, goods_name AS goodsName, price, qty, points_grant AS pointsGrant
+       FROM purchase_order_items WHERE order_id=:id`,
+      { id }
+    )
+    return { ...rows[0], type: 'purchase', items }
+  }
+  throw new HttpError(400, '订单类型无效')
+}
+
+async function listCommissions({ limit = 100 } = {}) {
+  const lim = Math.min(Number(limit) || 100, 300)
+  return query(
+    `SELECT c.id, c.biz_type AS bizType, c.biz_id AS bizId, c.amount_gross AS amountGross,
+            c.rate, c.commission, c.rule_version AS ruleVersion, c.created_at AS createdAt,
+            m.name AS payerName
+     FROM commission_ledger c
+     LEFT JOIN merchants m ON m.id=c.payer_merchant_id
+     ORDER BY c.id DESC LIMIT ${lim}`
+  )
+}
+
+async function listAccountLedgers({ limit = 100, merchantId } = {}) {
+  const lim = Math.min(Number(limit) || 100, 300)
+  let sql = `SELECT l.id, l.account_type AS accountType, l.change_amount AS changeAmount,
+                    l.balance_after AS balanceAfter, l.biz_type AS bizType, l.biz_id AS bizId,
+                    l.title, l.created_at AS createdAt, m.name AS shopName, m.role
+             FROM merchant_account_ledger l
+             JOIN merchants m ON m.id=l.merchant_id WHERE 1=1`
+  const params = {}
+  if (merchantId) {
+    sql += ` AND l.merchant_id=:mid`
+    params.mid = Number(merchantId)
+  }
+  sql += ` ORDER BY l.id DESC LIMIT ${lim}`
+  return query(sql, params)
+}
+
+async function listUserPointsLedger({ limit = 100, userId } = {}) {
+  const lim = Math.min(Number(limit) || 100, 300)
+  let sql = `SELECT l.id, l.change_amount AS changeAmount, l.balance_after AS balanceAfter,
+                    l.biz_type AS bizType, l.title, l.created_at AS createdAt,
+                    u.nickname AS userName, u.invite_code AS inviteCode, u.avatar_url AS avatarUrl
+             FROM user_points_ledger l
+             JOIN users u ON u.id=l.user_id WHERE 1=1`
+  const params = {}
+  if (userId) {
+    sql += ` AND l.user_id=:uid`
+    params.uid = Number(userId)
+  }
+  sql += ` ORDER BY l.id DESC LIMIT ${lim}`
+  return query(sql, params)
+}
+
+async function listPoolLedger({ limit = 100, merchantId } = {}) {
+  const lim = Math.min(Number(limit) || 100, 300)
+  let sql = `SELECT l.id, l.change_amount AS changeAmount, l.balance_after AS balanceAfter,
+                    l.biz_type AS bizType, l.title, l.created_at AS createdAt,
+                    m.name AS shopName, m.role, m.cover_url AS coverUrl
+             FROM merchant_pool_ledger l
+             JOIN merchants m ON m.id=l.merchant_id WHERE 1=1`
+  const params = {}
+  if (merchantId) {
+    sql += ` AND l.merchant_id=:mid`
+    params.mid = Number(merchantId)
+  }
+  sql += ` ORDER BY l.id DESC LIMIT ${lim}`
+  return query(sql, params)
+}
+
 module.exports = {
   dashboard,
   updateMerchant,
@@ -573,6 +717,7 @@ module.exports = {
   listConsumerOrders,
   listCrossOrders,
   listPurchaseOrders,
+  getOrderDetail,
   listAllBanners,
   saveBanner,
   deleteBanner,
@@ -585,6 +730,10 @@ module.exports = {
   updateSupplyNeed,
   listReferrals,
   grantPool,
+  listCommissions,
+  listAccountLedgers,
+  listUserPointsLedger,
+  listPoolLedger,
   listConfigs,
   setConfig
 }

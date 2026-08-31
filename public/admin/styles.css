@@ -298,6 +298,55 @@ tr:hover td { background: rgba(255,255,255,.02); }
   object-fit: cover;
   border-radius: 8px;
   border: 1px solid var(--line);
+  background: #0d1218;
+}
+img.thumb.lg {
+  max-width: 220px;
+  max-height: 160px;
+}
+.thumb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 8px 0 16px;
+}
+.thumb-card {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+}
+.goods-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+}
+.modal-card.wide { width: min(860px, 100%); }
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0,0,0,.78);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.lightbox.hidden { display: none !important; }
+.lightbox-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 96vw;
+  max-height: 92vh;
+}
+.lightbox img {
+  max-width: 92vw;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 10px;
+  border: 1px solid var(--line);
 }
 .media-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .media-actions label.btn { margin: 0; cursor: pointer; }

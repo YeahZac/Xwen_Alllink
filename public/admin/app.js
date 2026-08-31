@@ -28,17 +28,24 @@ const NAV_GROUPS = [
     ]
   },
   {
+    name: '交易运营',
+    items: [
+      { id: 'orders', label: '订单中心' },
+      { id: 'points', label: '积分与额度' },
+      { id: 'settlements', label: '结算抽成' },
+      { id: 'withdraws', label: '提现审核' },
+      { id: 'referrals', label: '推荐记录' }
+    ]
+  },
+  {
     name: '内容管理',
     items: [
       { id: 'goods_sku', label: '商品SKU' },
       { id: 'goods', label: '商品目录' },
       { id: 'banners', label: 'Banner' },
-      { id: 'orders', label: '订单中心' },
-      { id: 'configs', label: '平台配置' },
-      { id: 'withdraws', label: '提现审核' },
-      { id: 'complaints', label: '投诉工单' },
       { id: 'needs', label: '供应需求' },
-      { id: 'referrals', label: '推荐记录' }
+      { id: 'complaints', label: '投诉工单' },
+      { id: 'configs', label: '平台配置' }
     ]
   },
   {
@@ -166,6 +173,8 @@ function go(page) {
     goods_sku: renderGoodsSku,
     goods: renderGoods,
     orders: renderOrders,
+    points: renderPoints,
+    settlements: renderSettlements,
     banners: renderBanners,
     configs: renderConfigs,
     withdraws: renderWithdraws,
@@ -189,6 +198,53 @@ function esc(s) {
     .replace(/"/g, '&quot;')
 }
 
+function isImgUrl(url) {
+  if (!url || typeof url !== 'string') return false
+  if (url === '(已上传)' || url.startsWith('wxfile://') || url.startsWith('http://tmp')) return false
+  return /\.(png|jpe?g|webp|gif|bmp)(\?|$)/i.test(url) || /tcb\.qcloud\.la|myqcloud\.com|cos\.|qcloud\.com/i.test(url)
+}
+
+function thumb(url, cls = 'thumb') {
+  if (!url) return '<span class="muted">-</span>'
+  if (!isImgUrl(url)) return `<a href="${esc(url)}" target="_blank" rel="noopener">附件</a>`
+  return `<img class="${esc(cls)}" src="${esc(url)}" alt="" loading="lazy" data-preview="${esc(url)}" />`
+}
+
+function bindThumbs(root = document) {
+  ;(root.querySelectorAll ? root : document).querySelectorAll('img[data-preview]').forEach((img) => {
+    img.style.cursor = 'zoom-in'
+    img.onclick = (e) => {
+      e.stopPropagation()
+      openLightbox(img.getAttribute('data-preview') || img.src)
+    }
+  })
+}
+
+function openLightbox(url) {
+  let box = document.getElementById('lightbox')
+  if (!box) {
+    box = document.createElement('div')
+    box.id = 'lightbox'
+    box.className = 'lightbox hidden'
+    box.innerHTML = '<div class="lightbox-inner"><img alt="" /><button type="button" class="btn">关闭预览</button></div>'
+    document.body.appendChild(box)
+    box.onclick = () => box.classList.add('hidden')
+  }
+  box.querySelector('img').src = url
+  box.classList.remove('hidden')
+}
+
+const LICENSE_LABELS = {
+  businessLicense: '营业执照',
+  foodLicense: '食品经营许可证',
+  foodCirculation: '食品流通许可证',
+  idCardFront: '身份证正面',
+  idCardBack: '身份证反面',
+  stallPhoto: '摊位照片',
+  storePhoto: '门店照片',
+  warehousePhoto: '仓库照片'
+}
+
 function badge(status) {
   return `<span class="badge ${esc(status)}">${esc(status)}</span>`
 }
@@ -208,11 +264,14 @@ function table(headers, rowsHtml) {
     .join('')}</tr></thead><tbody>${rowsHtml || `<tr><td colspan="${headers.length}" class="empty">暂无数据</td></tr>`}</tbody></table></div>`
 }
 
-function openModal(title, bodyHtml, onSave) {
+function openModal(title, bodyHtml, onSave, wide) {
   $('modal').classList.remove('hidden')
   $('modalTitle').textContent = title
   $('modalBody').innerHTML = bodyHtml
+  const card = $('modal').querySelector('.modal-card')
+  if (card) card.classList.toggle('wide', !!wide)
   bindMediaFields($('modalBody'))
+  bindThumbs($('modalBody'))
   $('modalFoot').innerHTML = onSave
     ? `<button type="button" class="btn ghost" id="modalCancel">取消</button>
        <button type="button" class="btn primary" id="modalSave">保存</button>`
@@ -355,7 +414,13 @@ function stat(n, l) {
 }
 
 async function renderIdentities(role) {
-  const editable = canEdit(role === 'consumer' ? 'users_consumer' : 'users_all')
+  const editable = canEdit(
+    role === 'consumer'
+      ? 'users_consumer'
+      : role === 'stall' || role === 'cross' || role === 'supply'
+        ? `stores_${role}`
+        : 'users_all'
+  )
   content().innerHTML = `
     <div class="toolbar">
       <input id="fq" placeholder="昵称/邀请码/手机/店名" />
@@ -368,32 +433,80 @@ async function renderIdentities(role) {
       `/admin/ops/identities?role=${encodeURIComponent(role)}${q ? `&q=${encodeURIComponent(q)}` : ''}`
     )
     $('list').innerHTML = table(
-      ['身份', '名称', '账号/邀请码', '电话', '城市', '状态', '注册', '操作'],
+      ['预览', '身份', '名称', '账号/邀请码', '电话', '积分/城市', '状态', '注册', '操作'],
       rows
         .map((r) => {
           const isStore = !!r.merchantId
+          const preview = thumb(r.coverUrl || r.avatarUrl)
           return `<tr>
+          <td>${preview}</td>
           <td><span class="badge">${esc(r.identityLabel)}</span></td>
           <td>${esc(r.name)}</td><td><code>${esc(r.code)}</code></td>
-          <td>${esc(r.phone || '-')}</td><td>${esc(r.city || '-')}</td>
+          <td>${esc(r.phone || '-')}</td>
+          <td>${isStore ? esc(r.city || '-') : esc(r.points ?? 0)}</td>
           <td>${r.status}</td><td>${fmtTime(r.createdAt)}</td>
           <td class="actions">
             ${
               isStore
                 ? `<button class="btn sm" data-store="${r.merchantId}">资料/详情</button>
-                   ${editable ? `<button class="btn ok sm" data-open="${r.merchantId}">营业</button>
+                   ${
+                     editable
+                       ? `<button class="btn sm" data-grant="${r.merchantId}">发额度</button>
+                   <button class="btn ok sm" data-open="${r.merchantId}">营业</button>
                    <button class="btn warn sm" data-close="${r.merchantId}">停业</button>
-                   <button class="btn danger sm" data-del-store="${r.merchantId}">删除</button>` : ''}`
-                : `${editable ? `<button class="btn sm" data-on="${r.id}">启用</button>
+                   <button class="btn danger sm" data-del-store="${r.merchantId}">删除</button>`
+                       : ''
+                   }`
+                : `${
+                    editable
+                      ? `<button class="btn sm" data-pts="${r.id}">调积分</button>
+                   <button class="btn sm" data-on="${r.id}">启用</button>
                    <button class="btn warn sm" data-off="${r.id}">禁用</button>
-                   <button class="btn danger sm" data-del-user="${r.id}">删除</button>` : '-'}`
+                   <button class="btn danger sm" data-del-user="${r.id}">删除</button>`
+                      : '-'
+                  }`
             }
           </td></tr>`
         })
         .join('')
     )
+    bindThumbs($('list'))
     $('list').querySelectorAll('[data-store]').forEach((b) => {
       b.onclick = () => showStoreDetail(Number(b.dataset.store))
+    })
+    $('list').querySelectorAll('[data-grant]').forEach((b) => {
+      b.onclick = () => {
+        openModal(
+          '发放积分额度',
+          field('points', '积分数量', '500', 'number') + field('title', '备注', '后台发放'),
+          async () => {
+            await api('/admin/points-pool/grant', {
+              method: 'POST',
+              body: JSON.stringify({
+                merchantId: Number(b.dataset.grant),
+                points: Number(formVal('points')),
+                title: formVal('title')
+              })
+            })
+            load()
+          }
+        )
+      }
+    })
+    $('list').querySelectorAll('[data-pts]').forEach((b) => {
+      b.onclick = () => {
+        openModal(
+          '调整用户积分',
+          field('points', '变动量（可负）', '100', 'number') + field('title', '备注', '后台调整'),
+          async () => {
+            await api(`/admin/users/${b.dataset.pts}/points`, {
+              method: 'POST',
+              body: JSON.stringify({ points: Number(formVal('points')), title: formVal('title') })
+            })
+            load()
+          }
+        )
+      }
     })
     $('list').querySelectorAll('[data-open]').forEach((b) => {
       b.onclick = async () => {
@@ -458,27 +571,29 @@ async function showStoreDetail(id) {
   const d = await api(`/admin/ops/stores/${id}`)
   const mats = d.materials || {}
   const matHtml = Object.keys(mats).length
-    ? Object.entries(mats)
+    ? `<div class="thumb-grid">${Object.entries(mats)
         .map(([k, v]) => {
           const url = typeof v === 'string' ? v : v?.url || ''
-          const isImg = /\.(png|jpe?g|webp|gif)(\?|$)/i.test(url) || String(url).includes('tcb.qcloud.la')
-          return `<div class="perm-row"><span>${esc(k)}</span>
-            ${url ? (isImg ? `<img class="thumb" src="${esc(url)}" />` : `<a href="${esc(url)}" target="_blank">查看文件</a>`) : '-'}
-          </div>`
+          return `<div class="thumb-card"><div class="muted">${esc(LICENSE_LABELS[k] || k)}</div>${thumb(url, 'thumb lg')}</div>`
         })
-        .join('')
+        .join('')}</div>`
     : '<p class="muted">暂无上传资料</p>'
   const goodsHtml = (d.goods || [])
     .slice(0, 20)
-    .map((g) => `<div>${esc(g.name)} · SKU ${esc(g.sku_code || '-')} · 销量 ${g.sales_count || 0}</div>`)
+    .map(
+      (g) =>
+        `<div class="goods-row">${thumb(g.image_url)} <span>${esc(g.name)} · SKU ${esc(g.sku_code || '-')} · ¥${g.price ?? '-'} · 销量 ${g.sales_count || 0}</span></div>`
+    )
     .join('')
   openModal(
     `${d.roleLabel} · ${d.name}`,
     `<p>邀请码 <code>${esc(d.inviteCode)}</code> · 状态 ${d.status} · 额度池 ${d.poolBalance}</p>
      <p class="muted">${esc(d.city)} ${esc(d.address)} · ${esc(d.contactName)} ${esc(d.contactPhone)}</p>
-     ${d.coverUrl ? `<p><img class="thumb" src="${esc(d.coverUrl)}" /></p>` : ''}
+     <h4>门店封面</h4>${thumb(d.coverUrl, 'thumb lg')}
      <h4>门店资料</h4>${matHtml}
-     <h4>在售商品</h4>${goodsHtml || '<p class="muted">暂无商品</p>'}`
+     <h4>在售商品</h4>${goodsHtml || '<p class="muted">暂无商品</p>'}`,
+    null,
+    true
   )
 }
 
@@ -543,10 +658,11 @@ async function renderGoodsSku() {
     const q = qs.toString()
     const rows = await api(`/admin/ops/skus${q ? `?${q}` : ''}`)
     $('list').innerHTML = table(
-      ['供应商类型', '店铺名称', 'SKU', '品名', '价格', '销量', '库存', '上架', '操作'],
+      ['预览', '供应商类型', '店铺名称', 'SKU', '品名', '价格', '销量', '库存', '上架', '操作'],
       rows
         .map(
           (g) => `<tr>
+        <td>${thumb(g.imageUrl)}</td>
         <td>${esc(g.goodsTypeLabel || g.goodsType)}</td><td>${esc(g.shopName)}</td>
         <td><code>${esc(g.sku)}</code></td><td>${esc(g.name)}</td>
         <td>${g.price}</td><td>${g.sales}</td><td>${g.stock ?? '-'}</td><td>${g.onSale}</td>
@@ -563,6 +679,7 @@ async function renderGoodsSku() {
         )
         .join('')
     )
+    bindThumbs($('list'))
     $('list').querySelectorAll('[data-edit]').forEach((b) => {
       b.onclick = () => {
         const g = JSON.parse(decodeURIComponent(b.getAttribute('data-edit')))
@@ -647,22 +764,30 @@ async function renderApplies() {
     const status = $('fStatus').value
     const rows = await api(`/admin/applies${status ? `?status=${status}` : ''}`)
     $('list').innerHTML = table(
-      ['ID', '单号', '角色', '店名', '联系人', '城市', '状态', '时间', '操作'],
+      ['证照预览', '单号', '角色', '店名', '联系人', '城市', '证照数', '状态', '时间', '操作'],
       rows
         .map(
           (r) => `<tr>
-        <td>${r.id}</td><td>${esc(r.applyNo)}</td><td>${esc(r.roleLabel)}</td>
+        <td>${thumb(r.licensePreview)}</td>
+        <td>${esc(r.applyNo)}</td><td>${esc(r.roleLabel)}</td>
         <td>${esc(r.shopName)}</td><td>${esc(r.contactName)} ${esc(r.contactPhone)}</td>
-        <td>${esc(r.city)}</td><td>${badge(r.status)}</td><td>${fmtTime(r.createdAt)}</td>
-        <td class="actions">${
-          r.status === 'pending'
-            ? `<button class="btn ok sm" data-ok="${r.id}">通过</button>
-               <button class="btn danger sm" data-no="${r.id}">驳回</button>`
-            : '-'
-        }</td></tr>`
+        <td>${esc(r.city)}</td><td>${r.licenseCount || 0}</td><td>${badge(r.status)}</td><td>${fmtTime(r.createdAt)}</td>
+        <td class="actions">
+          <button class="btn sm" data-detail="${r.id}">详情审核</button>
+          ${
+            r.status === 'pending'
+              ? `<button class="btn ok sm" data-ok="${r.id}">通过</button>
+                 <button class="btn danger sm" data-no="${r.id}">驳回</button>`
+              : ''
+          }
+        </td></tr>`
         )
         .join('')
     )
+    bindThumbs($('list'))
+    $('list').querySelectorAll('[data-detail]').forEach((b) => {
+      b.onclick = () => showApplyDetail(Number(b.dataset.detail), load)
+    })
     $('list').querySelectorAll('[data-ok]').forEach((b) => {
       b.onclick = async () => {
         if (!confirm('确认通过该入驻申请？')) return
@@ -685,6 +810,62 @@ async function renderApplies() {
   $('btnReload').onclick = load
   $('fStatus').onchange = load
   await load()
+}
+
+async function showApplyDetail(id, reload) {
+  const r = await api(`/admin/applies/${id}`)
+  const licenses = r.licenses || {}
+  const licenseHtml = Object.keys(licenses).length
+    ? `<div class="thumb-grid">${Object.entries(licenses)
+        .map(([k, v]) => {
+          const url = typeof v === 'string' ? v : v?.url || ''
+          return `<div class="thumb-card"><div class="muted">${esc(LICENSE_LABELS[k] || k)}</div>${thumb(url, 'thumb lg')}</div>`
+        })
+        .join('')}</div>`
+    : '<p class="muted">未上传证照</p>'
+  const actions =
+    r.status === 'pending' && canEdit('applies')
+      ? async () => {}
+      : null
+  openModal(
+    `入驻审核 · ${r.shopName}`,
+    `<p>${esc(r.roleLabel)} · ${badge(r.status)} · ${esc(r.applyNo)}</p>
+     <p>信用代码 ${esc(r.creditCode)} · 法人 ${esc(r.legalPerson)}</p>
+     <p>联系人 ${esc(r.contactName)} ${esc(r.contactPhone)}</p>
+     <p class="muted">${esc(r.city)} ${esc(r.address)}</p>
+     ${r.rejectReason ? `<p class="err">驳回：${esc(r.rejectReason)}</p>` : ''}
+     <h4>证照资料（点击放大）</h4>${licenseHtml}
+     ${
+       r.status === 'pending'
+         ? `<div class="toolbar" style="margin-top:12px">
+              <button class="btn ok" id="applyOk">通过</button>
+              <button class="btn danger" id="applyNo">驳回</button>
+            </div>`
+         : ''
+     }`,
+    null,
+    true
+  )
+  void actions
+  const okBtn = document.getElementById('applyOk')
+  const noBtn = document.getElementById('applyNo')
+  if (okBtn) {
+    okBtn.onclick = async () => {
+      if (!confirm('确认通过？')) return
+      await api(`/admin/apply/${id}/approve`, { method: 'POST', body: '{}' })
+      closeModal()
+      if (reload) reload()
+    }
+  }
+  if (noBtn) {
+    noBtn.onclick = async () => {
+      const reason = prompt('驳回原因', '资料不完整')
+      if (reason === null) return
+      await api(`/admin/apply/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) })
+      closeModal()
+      if (reload) reload()
+    }
+  }
 }
 
 async function renderMerchants() {
@@ -870,11 +1051,12 @@ async function renderGoods() {
     const rows = await api(`/admin/goods/${type}`)
     if (type === 'stall') {
       $('list').innerHTML = table(
-        ['ID', '商户', '店名', '品名', '价', '积分', '分类', '库存', '上架', '操作'],
+        ['预览', 'ID', '店名', '品名', '价', '积分', '分类', '库存', '上架', '操作'],
         rows
           .map(
             (g) => `<tr>
-          <td>${g.id}</td><td>${g.merchantId}</td><td>${esc(g.shopName)}</td><td>${esc(g.name)}</td>
+          <td>${thumb(g.imageUrl)}</td>
+          <td>${g.id}</td><td>${esc(g.shopName)}</td><td>${esc(g.name)}</td>
           <td>${g.price}</td><td>${g.pointsGrant}</td><td>${esc(g.category)}</td><td>${g.stock}</td>
           <td>${g.onSale}</td>
           <td><button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button></td></tr>`
@@ -883,11 +1065,12 @@ async function renderGoods() {
       )
     } else if (type === 'cross') {
       $('list').innerHTML = table(
-        ['ID', '商户', '店名', '品名', '积分', '现金价', '上架', '操作'],
+        ['预览', 'ID', '店名', '品名', '积分', '现金价', '上架', '操作'],
         rows
           .map(
             (g) => `<tr>
-          <td>${g.id}</td><td>${g.merchantId}</td><td>${esc(g.shopName)}</td><td>${esc(g.name)}</td>
+          <td>${thumb(g.imageUrl)}</td>
+          <td>${g.id}</td><td>${esc(g.shopName)}</td><td>${esc(g.name)}</td>
           <td>${g.pointsNeed}</td><td>${g.cashPrice}</td><td>${g.onSale}</td>
           <td><button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button></td></tr>`
           )
@@ -895,17 +1078,19 @@ async function renderGoods() {
       )
     } else {
       $('list').innerHTML = table(
-        ['ID', '商户', '供应方', '品名', '价', '库存', '积分', '状态', '操作'],
+        ['预览', 'ID', '供应方', '品名', '价', '库存', '积分', '状态', '操作'],
         rows
           .map(
             (g) => `<tr>
-          <td>${g.id}</td><td>${g.merchantId}</td><td>${esc(g.vendor)}</td><td>${esc(g.name)}</td>
+          <td>${thumb(g.imageUrl)}</td>
+          <td>${g.id}</td><td>${esc(g.vendor)}</td><td>${esc(g.name)}</td>
           <td>${g.price}</td><td>${g.stock}</td><td>${g.pointsGrant}</td><td>${g.status}</td>
           <td><button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button></td></tr>`
           )
           .join('')
       )
     }
+    bindThumbs($('list'))
     $('list').querySelectorAll('[data-edit]').forEach((b) => {
       b.onclick = () => editGoods(type, JSON.parse(decodeURIComponent(b.getAttribute('data-edit'))), load)
     })
@@ -983,44 +1168,189 @@ async function renderOrders() {
     const rows = await api(`/admin/orders/${type}`)
     if (type === 'consumer') {
       $('list').innerHTML = table(
-        ['单号', '用户', '门店', '金额', '积分', '支付', '状态', '时间'],
+        ['单号', '用户', '门店', '金额', '积分', '支付', '状态', '时间', '操作'],
         rows
           .map(
             (o) => `<tr>
           <td>${esc(o.orderNo)}</td><td>${esc(o.userName)}</td><td>${esc(o.shopName)}</td>
           <td>${o.totalAmount}</td><td>${o.pointsAllocated}</td><td>${esc(o.payStatus)}</td>
-          <td>${esc(o.orderStatus)}</td><td>${fmtTime(o.createdAt)}</td></tr>`
+          <td>${esc(o.orderStatus)}</td><td>${fmtTime(o.createdAt)}</td>
+          <td><button class="btn sm" data-detail="${o.id}">详情</button></td></tr>`
           )
           .join('')
       )
     } else if (type === 'cross') {
       $('list').innerHTML = table(
-        ['单号', '用户', '门店', '商品', '方式', '积分', '现金', '状态', '时间'],
+        ['单号', '用户', '门店', '商品', '方式', '积分', '现金', '状态', '时间', '操作'],
         rows
           .map(
             (o) => `<tr>
           <td>${esc(o.orderNo)}</td><td>${esc(o.userName)}</td><td>${esc(o.shopName)}</td>
           <td>${esc(o.goodsName)}</td><td>${esc(o.payMode)}</td><td>${o.pointsSpend}</td>
-          <td>${o.cashAmount}</td><td>${esc(o.status)}</td><td>${fmtTime(o.createdAt)}</td></tr>`
+          <td>${o.cashAmount}</td><td>${esc(o.status)}</td><td>${fmtTime(o.createdAt)}</td>
+          <td><button class="btn sm" data-detail="${o.id}">详情</button></td></tr>`
           )
           .join('')
       )
     } else {
       $('list').innerHTML = table(
-        ['单号', '买方', '卖方', '金额', '积分', '履约', '状态', '时间'],
+        ['单号', '买方', '卖方', '金额', '积分', '履约', '状态', '时间', '操作'],
         rows
           .map(
             (o) => `<tr>
           <td>${esc(o.orderNo)}</td><td>${esc(o.buyerName)}</td><td>${esc(o.sellerName)}</td>
           <td>${o.totalAmount}</td><td>${o.pointsGrant}</td><td>${esc(o.fulfillType)}</td>
-          <td>${esc(o.status)}</td><td>${fmtTime(o.createdAt)}</td></tr>`
+          <td>${esc(o.status)}</td><td>${fmtTime(o.createdAt)}</td>
+          <td><button class="btn sm" data-detail="${o.id}">详情</button></td></tr>`
+          )
+          .join('')
+      )
+    }
+    $('list').querySelectorAll('[data-detail]').forEach((b) => {
+      b.onclick = () => showOrderDetail(type, Number(b.dataset.detail))
+    })
+  }
+  $('btnReload').onclick = load
+  $('oType').onchange = load
+  await load()
+}
+
+async function showOrderDetail(type, id) {
+  const o = await api(`/admin/orders/${type}/${id}`)
+  const items = (o.items || [])
+    .map(
+      (it) =>
+        `<div class="goods-row">${thumb(it.imageUrl)} <span>${esc(it.goodsName)} × ${it.qty || 1}
+        ${it.price != null ? ` · ¥${it.price}` : ''}
+        ${it.pointsGrant != null ? ` · 积分${it.pointsGrant}` : ''}
+        ${it.pointsSpend != null ? ` · 消耗${it.pointsSpend}` : ''}</span></div>`
+    )
+    .join('')
+  openModal(
+    `订单详情 · ${o.orderNo}`,
+    `<p>${esc(type)} · ${fmtTime(o.createdAt)}</p>
+     ${o.shopCover || o.sellerCover ? `<p>门店 ${thumb(o.shopCover || o.sellerCover)}</p>` : ''}
+     <p>用户 ${esc(o.userName || o.buyerName || '-')} · 门店 ${esc(o.shopName || o.sellerName || '-')}</p>
+     <p>金额 ${o.totalAmount ?? o.cashAmount ?? '-'} · 状态 ${esc(o.orderStatus || o.status || '-')}</p>
+     <h4>明细</h4>${items || '<p class="muted">无明细</p>'}`,
+    null,
+    true
+  )
+}
+
+async function renderPoints() {
+  const editable = canEdit('points')
+  content().innerHTML = `
+    <div class="toolbar">
+      <select id="pType">
+        <option value="user">用户积分流水</option>
+        <option value="pool">商户额度流水</option>
+      </select>
+      <button class="btn" id="btnReload">刷新</button>
+      ${editable ? '<button class="btn primary" id="btnGrant">发放额度</button>' : ''}
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const type = $('pType').value
+    if (type === 'user') {
+      const rows = await api('/admin/points/user-ledger')
+      $('list').innerHTML = table(
+        ['预览', '用户', '变动', '余额', '类型', '说明', '时间'],
+        rows
+          .map(
+            (r) => `<tr>
+          <td>${thumb(r.avatarUrl)}</td>
+          <td>${esc(r.userName)} <code>${esc(r.inviteCode)}</code></td>
+          <td>${r.changeAmount}</td><td>${r.balanceAfter}</td>
+          <td>${esc(r.bizType)}</td><td>${esc(r.title)}</td><td>${fmtTime(r.createdAt)}</td></tr>`
+          )
+          .join('')
+      )
+    } else {
+      const rows = await api('/admin/points/pool-ledger')
+      $('list').innerHTML = table(
+        ['预览', '门店', '角色', '变动', '余额', '类型', '说明', '时间'],
+        rows
+          .map(
+            (r) => `<tr>
+          <td>${thumb(r.coverUrl)}</td>
+          <td>${esc(r.shopName)}</td><td>${esc(r.role)}</td>
+          <td>${r.changeAmount}</td><td>${r.balanceAfter}</td>
+          <td>${esc(r.bizType)}</td><td>${esc(r.title)}</td><td>${fmtTime(r.createdAt)}</td></tr>`
+          )
+          .join('')
+      )
+    }
+    bindThumbs($('list'))
+  }
+  $('btnReload').onclick = load
+  $('pType').onchange = load
+  if ($('btnGrant')) {
+    $('btnGrant').onclick = () => {
+      openModal(
+        '发放商户额度',
+        field('merchantId', '商户 ID', '', 'number') +
+          field('points', '积分数量', '500', 'number') +
+          field('title', '备注', '后台发放'),
+        async () => {
+          await api('/admin/points-pool/grant', {
+            method: 'POST',
+            body: JSON.stringify({
+              merchantId: Number(formVal('merchantId')),
+              points: Number(formVal('points')),
+              title: formVal('title')
+            })
+          })
+          load()
+        }
+      )
+    }
+  }
+  await load()
+}
+
+async function renderSettlements() {
+  content().innerHTML = `
+    <div class="toolbar">
+      <select id="sType">
+        <option value="commissions">平台抽成</option>
+        <option value="accounts">商户资金流水</option>
+      </select>
+      <button class="btn" id="btnReload">刷新</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const type = $('sType').value
+    if (type === 'commissions') {
+      const rows = await api('/admin/settlements/commissions')
+      $('list').innerHTML = table(
+        ['ID', '业务', '业务单号', '付方门店', '成交额', '费率', '抽成', '时间'],
+        rows
+          .map(
+            (r) => `<tr>
+          <td>${r.id}</td><td>${esc(r.bizType)}</td><td>${esc(r.bizId)}</td>
+          <td>${esc(r.payerName || '-')}</td><td>${r.amountGross}</td>
+          <td>${r.rate}</td><td>${r.commission}</td><td>${fmtTime(r.createdAt)}</td></tr>`
+          )
+          .join('')
+      )
+    } else {
+      const rows = await api('/admin/settlements/accounts')
+      $('list').innerHTML = table(
+        ['门店', '角色', '账户', '变动', '余额', '业务', '说明', '时间'],
+        rows
+          .map(
+            (r) => `<tr>
+          <td>${esc(r.shopName)}</td><td>${esc(r.role)}</td><td>${esc(r.accountType)}</td>
+          <td>${r.changeAmount}</td><td>${r.balanceAfter}</td>
+          <td>${esc(r.bizType)}</td><td>${esc(r.title)}</td><td>${fmtTime(r.createdAt)}</td></tr>`
           )
           .join('')
       )
     }
   }
   $('btnReload').onclick = load
-  $('oType').onchange = load
+  $('sType').onchange = load
   await load()
 }
 
@@ -1034,10 +1364,11 @@ async function renderBanners() {
   const load = async () => {
     const rows = await api('/admin/banners')
     $('list').innerHTML = table(
-      ['ID', '范围', '标题', '副标', '排序', '状态', '操作'],
+      ['预览', 'ID', '范围', '标题', '副标', '排序', '状态', '操作'],
       rows
         .map(
           (b) => `<tr>
+        <td>${thumb(b.imageUrl)}</td>
         <td>${b.id}</td><td>${esc(b.roleScope)}</td><td>${esc(b.title)}</td>
         <td>${esc(b.subTitle)}</td><td>${b.sortOrder}</td><td>${b.status}</td>
         <td class="actions">
@@ -1047,6 +1378,7 @@ async function renderBanners() {
         )
         .join('')
     )
+    bindThumbs($('list'))
     $('list').querySelectorAll('[data-edit]').forEach((btn) => {
       btn.onclick = () => editBanner(JSON.parse(decodeURIComponent(btn.getAttribute('data-edit'))), load)
     })
@@ -1064,7 +1396,7 @@ async function renderBanners() {
 }
 
 function editBanner(b, reload) {
-  b = b || { roleScope: 'consumer', title: '', subTitle: '', imageUrl: '', sortOrder: 0, status: 1 }
+  b = b || { roleScope: 'consumer', title: '', subTitle: '', imageUrl: '', sortOrder: 0, status: 1, startAt: '', endAt: '' }
   openModal(
     b.id ? '编辑 Banner' : '新建 Banner',
     field('roleScope', '范围 consumer/stall/cross/supply/login', b.roleScope) +
@@ -1074,7 +1406,9 @@ function editBanner(b, reload) {
       field('linkUrl', '跳转', b.linkUrl || '') +
       field('linkType', '链接类型 navigate/switchTab/none', b.linkType || 'none') +
       field('sortOrder', '排序', b.sortOrder, 'number') +
-      field('status', '状态(1/0)', b.status, 'number'),
+      field('status', '状态(1/0)', b.status, 'number') +
+      field('startAt', '开始时间(可选)', b.startAt ? String(b.startAt).slice(0, 19).replace('T', ' ') : '') +
+      field('endAt', '结束时间(可选)', b.endAt ? String(b.endAt).slice(0, 19).replace('T', ' ') : ''),
     async () => {
       await api('/admin/banners', {
         method: 'POST',
@@ -1087,7 +1421,9 @@ function editBanner(b, reload) {
           linkUrl: formVal('linkUrl'),
           linkType: formVal('linkType'),
           sortOrder: Number(formVal('sortOrder') || 0),
-          status: Number(formVal('status') || 0)
+          status: Number(formVal('status') || 0),
+          startAt: formVal('startAt') || null,
+          endAt: formVal('endAt') || null
         })
       })
       reload()
@@ -1550,9 +1886,9 @@ async function renderSysMedia() {
       ['预览', 'ID', '类型', '大小', '尺寸', 'URL', '时间', '操作'],
       rows
         .map((m) => {
-          const isImg = String(m.mime || '').startsWith('image/')
+          const isImg = String(m.mime || '').startsWith('image/') || isImgUrl(m.fileUrl)
           return `<tr>
-          <td>${isImg ? `<img class="thumb" src="${esc(m.fileUrl)}" alt="" />` : '文件'}</td>
+          <td>${isImg ? thumb(m.fileUrl) : '文件'}</td>
           <td>${m.id}</td><td>${esc(m.bizType)}</td>
           <td>${(m.size / 1024).toFixed(1)}KB</td>
           <td>${m.width || '-'}×${m.height || '-'}</td>
@@ -1565,6 +1901,7 @@ async function renderSysMedia() {
         })
         .join('')
     )
+    bindThumbs($('list'))
     $('list').querySelectorAll('[data-copy]').forEach((b) => {
       b.onclick = async () => {
         try {

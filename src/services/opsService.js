@@ -136,7 +136,8 @@ async function listAllIdentities({ role, q, limit = 100 } = {}) {
     let sql = `SELECT u.id, 'consumer' AS identity, 'C端用户' AS identityLabel,
                       u.nickname AS name, u.invite_code AS code, u.phone, u.points_balance AS points,
                       u.status, u.deleted_at AS deletedAt, u.created_at AS createdAt,
-                      NULL AS merchantId, NULL AS city, NULL AS materials
+                      u.avatar_url AS avatarUrl,
+                      NULL AS merchantId, NULL AS city, NULL AS materials, NULL AS coverUrl
                FROM users u WHERE u.deleted_at IS NULL`
     const params = {}
     if (q) {
@@ -187,6 +188,7 @@ async function listAllIdentities({ role, q, limit = 100 } = {}) {
         city: m.city,
         materials: m.materials,
         coverUrl: m.coverUrl,
+        avatarUrl: m.coverUrl,
         address: m.address,
         contactName: m.contactName
       })
@@ -231,7 +233,9 @@ async function getStoreDetail(merchantId) {
   const goodsTable =
     m.role === 'stall' ? 'stall_goods' : m.role === 'cross' ? 'cross_goods' : 'supply_goods'
   const goods = await query(
-    `SELECT * FROM ${goodsTable} WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC LIMIT 100`,
+    `SELECT id, name, sku_code, image_url, sales_count, stock,
+            ${m.role === 'cross' ? 'cash_price AS price, points_need, on_sale' : m.role === 'supply' ? 'price, points_grant, status AS on_sale' : 'price, points_grant, on_sale'}
+     FROM ${goodsTable} WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC LIMIT 100`,
     { id: merchantId }
   )
 

@@ -22,7 +22,8 @@ async function run() {
     '02_seed.sql',
     '04_admin_rbac.sql',
     '05_media.sql',
-    '06_ops_extend.sql'
+    '06_ops_extend.sql',
+    '07_admin_product.sql'
   ]) {
     const sql = fs.readFileSync(path.join(__dirname, '../sql', file), 'utf8')
     console.log('Executing', file, '...')

@@ -159,10 +159,49 @@ async function approveApply(applyId, { reviewerId } = {}) {
   })
 }
 
+function mapApplyRow(r) {
+  const statusMap = { pending: '审核中', approved: '已通过', rejected: '已驳回' }
+  const roleMap = { stall: '地摊', cross: '异业门店', supply: '供应链' }
+  let licenses = r.license_json
+  if (typeof licenses === 'string') {
+    try {
+      licenses = JSON.parse(licenses)
+    } catch (_) {
+      licenses = {}
+    }
+  }
+  licenses = licenses && typeof licenses === 'object' ? licenses : {}
+  const licenseUrls = Object.values(licenses)
+    .map((v) => (typeof v === 'string' ? v : v?.url || ''))
+    .filter(Boolean)
+  return {
+    id: r.id,
+    applyNo: r.apply_no,
+    role: r.role,
+    roleLabel: roleMap[r.role] || r.role,
+    shopName: r.shop_name,
+    creditCode: r.credit_code,
+    legalPerson: r.legal_person,
+    contactName: r.contact_name,
+    contactPhone: r.contact_phone,
+    city: r.city,
+    address: r.address,
+    licenses,
+    licensePreview: licenseUrls[0] || '',
+    licenseCount: licenseUrls.length,
+    status: r.status,
+    statusText: statusMap[r.status] || r.status,
+    rejectReason: r.reject_reason,
+    merchantId: r.merchant_id,
+    createdAt: r.created_at,
+    reviewedAt: r.reviewed_at
+  }
+}
+
 async function listApplies({ status, limit = 50 } = {}) {
   const lim = Math.min(Number(limit) || 50, 200)
-  let sql = `SELECT id, apply_no, role, shop_name, contact_name, contact_phone, city,
-                    status, reject_reason, merchant_id, created_at, reviewed_at
+  let sql = `SELECT id, apply_no, role, shop_name, credit_code, legal_person, contact_name, contact_phone,
+                    city, address, license_json, status, reject_reason, merchant_id, created_at, reviewed_at
              FROM merchant_applications`
   const params = {}
   if (status && ['pending', 'approved', 'rejected'].includes(status)) {
@@ -171,24 +210,18 @@ async function listApplies({ status, limit = 50 } = {}) {
   }
   sql += ` ORDER BY id DESC LIMIT ${lim}`
   const rows = await query(sql, params)
-  const statusMap = { pending: '审核中', approved: '已通过', rejected: '已驳回' }
-  const roleMap = { stall: '地摊', cross: '异业', supply: '供应链' }
-  return rows.map((r) => ({
-    id: r.id,
-    applyNo: r.apply_no,
-    role: r.role,
-    roleLabel: roleMap[r.role] || r.role,
-    shopName: r.shop_name,
-    contactName: r.contact_name,
-    contactPhone: r.contact_phone,
-    city: r.city,
-    status: r.status,
-    statusText: statusMap[r.status] || r.status,
-    rejectReason: r.reject_reason,
-    merchantId: r.merchant_id,
-    createdAt: r.created_at,
-    reviewedAt: r.reviewed_at
-  }))
+  return rows.map(mapApplyRow)
+}
+
+async function getApplyDetail(id) {
+  const rows = await query(
+    `SELECT id, apply_no, role, shop_name, credit_code, legal_person, contact_name, contact_phone,
+            city, address, license_json, status, reject_reason, merchant_id, created_at, reviewed_at
+     FROM merchant_applications WHERE id=:id`,
+    { id }
+  )
+  if (!rows.length) throw new HttpError(404, '申请不存在')
+  return mapApplyRow(rows[0])
 }
 
 async function rejectApply(applyId, { reason, reviewerId } = {}) {
@@ -244,6 +277,7 @@ module.exports = {
   queryByPhone,
   approveApply,
   listApplies,
+  getApplyDetail,
   rejectApply,
   listMerchants
 }
