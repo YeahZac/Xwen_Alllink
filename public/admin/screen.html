@@ -3,50 +3,125 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>万业互联云 · 数据大屏</title>
+  <title>万业互联云 · 数据指挥大屏</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="./screen.css" />
 </head>
 <body>
+  <div class="fx-grid" aria-hidden="true"></div>
+  <div class="fx-scan" aria-hidden="true"></div>
+
   <div class="screen">
     <header class="screen-head">
-      <div>
-        <p class="brand">万业互联云</p>
-        <h1>运营数据大屏</h1>
+      <div class="head-deco left"></div>
+      <div class="head-center">
+        <p class="brand">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z"/></svg>
+          万业互联云 · COMMAND CENTER
+        </p>
+        <h1>运营数据指挥大屏</h1>
       </div>
       <div class="head-right">
+        <div class="live-pill"><span class="pulse"></span> LIVE</div>
         <span id="clock"></span>
-        <a class="back" href="./">返回运营台</a>
+        <a class="back" href="./">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+          运营台
+        </a>
       </div>
+      <div class="head-deco right"></div>
     </header>
 
     <section class="kpi-row" id="kpis"></section>
 
-    <section class="grid">
-      <div class="panel">
-        <h3>近 7 日访问趋势</h3>
-        <canvas id="trend" width="640" height="220"></canvas>
-      </div>
-      <div class="panel">
-        <h3>角色构成</h3>
-        <div id="roleMix" class="bars"></div>
-      </div>
-      <div class="panel wide">
-        <h3>热点位置分布</h3>
-        <div class="map-wrap">
-          <div class="map-bg" id="map"></div>
-          <div class="map-legend" id="mapLegend"></div>
+    <section class="main-grid">
+      <aside class="col left">
+        <div class="panel">
+          <div class="panel-hd">
+            <span class="ico">
+              <svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15v4M12 11v8M16 7v12"/></svg>
+            </span>
+            <h3>近 7 日访问趋势</h3>
+          </div>
+          <canvas id="trend" width="560" height="200"></canvas>
         </div>
-      </div>
-      <div class="panel">
-        <h3>热门城市访问</h3>
-        <div id="cities" class="bars"></div>
-      </div>
-      <div class="panel">
-        <h3>热销商品 TOP</h3>
-        <div id="goods" class="list"></div>
-      </div>
+        <div class="panel">
+          <div class="panel-hd">
+            <span class="ico">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
+            </span>
+            <h3>角色构成</h3>
+          </div>
+          <div id="roleMix" class="bars"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-hd">
+            <span class="ico">
+              <svg viewBox="0 0 24 24"><path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"/></svg>
+            </span>
+            <h3>交易结构</h3>
+          </div>
+          <div id="gmvMix" class="gmv-mix"></div>
+        </div>
+      </aside>
+
+      <section class="col center">
+        <div class="panel map-panel">
+          <div class="panel-hd">
+            <span class="ico">
+              <svg viewBox="0 0 24 24"><path d="M12 22s7-6.2 7-12a7 7 0 10-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>
+            </span>
+            <h3>位置热点地图</h3>
+            <div class="map-filters" id="mapFilters">
+              <button type="button" class="chip on" data-role="all">全部</button>
+              <button type="button" class="chip stall" data-role="stall">地摊</button>
+              <button type="button" class="chip cross" data-role="cross">异业</button>
+              <button type="button" class="chip supply" data-role="supply">供应链</button>
+            </div>
+          </div>
+          <div id="leafletMap" class="leaflet-host"></div>
+          <div class="map-stat" id="mapStat"></div>
+        </div>
+      </section>
+
+      <aside class="col right">
+        <div class="panel">
+          <div class="panel-hd">
+            <span class="ico">
+              <svg viewBox="0 0 24 24"><path d="M12 21s7-5.5 7-11a7 7 0 10-14 0c0 5.5 7 11 7 11z"/></svg>
+            </span>
+            <h3>热门城市</h3>
+          </div>
+          <div id="cities" class="bars"></div>
+        </div>
+        <div class="panel grow">
+          <div class="panel-hd">
+            <span class="ico">
+              <svg viewBox="0 0 24 24"><path d="M4 7h16v12H4z"/><path d="M8 7V5h8v2M9 11h6"/></svg>
+            </span>
+            <h3>热销商品 TOP</h3>
+          </div>
+          <div id="goods" class="rank-list"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-hd">
+            <span class="ico">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            </span>
+            <h3>热点门店雷达</h3>
+          </div>
+          <div id="hotStores" class="hot-stores"></div>
+        </div>
+      </aside>
     </section>
+
+    <footer class="screen-foot">
+      <span>数据每 60 秒自动刷新</span>
+      <span id="updatedAt">—</span>
+    </footer>
   </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="./screen.js"></script>
 </body>
 </html>
