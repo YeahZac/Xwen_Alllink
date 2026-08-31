@@ -36,6 +36,25 @@ npm start
 # 健康检查：GET http://localhost/api/health
 ```
 
+## 运营台 `/admin/`
+
+邀请码 `A001`（可用环境变量 `ADMIN_CODE` 覆盖）。侧栏模块：
+
+| 模块 | 能力 |
+|------|------|
+| 概览 | 用户/商户/订单/额度/投诉等汇总 |
+| 入驻审核 | 通过 / 驳回 |
+| 商户管理 | 详情、编辑、启停、发放额度池 |
+| 用户积分 | 查询、调积分、禁用 |
+| 商品目录 | 地摊 / 异业 / 供应链 CRUD |
+| 订单中心 | 点餐 / 异业 / 采购订单列表 |
+| Banner | 全端广告位管理 |
+| 平台配置 | `platform_config`（含积分汇率） |
+| 提现审核 | 通过 / 驳回 / 已打款 |
+| 投诉工单 | 处理中 / 关闭 |
+| 供应需求 | 报价 / 关闭 |
+| 推荐记录 | 单级推荐流水 |
+
 ## 主要 API
 
 | 方法 | 路径 | 说明 |
@@ -48,11 +67,22 @@ npm start
 | GET | `/api/auth/profile` | 当前身份资料（需 Bearer Token） |
 | POST | `/api/apply/submit` | 商户入驻申请 |
 | GET | `/api/apply/status?phone=` | 查询入驻审核 |
-| GET | `/api/admin/applies` | 入驻申请列表（运营） |
-| POST | `/api/admin/apply/:id/approve` | 审核通过（运营） |
-| POST | `/api/admin/apply/:id/reject` | 审核驳回（运营） |
-| GET | `/api/admin/merchants` | 商户列表（运营） |
-| GET | `/api/banners?role=` | 广告 Banner |
+| GET | `/api/admin/dashboard` | 运营概览 |
+| GET | `/api/admin/applies` | 入驻申请列表 |
+| POST | `/api/admin/apply/:id/approve` | 审核通过 |
+| POST | `/api/admin/apply/:id/reject` | 审核驳回 |
+| GET/PATCH | `/api/admin/merchants[/:id]` | 商户列表 / 详情 / 更新 |
+| GET/PATCH | `/api/admin/users[/:id]` | 用户列表 / 状态 |
+| POST | `/api/admin/users/:id/points` | 调整用户积分 |
+| GET/POST | `/api/admin/goods/{stall\|cross\|supply}` | 商品列表 / 保存 |
+| GET | `/api/admin/orders/{consumer\|cross\|purchase}` | 订单列表 |
+| GET/POST/DELETE | `/api/admin/banners[/:id]` | Banner 管理 |
+| GET/PUT | `/api/admin/configs[/:key]` | 平台配置 |
+| GET/POST | `/api/admin/withdraws*` | 提现列表 / 审核 / 演示单 |
+| GET/PATCH | `/api/admin/complaints[/:id]` | 投诉 |
+| GET/PATCH | `/api/admin/supply-needs[/:id]` | 供应需求 |
+| GET | `/api/admin/referrals` | 推荐记录 |
+| GET | `/api/banners?role=` | 广告 Banner（C端） |
 | GET | `/api/stalls` | 附近地摊 |
 | GET | `/api/stalls/:id/menu` | 点餐菜单 |
 | GET | `/api/cross-stores` | 异业门店 |

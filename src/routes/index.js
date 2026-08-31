@@ -5,9 +5,11 @@ const authService = require('../services/authService')
 const applyService = require('../services/applyService')
 const orderService = require('../services/orderService')
 const catalogService = require('../services/catalogService')
+const adminService = require('../services/adminService')
 const { getCashRate, pointsToCash } = require('../services/configService')
 
 const router = express.Router()
+const adminOnly = [authRequired, requireRoles('admin')]
 
 router.get('/health', (_req, res) => {
   res.json(ok({ service: 'xwen-alllink-api', ts: Date.now() }))
@@ -63,8 +65,7 @@ router.get('/apply/status', async (req, res, next) => {
 
 router.post(
   '/admin/apply/:id/approve',
-  authRequired,
-  requireRoles('admin'),
+  ...adminOnly,
   async (req, res, next) => {
     try {
       res.json(ok(await applyService.approveApply(Number(req.params.id), { reviewerId: req.auth.userId })))
@@ -76,8 +77,7 @@ router.post(
 
 router.post(
   '/admin/apply/:id/reject',
-  authRequired,
-  requireRoles('admin'),
+  ...adminOnly,
   async (req, res, next) => {
     try {
       res.json(
@@ -94,7 +94,7 @@ router.post(
   }
 )
 
-router.get('/admin/applies', authRequired, requireRoles('admin'), async (req, res, next) => {
+router.get('/admin/applies', ...adminOnly, async (req, res, next) => {
   try {
     res.json(ok(await applyService.listApplies({ status: req.query.status, limit: req.query.limit })))
   } catch (e) {
@@ -102,9 +102,233 @@ router.get('/admin/applies', authRequired, requireRoles('admin'), async (req, re
   }
 })
 
-router.get('/admin/merchants', authRequired, requireRoles('admin'), async (req, res, next) => {
+router.get('/admin/merchants', ...adminOnly, async (req, res, next) => {
   try {
     res.json(ok(await applyService.listMerchants({ role: req.query.role, limit: req.query.limit })))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/dashboard', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.dashboard()))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/merchants/:id', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.getMerchantDetail(Number(req.params.id))))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.patch('/admin/merchants/:id', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.updateMerchant(Number(req.params.id), req.body)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/users', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.listUsers({ q: req.query.q, limit: req.query.limit })))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.patch('/admin/users/:id', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.updateUser(Number(req.params.id), req.body)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/users/:id/points', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.adjustUserPoints(Number(req.params.id), req.body)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/goods/stall', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.listStallGoods(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/goods/stall', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.saveStallGoods(req.body)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/goods/cross', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.listCrossGoods(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/goods/cross', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.saveCrossGoods(req.body)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/goods/supply', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.listSupplyGoodsAdmin(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/goods/supply', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.saveSupplyGoods(req.body)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/orders/consumer', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.listConsumerOrders(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/orders/cross', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.listCrossOrders(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/orders/purchase', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.listPurchaseOrders(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/banners', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.listAllBanners()))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/banners', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.saveBanner(req.body)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.delete('/admin/banners/:id', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.deleteBanner(Number(req.params.id))))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/configs', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.listConfigs()))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.put('/admin/configs/:key', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.setConfig(req.params.key, req.body.value, req.body.remark)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/withdraws', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.listWithdraws(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/withdraws/:id/review', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.reviewWithdraw(Number(req.params.id), req.body)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/withdraws/demo', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.createDemoWithdraw(req.body)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/complaints', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.listComplaints(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.patch('/admin/complaints/:id', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.updateComplaint(Number(req.params.id), req.body)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/supply-needs', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.listSupplyNeeds(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.patch('/admin/supply-needs/:id', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.updateSupplyNeed(Number(req.params.id), req.body)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/referrals', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.listReferrals(req.query)))
   } catch (e) {
     next(e)
   }

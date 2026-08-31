@@ -1,204 +1,913 @@
-(() => {
-  const TOKEN_KEY = 'wy_admin_token'
-  const $ = (id) => document.getElementById(id)
+const TOKEN_KEY = 'xwen_admin_token'
+const PROFILE_KEY = 'xwen_admin_profile'
 
-  function apiBase() {
+const state = {
+  token: localStorage.getItem(TOKEN_KEY) || '',
+  profile: JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null'),
+  page: 'dashboard'
+}
+
+const NAV = [
+  { id: 'dashboard', label: '概览' },
+  { id: 'applies', label: '入驻审核' },
+  { id: 'merchants', label: '商户管理' },
+  { id: 'users', label: '用户积分' },
+  { id: 'goods', label: '商品目录' },
+  { id: 'orders', label: '订单中心' },
+  { id: 'banners', label: 'Banner' },
+  { id: 'configs', label: '平台配置' },
+  { id: 'withdraws', label: '提现审核' },
+  { id: 'complaints', label: '投诉工单' },
+  { id: 'needs', label: '供应需求' },
+  { id: 'referrals', label: '推荐记录' }
+]
+
+const $ = (id) => document.getElementById(id)
+const content = () => $('content')
+
+async function api(path, options = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) }
+  if (state.token) headers.Authorization = `Bearer ${state.token}`
+  const res = await fetch(`/api${path}`, { ...options, headers })
+  const json = await res.json().catch(() => ({}))
+  if (res.status === 401) {
+    logout(false)
+    throw new Error('登录已失效，请重新登录')
+  }
+  if (!res.ok || (json.code !== undefined && json.code !== 0)) {
+    throw new Error(json.message || `请求失败 ${res.status}`)
+  }
+  return json.data
+}
+
+function logout(reload = true) {
+  state.token = ''
+  state.profile = null
+  localStorage.removeItem(TOKEN_KEY)
+  localStorage.removeItem(PROFILE_KEY)
+  if (reload) location.reload()
+}
+
+function showLogin() {
+  $('loginView').classList.remove('hidden')
+  $('dashView').classList.add('hidden')
+}
+
+function showDash() {
+  $('loginView').classList.add('hidden')
+  $('dashView').classList.remove('hidden')
+  $('who').textContent = state.profile?.nickname || '运营'
+  renderNav()
+  go(state.page)
+}
+
+function renderNav() {
+  const nav = $('nav')
+  nav.innerHTML = NAV.map(
+    (n) => `<button type="button" data-page="${n.id}" class="${state.page === n.id ? 'on' : ''}">${n.label}</button>`
+  ).join('')
+  nav.querySelectorAll('button').forEach((btn) => {
+    btn.onclick = () => go(btn.dataset.page)
+  })
+}
+
+function go(page) {
+  state.page = page
+  $('pageTitle').textContent = NAV.find((n) => n.id === page)?.label || page
+  renderNav()
+  const map = {
+    dashboard: renderDashboard,
+    applies: renderApplies,
+    merchants: renderMerchants,
+    users: renderUsers,
+    goods: renderGoods,
+    orders: renderOrders,
+    banners: renderBanners,
+    configs: renderConfigs,
+    withdraws: renderWithdraws,
+    complaints: renderComplaints,
+    needs: renderNeeds,
+    referrals: renderReferrals
+  }
+  ;(map[page] || renderDashboard)().catch((e) => {
+    content().innerHTML = `<div class="empty">${esc(e.message)}</div>`
+  })
+}
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+function badge(status) {
+  return `<span class="badge ${esc(status)}">${esc(status)}</span>`
+}
+
+function fmtTime(v) {
+  if (!v) return '-'
+  try {
+    return new Date(v).toLocaleString('zh-CN', { hour12: false })
+  } catch {
+    return String(v)
+  }
+}
+
+function table(headers, rowsHtml) {
+  return `<div class="table-wrap"><table><thead><tr>${headers
+    .map((h) => `<th>${h}</th>`)
+    .join('')}</tr></thead><tbody>${rowsHtml || `<tr><td colspan="${headers.length}" class="empty">暂无数据</td></tr>`}</tbody></table></div>`
+}
+
+function openModal(title, bodyHtml, onSave) {
+  $('modal').classList.remove('hidden')
+  $('modalTitle').textContent = title
+  $('modalBody').innerHTML = bodyHtml
+  $('modalFoot').innerHTML = onSave
+    ? `<button type="button" class="btn ghost" id="modalCancel">取消</button>
+       <button type="button" class="btn primary" id="modalSave">保存</button>`
+    : `<button type="button" class="btn" id="modalCancel">关闭</button>`
+  $('modalClose').onclick = closeModal
+  $('modalCancel').onclick = closeModal
+  if (onSave) {
+    $('modalSave').onclick = async () => {
+      try {
+        await onSave()
+        closeModal()
+      } catch (e) {
+        alert(e.message)
+      }
+    }
+  }
+}
+
+function closeModal() {
+  $('modal').classList.add('hidden')
+}
+
+function field(name, label, value = '', type = 'text') {
+  if (type === 'textarea') {
+    return `<label>${label}<textarea name="${name}" rows="3">${esc(value)}</textarea></label>`
+  }
+  if (type === 'select') {
     return ''
   }
+  return `<label>${label}<input name="${name}" type="${type}" value="${esc(value)}" /></label>`
+}
 
-  async function api(path, options = {}) {
-    const headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {})
-    const token = localStorage.getItem(TOKEN_KEY)
-    if (token) headers.Authorization = 'Bearer ' + token
-    const res = await fetch(apiBase() + path, Object.assign({}, options, { headers }))
-    const json = await res.json().catch(() => ({}))
-    if (!res.ok || (json.code !== undefined && json.code !== 0)) {
-      throw new Error(json.message || ('请求失败 ' + res.status))
-    }
-    return json.data
-  }
+function formVal(name) {
+  const el = $('modalBody').querySelector(`[name="${name}"]`)
+  return el ? el.value : ''
+}
 
-  function showLogin() {
-    $('loginView').classList.remove('hidden')
-    $('dashView').classList.add('hidden')
-  }
+/* ---------- pages ---------- */
+async function renderDashboard() {
+  const d = await api('/admin/dashboard')
+  $('cashRate').textContent = `积分汇率 ${d.cashRate}`
+  content().innerHTML = `
+    <div class="stats">
+      ${stat(d.users, '用户')}
+      ${stat(d.merchants, '营业商户')}
+      ${stat(d.pendingApplies, '待审入驻')}
+      ${stat(d.poolTotal, '商户额度池')}
+      ${stat(d.pointsTotal, '用户积分')}
+      ${stat(d.pointsCashValue, '积分约合¥')}
+      ${stat(d.consumerOrders, '点餐订单')}
+      ${stat(d.crossOrders, '异业订单')}
+      ${stat(d.purchaseOrders, '采购订单')}
+      ${stat(d.pendingWithdraw, '待审提现')}
+      ${stat(d.openComplaints, '未关闭投诉')}
+      ${stat(d.openNeeds, '开放需求')}
+    </div>
+    <div class="panel">
+      <h3>运营覆盖</h3>
+      <p class="muted">本台可管理入驻审核、商户启停与额度、用户积分、三类商品、全部订单、Banner、平台配置、提现、投诉、供应需求与推荐记录。</p>
+    </div>`
+}
 
-  function showDash(profile) {
-    $('loginView').classList.add('hidden')
-    $('dashView').classList.remove('hidden')
-    $('who').textContent = ' · ' + (profile.name || 'admin')
-  }
+function stat(n, l) {
+  return `<div class="stat"><div class="n">${esc(n)}</div><div class="l">${esc(l)}</div></div>`
+}
 
-  async function boot() {
-    try {
-      const rate = await api('/api/config/cash-rate')
-      $('cashRate').textContent = '汇率：' + rate.example
-    } catch (_) {}
-
-    const token = localStorage.getItem(TOKEN_KEY)
-    if (!token) {
-      showLogin()
-      return
-    }
-    try {
-      const profile = await api('/api/auth/profile')
-      if (profile.role !== 'admin') throw new Error('非运营账号')
-      showDash(profile)
-      loadApplies()
-      loadMerchants()
-    } catch (e) {
-      localStorage.removeItem(TOKEN_KEY)
-      showLogin()
-    }
-  }
-
-  $('btnLogin').onclick = async () => {
-    $('loginErr').textContent = ''
-    try {
-      const data = await api('/api/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ code: $('loginCode').value.trim() })
-      })
-      if (data.role !== 'admin') throw new Error('请使用运营码 A001 登录')
-      localStorage.setItem(TOKEN_KEY, data.token)
-      showDash(data)
-      loadApplies()
-      loadMerchants()
-    } catch (e) {
-      $('loginErr').textContent = e.message
-    }
-  }
-
-  $('btnLogout').onclick = () => {
-    localStorage.removeItem(TOKEN_KEY)
-    showLogin()
-  }
-
-  document.querySelectorAll('.tab').forEach((btn) => {
-    btn.onclick = () => {
-      document.querySelectorAll('.tab').forEach((b) => b.classList.remove('on'))
-      btn.classList.add('on')
-      document.querySelectorAll('.tab-pane').forEach((p) => p.classList.add('hidden'))
-      $('tab-' + btn.dataset.tab).classList.remove('hidden')
-    }
-  })
-
-  async function loadApplies() {
-    const status = $('applyStatus').value
-    const list = await api('/api/admin/applies' + (status ? '?status=' + status : '?status=pending'))
-    const box = $('applyList')
-    if (!list.length) {
-      box.innerHTML = '<div class="panel muted">暂无入驻申请</div>'
-      return
-    }
-    box.innerHTML = list
-      .map((a) => {
-        const chip =
-          a.status === 'pending' ? 'warn' : a.status === 'approved' ? 'ok' : ''
-        const actions =
-          a.status === 'pending'
-            ? `<div class="actions">
-                <button class="btn ok" data-approve="${a.id}">通过</button>
-                <button class="btn danger" data-reject="${a.id}">驳回</button>
-              </div>`
-            : a.rejectReason
-              ? `<p class="muted">原因：${escapeHtml(a.rejectReason)}</p>`
-              : ''
-        return `<div class="card">
-          <div class="row">
-            <h4>${escapeHtml(a.shopName)} <span class="chip">${escapeHtml(a.roleLabel)}</span></h4>
-            <span class="chip ${chip}">${escapeHtml(a.statusText)}</span>
-          </div>
-          <p class="muted">${escapeHtml(a.applyNo)} · ${escapeHtml(a.contactName)} ${escapeHtml(a.contactPhone)} · ${escapeHtml(a.city || '')}</p>
-          ${actions}
-        </div>`
-      })
-      .join('')
-
-    box.querySelectorAll('[data-approve]').forEach((btn) => {
-      btn.onclick = async () => {
+async function renderApplies() {
+  content().innerHTML = `
+    <div class="toolbar">
+      <select id="fStatus">
+        <option value="pending">审核中</option>
+        <option value="">全部</option>
+        <option value="approved">已通过</option>
+        <option value="rejected">已驳回</option>
+      </select>
+      <button class="btn" id="btnReload">刷新</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const status = $('fStatus').value
+    const rows = await api(`/admin/applies${status ? `?status=${status}` : ''}`)
+    $('list').innerHTML = table(
+      ['ID', '单号', '角色', '店名', '联系人', '城市', '状态', '时间', '操作'],
+      rows
+        .map(
+          (r) => `<tr>
+        <td>${r.id}</td><td>${esc(r.applyNo)}</td><td>${esc(r.roleLabel)}</td>
+        <td>${esc(r.shopName)}</td><td>${esc(r.contactName)} ${esc(r.contactPhone)}</td>
+        <td>${esc(r.city)}</td><td>${badge(r.status)}</td><td>${fmtTime(r.createdAt)}</td>
+        <td class="actions">${
+          r.status === 'pending'
+            ? `<button class="btn ok sm" data-ok="${r.id}">通过</button>
+               <button class="btn danger sm" data-no="${r.id}">驳回</button>`
+            : '-'
+        }</td></tr>`
+        )
+        .join('')
+    )
+    $('list').querySelectorAll('[data-ok]').forEach((b) => {
+      b.onclick = async () => {
         if (!confirm('确认通过该入驻申请？')) return
-        try {
-          const r = await api('/api/admin/apply/' + btn.dataset.approve + '/approve', {
-            method: 'POST',
-            body: '{}'
-          })
-          alert('已通过，邀请码：' + r.inviteCode)
-          loadApplies()
-          loadMerchants()
-        } catch (e) {
-          alert(e.message)
-        }
+        await api(`/admin/apply/${b.dataset.ok}/approve`, { method: 'POST', body: '{}' })
+        load()
       }
     })
-    box.querySelectorAll('[data-reject]').forEach((btn) => {
-      btn.onclick = async () => {
-        const reason = prompt('驳回原因', '资料不符合要求')
+    $('list').querySelectorAll('[data-no]').forEach((b) => {
+      b.onclick = async () => {
+        const reason = prompt('驳回原因', '资料不完整')
         if (reason === null) return
-        try {
-          await api('/api/admin/apply/' + btn.dataset.reject + '/reject', {
-            method: 'POST',
-            body: JSON.stringify({ reason })
-          })
-          loadApplies()
-        } catch (e) {
-          alert(e.message)
-        }
+        await api(`/admin/apply/${b.dataset.no}/reject`, {
+          method: 'POST',
+          body: JSON.stringify({ reason })
+        })
+        load()
       }
     })
   }
+  $('btnReload').onclick = load
+  $('fStatus').onchange = load
+  await load()
+}
 
-  async function loadMerchants() {
-    const role = $('merchantRole').value
-    const list = await api('/api/admin/merchants' + (role ? '?role=' + role : ''))
-    const box = $('merchantList')
-    if (!list.length) {
-      box.innerHTML = '<div class="panel muted">暂无商户</div>'
-      return
-    }
-    box.innerHTML = list
-      .map(
-        (m) => `<div class="card">
-        <div class="row">
-          <h4>${escapeHtml(m.name)} <span class="chip">${escapeHtml(m.roleLabel)}</span></h4>
-          <strong>额度池 ${m.poolBalance}</strong>
-        </div>
-        <p class="muted">ID ${m.id} · 邀请码 ${escapeHtml(m.inviteCode)} · ${escapeHtml(m.city || '')}</p>
-      </div>`
-      )
-      .join('')
+async function renderMerchants() {
+  content().innerHTML = `
+    <div class="toolbar">
+      <select id="fRole">
+        <option value="">全部角色</option>
+        <option value="stall">地摊</option>
+        <option value="cross">异业</option>
+        <option value="supply">供应链</option>
+      </select>
+      <button class="btn" id="btnReload">刷新</button>
+      <button class="btn primary" id="btnGrant">发放额度</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const role = $('fRole').value
+    const rows = await api(`/admin/merchants${role ? `?role=${role}` : ''}`)
+    $('list').innerHTML = table(
+      ['ID', '编号', '角色', '名称', '城市', '邀请码', '状态', '额度池', '操作'],
+      rows
+        .map(
+          (m) => `<tr>
+        <td>${m.id}</td><td>${esc(m.merchantNo)}</td><td>${esc(m.roleLabel)}</td>
+        <td>${esc(m.name)}</td><td>${esc(m.city)}</td><td><code>${esc(m.inviteCode)}</code></td>
+        <td>${m.status}</td><td>${m.poolBalance}</td>
+        <td class="actions">
+          <button class="btn sm" data-detail="${m.id}">详情</button>
+          <button class="btn sm" data-edit="${m.id}">编辑</button>
+          <button class="btn sm" data-status="${m.id}" data-to="${m.status === 1 ? 2 : 1}">${
+            m.status === 1 ? '停业' : '营业'
+          }</button>
+        </td></tr>`
+        )
+        .join('')
+    )
+    $('list').querySelectorAll('[data-detail]').forEach((b) => {
+      b.onclick = async () => {
+        const d = await api(`/admin/merchants/${b.dataset.detail}`)
+        openModal(
+          `商户 ${d.name}`,
+          `<p>角色 ${esc(d.roleLabel)} · 邀请码 <code>${esc(d.inviteCode)}</code> · 额度 ${d.poolBalance}</p>
+           <p class="muted">${esc(d.city)} ${esc(d.address)}</p>
+           <h4>账户</h4>
+           <pre>${esc(JSON.stringify(d.accounts, null, 2))}</pre>
+           <h4>额度流水</h4>
+           <pre>${esc(JSON.stringify(d.poolLedger, null, 2))}</pre>`
+        )
+      }
+    })
+    $('list').querySelectorAll('[data-edit]').forEach((b) => {
+      b.onclick = async () => {
+        const d = await api(`/admin/merchants/${b.dataset.edit}`)
+        openModal(
+          '编辑商户',
+          field('name', '名称', d.name) +
+            field('city', '城市', d.city) +
+            field('address', '地址', d.address) +
+            field('contactName', '联系人', d.contactName) +
+            field('contactPhone', '电话', d.contactPhone),
+          async () => {
+            await api(`/admin/merchants/${d.id}`, {
+              method: 'PATCH',
+              body: JSON.stringify({
+                name: formVal('name'),
+                city: formVal('city'),
+                address: formVal('address'),
+                contactName: formVal('contactName'),
+                contactPhone: formVal('contactPhone')
+              })
+            })
+            load()
+          }
+        )
+      }
+    })
+    $('list').querySelectorAll('[data-status]').forEach((b) => {
+      b.onclick = async () => {
+        await api(`/admin/merchants/${b.dataset.status}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: Number(b.dataset.to) })
+        })
+        load()
+      }
+    })
   }
+  $('btnGrant').onclick = () => {
+    openModal(
+      '发放积分额度',
+      field('merchantId', '商户 ID', '', 'number') +
+        field('points', '积分数量', '500', 'number') +
+        field('title', '备注', '后台发放'),
+      async () => {
+        await api('/admin/points-pool/grant', {
+          method: 'POST',
+          body: JSON.stringify({
+            merchantId: Number(formVal('merchantId')),
+            points: Number(formVal('points')),
+            title: formVal('title')
+          })
+        })
+        load()
+      }
+    )
+  }
+  $('btnReload').onclick = load
+  $('fRole').onchange = load
+  await load()
+}
 
-  $('btnReloadApplies').onclick = () => loadApplies().catch((e) => alert(e.message))
-  $('applyStatus').onchange = () => loadApplies().catch((e) => alert(e.message))
-  $('btnReloadMerchants').onclick = () => loadMerchants().catch((e) => alert(e.message))
-  $('merchantRole').onchange = () => loadMerchants().catch((e) => alert(e.message))
+async function renderUsers() {
+  content().innerHTML = `
+    <div class="toolbar">
+      <input id="fq" placeholder="昵称/邀请码/手机" />
+      <button class="btn" id="btnReload">查询</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const q = $('fq').value.trim()
+    const rows = await api(`/admin/users${q ? `?q=${encodeURIComponent(q)}` : ''}`)
+    $('list').innerHTML = table(
+      ['ID', '昵称', '邀请码', '手机', '积分', '状态', '注册', '操作'],
+      rows
+        .map(
+          (u) => `<tr>
+        <td>${u.id}</td><td>${esc(u.nickname)}</td><td><code>${esc(u.inviteCode)}</code></td>
+        <td>${esc(u.phone || '-')}</td><td>${u.points}</td><td>${u.status}</td>
+        <td>${fmtTime(u.createdAt)}</td>
+        <td class="actions">
+          <button class="btn sm" data-pts="${u.id}">调积分</button>
+          <button class="btn sm" data-toggle="${u.id}" data-to="${u.status === 1 ? 0 : 1}">${
+            u.status === 1 ? '禁用' : '启用'
+          }</button>
+        </td></tr>`
+        )
+        .join('')
+    )
+    $('list').querySelectorAll('[data-pts]').forEach((b) => {
+      b.onclick = () => {
+        openModal(
+          '调整用户积分',
+          field('points', '变动量（可负）', '100', 'number') + field('title', '备注', '后台调整'),
+          async () => {
+            await api(`/admin/users/${b.dataset.pts}/points`, {
+              method: 'POST',
+              body: JSON.stringify({ points: Number(formVal('points')), title: formVal('title') })
+            })
+            load()
+          }
+        )
+      }
+    })
+    $('list').querySelectorAll('[data-toggle]').forEach((b) => {
+      b.onclick = async () => {
+        await api(`/admin/users/${b.dataset.toggle}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: Number(b.dataset.to) })
+        })
+        load()
+      }
+    })
+  }
+  $('btnReload').onclick = load
+  await load()
+}
 
-  $('btnGrant').onclick = async () => {
-    $('grantMsg').textContent = ''
-    try {
-      const data = await api('/api/admin/points-pool/grant', {
+async function renderGoods() {
+  content().innerHTML = `
+    <div class="toolbar">
+      <select id="gType">
+        <option value="stall">地摊菜单</option>
+        <option value="cross">异业兑换</option>
+        <option value="supply">供应链货品</option>
+      </select>
+      <button class="btn" id="btnReload">刷新</button>
+      <button class="btn primary" id="btnAdd">新建</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const type = $('gType').value
+    const rows = await api(`/admin/goods/${type}`)
+    if (type === 'stall') {
+      $('list').innerHTML = table(
+        ['ID', '商户', '店名', '品名', '价', '积分', '分类', '库存', '上架', '操作'],
+        rows
+          .map(
+            (g) => `<tr>
+          <td>${g.id}</td><td>${g.merchantId}</td><td>${esc(g.shopName)}</td><td>${esc(g.name)}</td>
+          <td>${g.price}</td><td>${g.pointsGrant}</td><td>${esc(g.category)}</td><td>${g.stock}</td>
+          <td>${g.onSale}</td>
+          <td><button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button></td></tr>`
+          )
+          .join('')
+      )
+    } else if (type === 'cross') {
+      $('list').innerHTML = table(
+        ['ID', '商户', '店名', '品名', '积分', '现金价', '上架', '操作'],
+        rows
+          .map(
+            (g) => `<tr>
+          <td>${g.id}</td><td>${g.merchantId}</td><td>${esc(g.shopName)}</td><td>${esc(g.name)}</td>
+          <td>${g.pointsNeed}</td><td>${g.cashPrice}</td><td>${g.onSale}</td>
+          <td><button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button></td></tr>`
+          )
+          .join('')
+      )
+    } else {
+      $('list').innerHTML = table(
+        ['ID', '商户', '供应方', '品名', '价', '库存', '积分', '状态', '操作'],
+        rows
+          .map(
+            (g) => `<tr>
+          <td>${g.id}</td><td>${g.merchantId}</td><td>${esc(g.vendor)}</td><td>${esc(g.name)}</td>
+          <td>${g.price}</td><td>${g.stock}</td><td>${g.pointsGrant}</td><td>${g.status}</td>
+          <td><button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button></td></tr>`
+          )
+          .join('')
+      )
+    }
+    $('list').querySelectorAll('[data-edit]').forEach((b) => {
+      b.onclick = () => editGoods(type, JSON.parse(decodeURIComponent(b.getAttribute('data-edit'))), load)
+    })
+  }
+  $('btnAdd').onclick = () => editGoods($('gType').value, null, load)
+  $('btnReload').onclick = load
+  $('gType').onchange = load
+  await load()
+}
+
+function editGoods(type, g, reload) {
+  const isNew = !g
+  g = g || { merchantId: '', name: '', onSale: 1, status: 1 }
+  let fields = field('merchantId', '商户 ID', g.merchantId, 'number') + field('name', '品名', g.name)
+  if (type === 'stall') {
+    fields +=
+      field('price', '价格', g.price || '', 'number') +
+      field('pointsGrant', '划拨积分', g.pointsGrant || 0, 'number') +
+      field('category', '分类', g.category || '主食') +
+      field('stock', '库存', g.stock || 9999, 'number') +
+      field('onSale', '上架(1/0)', g.onSale ?? 1, 'number') +
+      field('description', '描述', g.description || '')
+  } else if (type === 'cross') {
+    fields +=
+      field('pointsNeed', '所需积分', g.pointsNeed || 0, 'number') +
+      field('cashPrice', '现金价', g.cashPrice || 0, 'number') +
+      field('onSale', '上架(1/0)', g.onSale ?? 1, 'number') +
+      field('description', '描述', g.description || '')
+  } else {
+    fields +=
+      field('price', '采购价', g.price || '', 'number') +
+      field('stock', '库存', g.stock || 0, 'number') +
+      field('pointsGrant', '买方获积分', g.pointsGrant || 0, 'number') +
+      field('pointsRatio', '积分说明', g.pointsRatio || '') +
+      field('status', '状态(1/0)', g.status ?? 1, 'number')
+  }
+  openModal(isNew ? '新建商品' : '编辑商品', fields, async () => {
+    const body = {
+      id: g.id,
+      merchantId: Number(formVal('merchantId')),
+      name: formVal('name'),
+      price: Number(formVal('price') || 0),
+      pointsGrant: Number(formVal('pointsGrant') || 0),
+      category: formVal('category'),
+      stock: Number(formVal('stock') || 0),
+      onSale: Number(formVal('onSale') || 0),
+      description: formVal('description'),
+      pointsNeed: Number(formVal('pointsNeed') || 0),
+      cashPrice: Number(formVal('cashPrice') || 0),
+      pointsRatio: formVal('pointsRatio'),
+      status: Number(formVal('status') || 0)
+    }
+    await api(`/admin/goods/${type}`, { method: 'POST', body: JSON.stringify(body) })
+    reload()
+  })
+}
+
+async function renderOrders() {
+  content().innerHTML = `
+    <div class="toolbar">
+      <select id="oType">
+        <option value="consumer">点餐订单</option>
+        <option value="cross">异业订单</option>
+        <option value="purchase">采购订单</option>
+      </select>
+      <button class="btn" id="btnReload">刷新</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const type = $('oType').value
+    const rows = await api(`/admin/orders/${type}`)
+    if (type === 'consumer') {
+      $('list').innerHTML = table(
+        ['单号', '用户', '门店', '金额', '积分', '支付', '状态', '时间'],
+        rows
+          .map(
+            (o) => `<tr>
+          <td>${esc(o.orderNo)}</td><td>${esc(o.userName)}</td><td>${esc(o.shopName)}</td>
+          <td>${o.totalAmount}</td><td>${o.pointsAllocated}</td><td>${esc(o.payStatus)}</td>
+          <td>${esc(o.orderStatus)}</td><td>${fmtTime(o.createdAt)}</td></tr>`
+          )
+          .join('')
+      )
+    } else if (type === 'cross') {
+      $('list').innerHTML = table(
+        ['单号', '用户', '门店', '商品', '方式', '积分', '现金', '状态', '时间'],
+        rows
+          .map(
+            (o) => `<tr>
+          <td>${esc(o.orderNo)}</td><td>${esc(o.userName)}</td><td>${esc(o.shopName)}</td>
+          <td>${esc(o.goodsName)}</td><td>${esc(o.payMode)}</td><td>${o.pointsSpend}</td>
+          <td>${o.cashAmount}</td><td>${esc(o.status)}</td><td>${fmtTime(o.createdAt)}</td></tr>`
+          )
+          .join('')
+      )
+    } else {
+      $('list').innerHTML = table(
+        ['单号', '买方', '卖方', '金额', '积分', '履约', '状态', '时间'],
+        rows
+          .map(
+            (o) => `<tr>
+          <td>${esc(o.orderNo)}</td><td>${esc(o.buyerName)}</td><td>${esc(o.sellerName)}</td>
+          <td>${o.totalAmount}</td><td>${o.pointsGrant}</td><td>${esc(o.fulfillType)}</td>
+          <td>${esc(o.status)}</td><td>${fmtTime(o.createdAt)}</td></tr>`
+          )
+          .join('')
+      )
+    }
+  }
+  $('btnReload').onclick = load
+  $('oType').onchange = load
+  await load()
+}
+
+async function renderBanners() {
+  content().innerHTML = `
+    <div class="toolbar">
+      <button class="btn" id="btnReload">刷新</button>
+      <button class="btn primary" id="btnAdd">新建 Banner</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const rows = await api('/admin/banners')
+    $('list').innerHTML = table(
+      ['ID', '范围', '标题', '副标', '排序', '状态', '操作'],
+      rows
+        .map(
+          (b) => `<tr>
+        <td>${b.id}</td><td>${esc(b.roleScope)}</td><td>${esc(b.title)}</td>
+        <td>${esc(b.subTitle)}</td><td>${b.sortOrder}</td><td>${b.status}</td>
+        <td class="actions">
+          <button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(b))}">编辑</button>
+          <button class="btn danger sm" data-del="${b.id}">删除</button>
+        </td></tr>`
+        )
+        .join('')
+    )
+    $('list').querySelectorAll('[data-edit]').forEach((btn) => {
+      btn.onclick = () => editBanner(JSON.parse(decodeURIComponent(btn.getAttribute('data-edit'))), load)
+    })
+    $('list').querySelectorAll('[data-del]').forEach((btn) => {
+      btn.onclick = async () => {
+        if (!confirm('确认删除？')) return
+        await api(`/admin/banners/${btn.dataset.del}`, { method: 'DELETE' })
+        load()
+      }
+    })
+  }
+  $('btnAdd').onclick = () => editBanner(null, load)
+  $('btnReload').onclick = load
+  await load()
+}
+
+function editBanner(b, reload) {
+  b = b || { roleScope: 'consumer', title: '', subTitle: '', imageUrl: '', sortOrder: 0, status: 1 }
+  openModal(
+    b.id ? '编辑 Banner' : '新建 Banner',
+    field('roleScope', '范围 consumer/stall/cross/supply/login', b.roleScope) +
+      field('title', '标题', b.title) +
+      field('subTitle', '副标题', b.subTitle) +
+      field('imageUrl', '图片 URL', b.imageUrl) +
+      field('linkUrl', '跳转', b.linkUrl || '') +
+      field('linkType', '链接类型 navigate/switchTab/none', b.linkType || 'none') +
+      field('sortOrder', '排序', b.sortOrder, 'number') +
+      field('status', '状态(1/0)', b.status, 'number'),
+    async () => {
+      await api('/admin/banners', {
         method: 'POST',
         body: JSON.stringify({
-          merchantId: Number($('grantMerchantId').value),
-          points: Number($('grantPoints').value) || 500,
-          title: $('grantTitle').value || '后台发放'
+          id: b.id,
+          roleScope: formVal('roleScope'),
+          title: formVal('title'),
+          subTitle: formVal('subTitle'),
+          imageUrl: formVal('imageUrl'),
+          linkUrl: formVal('linkUrl'),
+          linkType: formVal('linkType'),
+          sortOrder: Number(formVal('sortOrder') || 0),
+          status: Number(formVal('status') || 0)
         })
       })
-      $('grantMsg').textContent = '发放成功，当前余额：' + (data.balance ?? data.poolBalance ?? JSON.stringify(data))
-      loadMerchants()
-    } catch (e) {
-      $('grantMsg').textContent = e.message
+      reload()
     }
-  }
+  )
+}
 
-  function escapeHtml(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
+async function renderConfigs() {
+  content().innerHTML = `
+    <div class="toolbar">
+      <button class="btn" id="btnReload">刷新</button>
+      <button class="btn primary" id="btnAdd">新增配置</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const rows = await api('/admin/configs')
+    $('list').innerHTML = table(
+      ['键', '值', '备注', '更新', '操作'],
+      rows
+        .map(
+          (c) => `<tr>
+        <td><code>${esc(c.key)}</code></td><td>${esc(c.value)}</td>
+        <td>${esc(c.remark || '')}</td><td>${fmtTime(c.updatedAt)}</td>
+        <td><button class="btn sm" data-key="${esc(c.key)}" data-val="${esc(c.value)}" data-remark="${esc(
+            c.remark || ''
+          )}">修改</button></td></tr>`
+        )
+        .join('')
+    )
+    $('list').querySelectorAll('[data-key]').forEach((b) => {
+      b.onclick = () => {
+        openModal(
+          `配置 ${b.dataset.key}`,
+          field('value', '值', b.dataset.val) + field('remark', '备注', b.dataset.remark),
+          async () => {
+            await api(`/admin/configs/${encodeURIComponent(b.dataset.key)}`, {
+              method: 'PUT',
+              body: JSON.stringify({ value: formVal('value'), remark: formVal('remark') })
+            })
+            load()
+          }
+        )
+      }
+    })
   }
+  $('btnAdd').onclick = () => {
+    openModal(
+      '新增配置',
+      field('key', '键', 'points_cash_rate') + field('value', '值', '0.01') + field('remark', '备注', ''),
+      async () => {
+        await api(`/admin/configs/${encodeURIComponent(formVal('key'))}`, {
+          method: 'PUT',
+          body: JSON.stringify({ value: formVal('value'), remark: formVal('remark') })
+        })
+        load()
+      }
+    )
+  }
+  $('btnReload').onclick = load
+  await load()
+}
 
-  boot()
-})()
+async function renderWithdraws() {
+  content().innerHTML = `
+    <div class="toolbar">
+      <select id="fStatus">
+        <option value="pending">待审</option>
+        <option value="">全部</option>
+        <option value="approved">已通过</option>
+        <option value="paid">已打款</option>
+        <option value="rejected">已驳回</option>
+      </select>
+      <button class="btn" id="btnReload">刷新</button>
+      <button class="btn" id="btnDemo">演示申请</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const status = $('fStatus').value
+    const rows = await api(`/admin/withdraws${status ? `?status=${status}` : ''}`)
+    $('list').innerHTML = table(
+      ['ID', '单号', '商户', '账户', '金额', '状态', '时间', '操作'],
+      rows
+        .map(
+          (w) => `<tr>
+        <td>${w.id}</td><td>${esc(w.requestNo)}</td><td>${esc(w.shopName)}</td>
+        <td>${esc(w.accountType)}</td><td>${w.amount}</td><td>${badge(w.status)}</td>
+        <td>${fmtTime(w.createdAt)}</td>
+        <td class="actions">${
+          w.status === 'pending'
+            ? `<button class="btn ok sm" data-act="approve" data-id="${w.id}">通过</button>
+               <button class="btn danger sm" data-act="reject" data-id="${w.id}">驳回</button>`
+            : w.status === 'approved'
+              ? `<button class="btn primary sm" data-act="paid" data-id="${w.id}">已打款</button>`
+              : '-'
+        }</td></tr>`
+        )
+        .join('')
+    )
+    $('list').querySelectorAll('[data-act]').forEach((b) => {
+      b.onclick = async () => {
+        await api(`/admin/withdraws/${b.dataset.id}/review`, {
+          method: 'POST',
+          body: JSON.stringify({ action: b.dataset.act })
+        })
+        load()
+      }
+    })
+  }
+  $('btnDemo').onclick = () => {
+    openModal(
+      '创建演示提现',
+      field('merchantId', '商户 ID', '1', 'number') +
+        field('amount', '金额', '100', 'number') +
+        field('accountType', '账户类型', 'cash_settlement'),
+      async () => {
+        await api('/admin/withdraws/demo', {
+          method: 'POST',
+          body: JSON.stringify({
+            merchantId: Number(formVal('merchantId')),
+            amount: Number(formVal('amount')),
+            accountType: formVal('accountType')
+          })
+        })
+        load()
+      }
+    )
+  }
+  $('btnReload').onclick = load
+  $('fStatus').onchange = load
+  await load()
+}
+
+async function renderComplaints() {
+  content().innerHTML = `
+    <div class="toolbar">
+      <select id="fStatus">
+        <option value="">全部</option>
+        <option value="open">open</option>
+        <option value="processing">processing</option>
+        <option value="closed">closed</option>
+      </select>
+      <button class="btn" id="btnReload">刷新</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const status = $('fStatus').value
+    const rows = await api(`/admin/complaints${status ? `?status=${status}` : ''}`)
+    $('list').innerHTML = table(
+      ['ID', '用户', '类型', '内容', '状态', '时间', '操作'],
+      rows
+        .map(
+          (c) => `<tr>
+        <td>${c.id}</td><td>${esc(c.userName)}</td><td>${esc(c.targetType)}</td>
+        <td style="max-width:280px;white-space:normal">${esc(c.content)}</td>
+        <td>${badge(c.status)}</td><td>${fmtTime(c.createdAt)}</td>
+        <td class="actions">
+          <button class="btn sm" data-id="${c.id}" data-s="processing">处理中</button>
+          <button class="btn ok sm" data-id="${c.id}" data-s="closed">关闭</button>
+        </td></tr>`
+        )
+        .join('')
+    )
+    $('list').querySelectorAll('[data-s]').forEach((b) => {
+      b.onclick = async () => {
+        await api(`/admin/complaints/${b.dataset.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: b.dataset.s })
+        })
+        load()
+      }
+    })
+  }
+  $('btnReload').onclick = load
+  $('fStatus').onchange = load
+  await load()
+}
+
+async function renderNeeds() {
+  content().innerHTML = `
+    <div class="toolbar">
+      <select id="fStatus">
+        <option value="">全部</option>
+        <option value="open">open</option>
+        <option value="quoted">quoted</option>
+        <option value="closed">closed</option>
+      </select>
+      <button class="btn" id="btnReload">刷新</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const status = $('fStatus').value
+    const rows = await api(`/admin/supply-needs${status ? `?status=${status}` : ''}`)
+    $('list').innerHTML = table(
+      ['ID', '品名', '数量', '期望', '备注', '状态', '时间', '操作'],
+      rows
+        .map(
+          (n) => `<tr>
+        <td>${n.id}</td><td>${esc(n.goodsName)}</td><td>${esc(n.qtyText)}</td>
+        <td>${esc(n.expectTime)}</td><td style="max-width:200px;white-space:normal">${esc(n.note)}</td>
+        <td>${badge(n.status)}</td><td>${fmtTime(n.createdAt)}</td>
+        <td class="actions">
+          <button class="btn sm" data-id="${n.id}" data-s="quoted">已报价</button>
+          <button class="btn ok sm" data-id="${n.id}" data-s="closed">关闭</button>
+        </td></tr>`
+        )
+        .join('')
+    )
+    $('list').querySelectorAll('[data-s]').forEach((b) => {
+      b.onclick = async () => {
+        await api(`/admin/supply-needs/${b.dataset.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: b.dataset.s })
+        })
+        load()
+      }
+    })
+  }
+  $('btnReload').onclick = load
+  $('fStatus').onchange = load
+  await load()
+}
+
+async function renderReferrals() {
+  content().innerHTML = `<div class="toolbar"><button class="btn" id="btnReload">刷新</button></div><div id="list"></div>`
+  const load = async () => {
+    const rows = await api('/admin/referrals')
+    $('list').innerHTML = table(
+      ['ID', '邀请人', '被邀请', '触发', '奖励积分', '时间'],
+      rows
+        .map(
+          (r) => `<tr>
+        <td>${r.id}</td>
+        <td>${esc(r.inviterName)} <code>${esc(r.inviterCode)}</code></td>
+        <td>${esc(r.inviteeName)} <code>${esc(r.inviteeCode)}</code></td>
+        <td>${esc(r.triggerType)}</td><td>${r.rewardPoints}</td><td>${fmtTime(r.createdAt)}</td></tr>`
+        )
+        .join('')
+    )
+  }
+  $('btnReload').onclick = load
+  await load()
+}
+
+/* ---------- boot ---------- */
+$('btnLogin').onclick = async () => {
+  $('loginErr').textContent = ''
+  try {
+    const data = await api('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ code: $('loginCode').value.trim() })
+    })
+    if (data.role !== 'admin') throw new Error('请使用运营邀请码登录')
+    state.token = data.token
+    state.profile = data
+    localStorage.setItem(TOKEN_KEY, data.token)
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(data))
+    showDash()
+  } catch (e) {
+    $('loginErr').textContent = e.message
+  }
+}
+
+$('btnLogout').onclick = () => logout()
+
+if (state.token && state.profile?.role === 'admin') {
+  showDash()
+} else {
+  showLogin()
+}

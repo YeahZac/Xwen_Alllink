@@ -8,88 +8,53 @@
 </head>
 <body>
   <div id="app">
-    <section id="loginView" class="panel login-panel">
-      <h1>万业互联云运营台</h1>
-      <p class="muted">使用运营邀请码登录 · 默认 <code>A001</code></p>
-      <label>邀请码</label>
-      <input id="loginCode" value="A001" placeholder="A001" />
-      <button id="btnLogin" class="btn primary">登录</button>
-      <p id="loginErr" class="err"></p>
-      <p class="muted tip">API 健康检查：<a id="healthLink" href="/api/health" target="_blank">/api/health</a></p>
+    <section id="loginView" class="login-screen">
+      <div class="login-card">
+        <p class="brand">万业互联云</p>
+        <h1>运营管理台</h1>
+        <p class="muted">邀请码登录 · 默认 <code>A001</code></p>
+        <label>邀请码</label>
+        <input id="loginCode" value="A001" autocomplete="off" />
+        <button id="btnLogin" class="btn primary">进入运营台</button>
+        <p id="loginErr" class="err"></p>
+        <p class="muted tip"><a href="/api/health" target="_blank">API 健康检查</a></p>
+      </div>
     </section>
 
-    <section id="dashView" class="hidden">
-      <header class="topbar">
-        <div>
-          <strong>万业互联云运营台</strong>
+    <section id="dashView" class="shell hidden">
+      <aside class="sidebar">
+        <div class="side-brand">
+          <strong>万业互联云</strong>
+          <span>运营台</span>
+        </div>
+        <nav id="nav" class="nav"></nav>
+        <div class="side-foot">
           <span id="who" class="muted"></span>
+          <button id="btnLogout" class="btn ghost sm">退出</button>
         </div>
-        <div class="topbar-actions">
-          <span id="cashRate" class="muted"></span>
-          <button id="btnLogout" class="btn ghost">退出</button>
-        </div>
-      </header>
+      </aside>
 
-      <nav class="tabs">
-        <button data-tab="applies" class="tab on">入驻审核</button>
-        <button data-tab="merchants" class="tab">商户与额度</button>
-        <button data-tab="tools" class="tab">工具</button>
-      </nav>
-
-      <main>
-        <div id="tab-applies" class="tab-pane">
-          <div class="toolbar">
-            <select id="applyStatus">
-              <option value="">全部状态</option>
-              <option value="pending" selected>审核中</option>
-              <option value="approved">已通过</option>
-              <option value="rejected">已驳回</option>
-            </select>
-            <button id="btnReloadApplies" class="btn">刷新</button>
-          </div>
-          <div id="applyList" class="cards"></div>
-        </div>
-
-        <div id="tab-merchants" class="tab-pane hidden">
-          <div class="toolbar">
-            <select id="merchantRole">
-              <option value="">全部角色</option>
-              <option value="stall">地摊</option>
-              <option value="cross">异业</option>
-              <option value="supply">供应链</option>
-            </select>
-            <button id="btnReloadMerchants" class="btn">刷新</button>
-          </div>
-          <div id="merchantList" class="cards"></div>
-        </div>
-
-        <div id="tab-tools" class="tab-pane hidden">
-          <div class="panel">
-            <h3>发放商家积分额度</h3>
-            <label>商户 ID</label>
-            <input id="grantMerchantId" type="number" placeholder="如 1" />
-            <label>积分数量</label>
-            <input id="grantPoints" type="number" value="500" />
-            <label>备注</label>
-            <input id="grantTitle" placeholder="后台发放" />
-            <button id="btnGrant" class="btn primary">发放</button>
-            <p id="grantMsg" class="muted"></p>
-          </div>
-          <div class="panel">
-            <h3>接口说明</h3>
-            <ul class="muted">
-              <li>GET /api/health</li>
-              <li>POST /api/auth/login</li>
-              <li>GET /api/admin/applies</li>
-              <li>POST /api/admin/apply/:id/approve | reject</li>
-              <li>GET /api/admin/merchants</li>
-              <li>POST /api/admin/points-pool/grant</li>
-            </ul>
-          </div>
-        </div>
-      </main>
+      <div class="workspace">
+        <header class="topbar">
+          <h2 id="pageTitle">概览</h2>
+          <span id="cashRate" class="pill"></span>
+        </header>
+        <main id="content" class="content"></main>
+      </div>
     </section>
   </div>
+
+  <div id="modal" class="modal hidden">
+    <div class="modal-card">
+      <header>
+        <h3 id="modalTitle">编辑</h3>
+        <button type="button" id="modalClose" class="btn ghost sm">关闭</button>
+      </header>
+      <div id="modalBody"></div>
+      <footer id="modalFoot"></footer>
+    </div>
+  </div>
+
   <script src="./app.js"></script>
 </body>
 </html>
