@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>万业互联云 · 数据大屏</title>
+  <link rel="stylesheet" href="./screen.css" />
+</head>
+<body>
+  <div class="screen">
+    <header class="screen-head">
+      <div>
+        <p class="brand">万业互联云</p>
+        <h1>运营数据大屏</h1>
+      </div>
+      <div class="head-right">
+        <span id="clock"></span>
+        <a class="back" href="./">返回运营台</a>
+      </div>
+    </header>
+
+    <section class="kpi-row" id="kpis"></section>
+
+    <section class="grid">
+      <div class="panel">
+        <h3>近 7 日访问趋势</h3>
+        <canvas id="trend" width="640" height="220"></canvas>
+      </div>
+      <div class="panel">
+        <h3>角色构成</h3>
+        <div id="roleMix" class="bars"></div>
+      </div>
+      <div class="panel wide">
+        <h3>热点位置分布</h3>
+        <div class="map-wrap">
+          <div class="map-bg" id="map"></div>
+          <div class="map-legend" id="mapLegend"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>热门城市访问</h3>
+        <div id="cities" class="bars"></div>
+      </div>
+      <div class="panel">
+        <h3>热销商品 TOP</h3>
+        <div id="goods" class="list"></div>
+      </div>
+    </section>
+  </div>
+  <script src="./screen.js"></script>
+</body>
+</html>

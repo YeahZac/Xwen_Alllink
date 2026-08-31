@@ -10,15 +10,30 @@ const state = {
 
 const NAV_GROUPS = [
   {
-    name: '业务运营',
+    name: '数据洞察',
     items: [
-      { id: 'dashboard', label: '概览' },
-      { id: 'applies', label: '入驻审核' },
-      { id: 'merchants', label: '商户管理' },
-      { id: 'users', label: '用户积分' },
+      { id: 'screen', label: '数据大屏' },
+      { id: 'dashboard', label: '概览' }
+    ]
+  },
+  {
+    name: '用户与门店',
+    items: [
+      { id: 'users_all', label: '用户总览' },
+      { id: 'users_consumer', label: 'C端用户' },
+      { id: 'stores_stall', label: '地摊门店' },
+      { id: 'stores_cross', label: '异业门店' },
+      { id: 'stores_supply', label: '供应链' },
+      { id: 'applies', label: '入驻审核' }
+    ]
+  },
+  {
+    name: '内容管理',
+    items: [
+      { id: 'goods_sku', label: '商品SKU' },
       { id: 'goods', label: '商品目录' },
-      { id: 'orders', label: '订单中心' },
       { id: 'banners', label: 'Banner' },
+      { id: 'orders', label: '订单中心' },
       { id: 'configs', label: '平台配置' },
       { id: 'withdraws', label: '提现审核' },
       { id: 'complaints', label: '投诉工单' },
@@ -135,10 +150,20 @@ function go(page) {
   $('pageTitle').textContent = ALL_NAV.find((n) => n.id === page)?.label || page
   renderNav()
   const map = {
+    screen: () => {
+      window.open('./screen.html', '_blank')
+      return Promise.resolve()
+    },
     dashboard: renderDashboard,
+    users_all: () => renderIdentities('all'),
+    users_consumer: () => renderIdentities('consumer'),
+    stores_stall: () => renderStores('stall'),
+    stores_cross: () => renderStores('cross'),
+    stores_supply: () => renderStores('supply'),
     applies: renderApplies,
-    merchants: renderMerchants,
-    users: renderUsers,
+    merchants: () => renderStores(''),
+    users: () => renderIdentities('consumer'),
+    goods_sku: renderGoodsSku,
     goods: renderGoods,
     orders: renderOrders,
     banners: renderBanners,
@@ -300,6 +325,10 @@ async function renderDashboard() {
   const d = await api('/admin/dashboard')
   $('cashRate').textContent = `积分汇率 ${d.cashRate}`
   content().innerHTML = `
+    <div class="toolbar">
+      <a class="btn primary" href="./screen.html" target="_blank">打开数据大屏</a>
+      <button class="btn" id="btnReloadDash">刷新</button>
+    </div>
     <div class="stats">
       ${stat(d.users, '用户')}
       ${stat(d.merchants, '营业商户')}
@@ -316,12 +345,238 @@ async function renderDashboard() {
     </div>
     <div class="panel">
       <h3>运营覆盖</h3>
-      <p class="muted">本台可管理入驻审核、商户启停与额度、用户积分、三类商品、全部订单、Banner、平台配置、提现、投诉、供应需求与推荐记录。</p>
+      <p class="muted">支持分角色管理 C端/地摊/异业/供应链，商品 SKU 启停删除，以及数据大屏（访问、流水、门店、热点地图）。</p>
     </div>`
+  $('btnReloadDash').onclick = () => renderDashboard()
 }
 
 function stat(n, l) {
   return `<div class="stat"><div class="n">${esc(n)}</div><div class="l">${esc(l)}</div></div>`
+}
+
+async function renderIdentities(role) {
+  const editable = canEdit(role === 'consumer' ? 'users_consumer' : 'users_all')
+  content().innerHTML = `
+    <div class="toolbar">
+      <input id="fq" placeholder="昵称/邀请码/手机/店名" />
+      <button class="btn" id="btnReload">查询</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const q = $('fq').value.trim()
+    const rows = await api(
+      `/admin/ops/identities?role=${encodeURIComponent(role)}${q ? `&q=${encodeURIComponent(q)}` : ''}`
+    )
+    $('list').innerHTML = table(
+      ['身份', '名称', '账号/邀请码', '电话', '城市', '状态', '注册', '操作'],
+      rows
+        .map((r) => {
+          const isStore = !!r.merchantId
+          return `<tr>
+          <td><span class="badge">${esc(r.identityLabel)}</span></td>
+          <td>${esc(r.name)}</td><td><code>${esc(r.code)}</code></td>
+          <td>${esc(r.phone || '-')}</td><td>${esc(r.city || '-')}</td>
+          <td>${r.status}</td><td>${fmtTime(r.createdAt)}</td>
+          <td class="actions">
+            ${
+              isStore
+                ? `<button class="btn sm" data-store="${r.merchantId}">资料/详情</button>
+                   ${editable ? `<button class="btn ok sm" data-open="${r.merchantId}">营业</button>
+                   <button class="btn warn sm" data-close="${r.merchantId}">停业</button>
+                   <button class="btn danger sm" data-del-store="${r.merchantId}">删除</button>` : ''}`
+                : `${editable ? `<button class="btn sm" data-on="${r.id}">启用</button>
+                   <button class="btn warn sm" data-off="${r.id}">禁用</button>
+                   <button class="btn danger sm" data-del-user="${r.id}">删除</button>` : '-'}`
+            }
+          </td></tr>`
+        })
+        .join('')
+    )
+    $('list').querySelectorAll('[data-store]').forEach((b) => {
+      b.onclick = () => showStoreDetail(Number(b.dataset.store))
+    })
+    $('list').querySelectorAll('[data-open]').forEach((b) => {
+      b.onclick = async () => {
+        await api(`/admin/ops/stores/${b.dataset.open}/status`, {
+          method: 'POST',
+          body: JSON.stringify({ status: 1 })
+        })
+        load()
+      }
+    })
+    $('list').querySelectorAll('[data-close]').forEach((b) => {
+      b.onclick = async () => {
+        await api(`/admin/ops/stores/${b.dataset.close}/status`, {
+          method: 'POST',
+          body: JSON.stringify({ status: 2 })
+        })
+        load()
+      }
+    })
+    $('list').querySelectorAll('[data-del-store]').forEach((b) => {
+      b.onclick = async () => {
+        if (!confirm('确认删除该门店？')) return
+        await api(`/admin/ops/stores/${b.dataset.delStore}`, { method: 'DELETE' })
+        load()
+      }
+    })
+    $('list').querySelectorAll('[data-on]').forEach((b) => {
+      b.onclick = async () => {
+        await api(`/admin/ops/users/${b.dataset.on}/status`, {
+          method: 'POST',
+          body: JSON.stringify({ status: 1 })
+        })
+        load()
+      }
+    })
+    $('list').querySelectorAll('[data-off]').forEach((b) => {
+      b.onclick = async () => {
+        await api(`/admin/ops/users/${b.dataset.off}/status`, {
+          method: 'POST',
+          body: JSON.stringify({ status: 0 })
+        })
+        load()
+      }
+    })
+    $('list').querySelectorAll('[data-del-user]').forEach((b) => {
+      b.onclick = async () => {
+        if (!confirm('确认删除该用户？')) return
+        await api(`/admin/ops/users/${b.dataset.delUser}`, { method: 'DELETE' })
+        load()
+      }
+    })
+  }
+  $('btnReload').onclick = load
+  await load()
+}
+
+async function renderStores(role) {
+  return renderIdentities(role || 'all')
+}
+
+async function showStoreDetail(id) {
+  const d = await api(`/admin/ops/stores/${id}`)
+  const mats = d.materials || {}
+  const matHtml = Object.keys(mats).length
+    ? Object.entries(mats)
+        .map(([k, v]) => {
+          const url = typeof v === 'string' ? v : v?.url || ''
+          const isImg = /\.(png|jpe?g|webp|gif)(\?|$)/i.test(url) || String(url).includes('tcb.qcloud.la')
+          return `<div class="perm-row"><span>${esc(k)}</span>
+            ${url ? (isImg ? `<img class="thumb" src="${esc(url)}" />` : `<a href="${esc(url)}" target="_blank">查看文件</a>`) : '-'}
+          </div>`
+        })
+        .join('')
+    : '<p class="muted">暂无上传资料</p>'
+  const goodsHtml = (d.goods || [])
+    .slice(0, 20)
+    .map((g) => `<div>${esc(g.name)} · SKU ${esc(g.sku_code || '-')} · 销量 ${g.sales_count || 0}</div>`)
+    .join('')
+  openModal(
+    `${d.roleLabel} · ${d.name}`,
+    `<p>邀请码 <code>${esc(d.inviteCode)}</code> · 状态 ${d.status} · 额度池 ${d.poolBalance}</p>
+     <p class="muted">${esc(d.city)} ${esc(d.address)} · ${esc(d.contactName)} ${esc(d.contactPhone)}</p>
+     ${d.coverUrl ? `<p><img class="thumb" src="${esc(d.coverUrl)}" /></p>` : ''}
+     <h4>门店资料</h4>${matHtml}
+     <h4>在售商品</h4>${goodsHtml || '<p class="muted">暂无商品</p>'}`
+  )
+}
+
+async function renderGoodsSku() {
+  const editable = canEdit('goods_sku')
+  content().innerHTML = `
+    <div class="toolbar">
+      <select id="gType">
+        <option value="">全部类型</option>
+        <option value="stall">地摊</option>
+        <option value="cross">异业</option>
+        <option value="supply">供应链</option>
+      </select>
+      <button class="btn" id="btnReload">刷新</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const type = $('gType').value
+    const rows = await api(`/admin/ops/skus${type ? `?type=${type}` : ''}`)
+    $('list').innerHTML = table(
+      ['类型', '店名', 'SKU', '品名', '价格', '销量', '库存', '上架', '操作'],
+      rows
+        .map(
+          (g) => `<tr>
+        <td>${esc(g.goodsType)}</td><td>${esc(g.shopName)}</td>
+        <td><code>${esc(g.sku)}</code></td><td>${esc(g.name)}</td>
+        <td>${g.price}</td><td>${g.sales}</td><td>${g.stock ?? '-'}</td><td>${g.onSale}</td>
+        <td class="actions">
+          ${
+            editable
+              ? `<button class="btn sm" data-edit='${encodeURIComponent(JSON.stringify(g))}'>编辑</button>
+                 <button class="btn ok sm" data-open="${g.goodsType}:${g.id}">打开</button>
+                 <button class="btn warn sm" data-close="${g.goodsType}:${g.id}">关闭</button>
+                 <button class="btn danger sm" data-del="${g.goodsType}:${g.id}">删除</button>`
+              : '-'
+          }
+        </td></tr>`
+        )
+        .join('')
+    )
+    $('list').querySelectorAll('[data-edit]').forEach((b) => {
+      b.onclick = () => {
+        const g = JSON.parse(decodeURIComponent(b.getAttribute('data-edit')))
+        openModal(
+          '编辑 SKU',
+          field('name', '品名', g.name) +
+            field('sku', 'SKU', g.sku || '') +
+            field('price', '价格', g.price, 'number') +
+            field('sales', '销量', g.sales, 'number') +
+            field('stock', '库存', g.stock || 0, 'number') +
+            field('onSale', '上架(1/0)', g.onSale ?? 1, 'number') +
+            mediaField('imageUrl', '商品图', g.imageUrl || '', 'goods'),
+          async () => {
+            await api(`/admin/ops/skus/${g.goodsType}/${g.id}`, {
+              method: 'PUT',
+              body: JSON.stringify({
+                name: formVal('name'),
+                sku: formVal('sku'),
+                price: Number(formVal('price')),
+                sales: Number(formVal('sales')),
+                stock: Number(formVal('stock')),
+                onSale: Number(formVal('onSale')),
+                imageUrl: formVal('imageUrl'),
+                pointsNeed: g.pointsNeed,
+                pointsGrant: g.pointsGrant
+              })
+            })
+            load()
+          }
+        )
+      }
+    })
+    $('list').querySelectorAll('[data-open]').forEach((b) => {
+      b.onclick = async () => {
+        const [t, id] = b.dataset.open.split(':')
+        await api(`/admin/ops/skus/${t}/${id}/open`, { method: 'POST', body: '{}' })
+        load()
+      }
+    })
+    $('list').querySelectorAll('[data-close]').forEach((b) => {
+      b.onclick = async () => {
+        const [t, id] = b.dataset.close.split(':')
+        await api(`/admin/ops/skus/${t}/${id}/close`, { method: 'POST', body: '{}' })
+        load()
+      }
+    })
+    $('list').querySelectorAll('[data-del]').forEach((b) => {
+      b.onclick = async () => {
+        if (!confirm('确认删除该商品？')) return
+        const [t, id] = b.dataset.del.split(':')
+        await api(`/admin/ops/skus/${t}/${id}`, { method: 'DELETE' })
+        load()
+      }
+    })
+  }
+  $('btnReload').onclick = load
+  $('gType').onchange = load
+  await load()
 }
 
 async function renderApplies() {

@@ -104,6 +104,10 @@ async function createAndPayStallOrder({ userId, merchantId, items }) {
          VALUES (?, ?, ?, ?, ?, ?)`,
         [orderId, l.goodsId, l.name, l.price, l.pointsGrant, l.qty]
       )
+      await conn.execute(
+        `UPDATE stall_goods SET sales_count = IFNULL(sales_count,0) + ? WHERE id=?`,
+        [l.qty, l.goodsId]
+      )
     }
     const [mrows] = await conn.execute('SELECT name FROM merchants WHERE id=?', [merchantId])
     const alloc = await pointsService.allocateToConsumer(conn, {
@@ -188,6 +192,7 @@ async function redeemCross({ userId, merchantId, goodsId, payMode }) {
          VALUES (?, ?, ?, ?, ?, 'points', ?, 0, 'completed')`,
         [ono, userId, merchantId, g.id, g.name, g.points_need]
       )
+      await conn.execute(`UPDATE cross_goods SET sales_count = IFNULL(sales_count,0) + 1 WHERE id=?`, [g.id])
       const cashValue = pointsToCash(g.points_need, rate)
       const commission = await recordCommission(conn, {
         bizType: 'cross',
@@ -221,6 +226,7 @@ async function redeemCross({ userId, merchantId, goodsId, payMode }) {
        VALUES (?, ?, ?, ?, ?, 'cash', 0, ?, 'completed')`,
       [ono, userId, merchantId, g.id, g.name, g.cash_price]
     )
+    await conn.execute(`UPDATE cross_goods SET sales_count = IFNULL(sales_count,0) + 1 WHERE id=?`, [g.id])
     const cashAmount = Number(g.cash_price)
     const commission = await recordCommission(conn, {
       bizType: 'cross',
@@ -290,7 +296,11 @@ async function createPurchaseOrder({ buyerMerchantId, goodsId, qty = 1, fulfillT
        VALUES (?, ?, ?, ?, ?, ?)`,
       [ins.insertId, g.id, g.name, g.price, qty, g.points_grant]
     )
-    await conn.execute('UPDATE supply_goods SET stock = stock - ? WHERE id=?', [qty, g.id])
+    await conn.execute('UPDATE supply_goods SET stock = stock - ?, sales_count = IFNULL(sales_count,0) + ? WHERE id=?', [
+      qty,
+      qty,
+      g.id
+    ])
 
     let poolBalance = null
     if (status === 'confirmed') {

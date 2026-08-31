@@ -10,6 +10,7 @@ const catalogService = require('../services/catalogService')
 const adminService = require('../services/adminService')
 const rbacService = require('../services/rbacService')
 const storageService = require('../services/storageService')
+const opsService = require('../services/opsService')
 const { getCashRate, pointsToCash } = require('../services/configService')
 
 const router = express.Router()
@@ -513,6 +514,129 @@ router.delete('/admin/media', ...adminOnly, async (req, res, next) => {
         })
       )
     )
+  } catch (e) {
+    next(e)
+  }
+})
+
+// ---------- 分角色用户/门店 / SKU / 大屏 ----------
+router.get('/admin/ops/screen', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await opsService.bigScreen()))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/ops/identities', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(
+      ok(await opsService.listAllIdentities({ role: req.query.role, q: req.query.q, limit: req.query.limit }))
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/ops/stores/:id', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await opsService.getStoreDetail(Number(req.params.id))))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/ops/stores/:id/status', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await opsService.setMerchantStatus(Number(req.params.id), req.body.status)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.delete('/admin/ops/stores/:id', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await opsService.softDeleteMerchant(Number(req.params.id))))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.put('/admin/ops/stores/:id/materials', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await opsService.updateMerchantMaterials(Number(req.params.id), req.body.materials)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/ops/users/:id/status', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await opsService.setUserStatus(Number(req.params.id), req.body.status)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.delete('/admin/ops/users/:id', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await opsService.softDeleteUser(Number(req.params.id))))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/ops/skus', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(
+      ok(
+        await opsService.listSkus({
+          type: req.query.type,
+          merchantId: req.query.merchantId,
+          includeDeleted: req.query.includeDeleted === '1'
+        })
+      )
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/ops/skus/:type/:id/open', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await opsService.setGoodsOpen(req.params.type, Number(req.params.id), true)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/ops/skus/:type/:id/close', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await opsService.setGoodsOpen(req.params.type, Number(req.params.id), false)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.delete('/admin/ops/skus/:type/:id', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await opsService.softDeleteGoods(req.params.type, Number(req.params.id))))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.put('/admin/ops/skus/:type/:id', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await opsService.saveSku(req.params.type, { ...req.body, id: Number(req.params.id) })))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/track/visit', async (req, res, next) => {
+  try {
+    res.json(ok(await opsService.trackVisit(req.body)))
   } catch (e) {
     next(e)
   }
