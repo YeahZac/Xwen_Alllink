@@ -10,8 +10,8 @@ COPY src ./src
 COPY sql ./sql
 COPY scripts ./scripts
 COPY public ./public
-COPY .env.example ./
 
+# 不向镜像写入 .env，数据库地址必须由云托管「服务环境变量」注入
 ENV NODE_ENV=production
 ENV PORT=80
 
