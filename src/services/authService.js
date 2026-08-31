@@ -16,29 +16,42 @@ async function loginByInviteCode(code) {
 
   // 商户邀请码
   const merchants = await query(
-    `SELECT id, role, name, invite_code FROM merchants
+    `SELECT id, role, name, invite_code, owner_user_id AS ownerUserId
+     FROM merchants
      WHERE invite_code = :code AND status = 1 LIMIT 1`,
     { code: invite }
   )
   if (merchants.length) {
     const m = merchants[0]
-    // 确保有绑定用户（演示自动创建）
-    let userId = null
-    const owners = await query(
-      'SELECT id FROM users WHERE invite_code = :c LIMIT 1',
-      { c: invite }
-    )
-    if (owners.length) {
-      userId = owners[0].id
-    } else {
-      const r = await query(
-        `INSERT INTO users (invite_code, nickname, points_balance, status)
-         VALUES (:c, :n, 0, 1)`,
-        { c: `${invite}_U`, n: m.name }
+    let userId = m.ownerUserId ? Number(m.ownerUserId) : 0
+
+    if (!userId) {
+      // 兼容：历史演示可能已写入 invite / invite_U
+      const owners = await query(
+        `SELECT id FROM users
+         WHERE invite_code IN (:c, :cu) AND status = 1
+         ORDER BY id ASC LIMIT 1`,
+        { c: invite, cu: `${invite}_U` }
       )
-      // mysql2 insert result
+      if (owners.length) {
+        userId = Number(owners[0].id)
+      } else {
+        const r = await query(
+          `INSERT INTO users (invite_code, nickname, points_balance, status)
+           VALUES (:c, :n, 0, 1)`,
+          { c: `${invite}_U`, n: m.name }
+        )
+        userId = Number(r.insertId) || 0
+      }
+      if (userId) {
+        await query(
+          `UPDATE merchants SET owner_user_id = :uid
+           WHERE id = :id AND (owner_user_id IS NULL OR owner_user_id = 0)`,
+          { uid: userId, id: m.id }
+        )
+      }
     }
-    // re-query owner by merchant owner_user_id or create bind
+
     const token = signToken({
       role: m.role,
       merchantId: m.id,
@@ -49,6 +62,7 @@ async function loginByInviteCode(code) {
       token,
       role: m.role,
       merchantId: m.id,
+      userId: userId || 0,
       shopName: m.name,
       name: m.name,
       inviteCode: m.invite_code
