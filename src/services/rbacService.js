@@ -136,7 +136,8 @@ async function loginByAdminInviteCode(code) {
       'needs',
       'referrals',
       'sys_roles',
-      'sys_accounts'
+      'sys_accounts',
+      'sys_media'
     ].forEach((k) => {
       permissions[k] = { view: true, edit: true }
     })

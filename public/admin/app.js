@@ -30,7 +30,8 @@ const NAV_GROUPS = [
     name: '系统管理',
     items: [
       { id: 'sys_roles', label: '角色权限' },
-      { id: 'sys_accounts', label: '账号管理' }
+      { id: 'sys_accounts', label: '账号管理' },
+      { id: 'sys_media', label: '媒体资源' }
     ]
   }
 ]
@@ -147,7 +148,8 @@ function go(page) {
     needs: renderNeeds,
     referrals: renderReferrals,
     sys_roles: renderSysRoles,
-    sys_accounts: renderSysAccounts
+    sys_accounts: renderSysAccounts,
+    sys_media: renderSysMedia
   }
   ;(map[page] || renderDashboard)().catch((e) => {
     content().innerHTML = `<div class="empty">${esc(e.message)}</div>`
@@ -185,6 +187,7 @@ function openModal(title, bodyHtml, onSave) {
   $('modal').classList.remove('hidden')
   $('modalTitle').textContent = title
   $('modalBody').innerHTML = bodyHtml
+  bindMediaFields($('modalBody'))
   $('modalFoot').innerHTML = onSave
     ? `<button type="button" class="btn ghost" id="modalCancel">取消</button>
        <button type="button" class="btn primary" id="modalSave">保存</button>`
@@ -215,6 +218,76 @@ function field(name, label, value = '', type = 'text') {
     return ''
   }
   return `<label>${label}<input name="${name}" type="${type}" value="${esc(value)}" /></label>`
+}
+
+/** 图片/文件上传控件：压缩后上传云托管存储，支持删除 */
+function mediaField(name, label, value = '', bizType = 'general') {
+  const v = value || ''
+  return `<div class="media-field" data-name="${esc(name)}" data-biz="${esc(bizType)}">
+    <label>${esc(label)}</label>
+    <div class="media-preview">${v ? `<img src="${esc(v)}" alt="" />` : '<span class="muted">未上传</span>'}</div>
+    <input type="hidden" name="${esc(name)}" value="${esc(v)}" />
+    <div class="media-actions">
+      <label class="btn sm">选择文件<input type="file" accept="image/*,.pdf" hidden /></label>
+      <button type="button" class="btn sm danger media-del" ${v ? '' : 'disabled'}>删除</button>
+      <span class="muted media-tip">图片自动压到 ≤3MB，尽量保清晰</span>
+    </div>
+  </div>`
+}
+
+function bindMediaFields(root = document) {
+  root.querySelectorAll('.media-field').forEach((box) => {
+    const fileInput = box.querySelector('input[type=file]')
+    const hidden = box.querySelector('input[type=hidden]')
+    const preview = box.querySelector('.media-preview')
+    const delBtn = box.querySelector('.media-del')
+    const tip = box.querySelector('.media-tip')
+    const bizType = box.dataset.biz || 'general'
+
+    fileInput.onchange = async () => {
+      const file = fileInput.files && fileInput.files[0]
+      if (!file) return
+      tip.textContent = '上传中…'
+      try {
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('bizType', bizType)
+        const headers = {}
+        if (state.token) headers.Authorization = `Bearer ${state.token}`
+        const res = await fetch('/api/admin/media/upload', { method: 'POST', headers, body: fd })
+        const json = await res.json()
+        if (!res.ok || json.code !== 0) throw new Error(json.message || '上传失败')
+        const data = json.data
+        hidden.value = data.fileUrl
+        preview.innerHTML = `<img src="${esc(data.fileUrl)}" alt="" />`
+        delBtn.disabled = false
+        tip.textContent = `完成 ${(data.size / 1024).toFixed(0)}KB${data.optimized ? ' · 已优化' : ''}`
+      } catch (e) {
+        tip.textContent = e.message
+        alert(e.message)
+      } finally {
+        fileInput.value = ''
+      }
+    }
+
+    delBtn.onclick = async () => {
+      const url = hidden.value
+      if (!url) return
+      if (!confirm('确认删除该资源？')) return
+      try {
+        await api('/admin/media', {
+          method: 'DELETE',
+          body: JSON.stringify({ fileUrl: url })
+        })
+      } catch (_) {
+        /* 即使远端删除失败也清空引用 */
+      }
+      hidden.value = ''
+      preview.innerHTML = '<span class="muted">未上传</span>'
+      delBtn.disabled = true
+      tip.textContent = '已删除'
+    }
+  })
 }
 
 function formVal(name) {
@@ -364,7 +437,8 @@ async function renderMerchants() {
             field('city', '城市', d.city) +
             field('address', '地址', d.address) +
             field('contactName', '联系人', d.contactName) +
-            field('contactPhone', '电话', d.contactPhone),
+            field('contactPhone', '电话', d.contactPhone) +
+            mediaField('coverUrl', '门店封面图', d.coverUrl || '', 'merchant'),
           async () => {
             await api(`/admin/merchants/${d.id}`, {
               method: 'PATCH',
@@ -373,7 +447,8 @@ async function renderMerchants() {
                 city: formVal('city'),
                 address: formVal('address'),
                 contactName: formVal('contactName'),
-                contactPhone: formVal('contactPhone')
+                contactPhone: formVal('contactPhone'),
+                coverUrl: formVal('coverUrl')
               })
             })
             load()
@@ -536,7 +611,7 @@ async function renderGoods() {
 
 function editGoods(type, g, reload) {
   const isNew = !g
-  g = g || { merchantId: '', name: '', onSale: 1, status: 1 }
+  g = g || { merchantId: '', name: '', onSale: 1, status: 1, imageUrl: '' }
   let fields = field('merchantId', '商户 ID', g.merchantId, 'number') + field('name', '品名', g.name)
   if (type === 'stall') {
     fields +=
@@ -545,20 +620,23 @@ function editGoods(type, g, reload) {
       field('category', '分类', g.category || '主食') +
       field('stock', '库存', g.stock || 9999, 'number') +
       field('onSale', '上架(1/0)', g.onSale ?? 1, 'number') +
-      field('description', '描述', g.description || '')
+      field('description', '描述', g.description || '') +
+      mediaField('imageUrl', '商品图片', g.imageUrl || '', 'goods')
   } else if (type === 'cross') {
     fields +=
       field('pointsNeed', '所需积分', g.pointsNeed || 0, 'number') +
       field('cashPrice', '现金价', g.cashPrice || 0, 'number') +
       field('onSale', '上架(1/0)', g.onSale ?? 1, 'number') +
-      field('description', '描述', g.description || '')
+      field('description', '描述', g.description || '') +
+      mediaField('imageUrl', '商品图片', g.imageUrl || '', 'goods')
   } else {
     fields +=
       field('price', '采购价', g.price || '', 'number') +
       field('stock', '库存', g.stock || 0, 'number') +
       field('pointsGrant', '买方获积分', g.pointsGrant || 0, 'number') +
       field('pointsRatio', '积分说明', g.pointsRatio || '') +
-      field('status', '状态(1/0)', g.status ?? 1, 'number')
+      field('status', '状态(1/0)', g.status ?? 1, 'number') +
+      mediaField('imageUrl', '商品图片', g.imageUrl || '', 'goods')
   }
   openModal(isNew ? '新建商品' : '编辑商品', fields, async () => {
     const body = {
@@ -574,7 +652,8 @@ function editGoods(type, g, reload) {
       pointsNeed: Number(formVal('pointsNeed') || 0),
       cashPrice: Number(formVal('cashPrice') || 0),
       pointsRatio: formVal('pointsRatio'),
-      status: Number(formVal('status') || 0)
+      status: Number(formVal('status') || 0),
+      imageUrl: formVal('imageUrl')
     }
     await api(`/admin/goods/${type}`, { method: 'POST', body: JSON.stringify(body) })
     reload()
@@ -684,7 +763,7 @@ function editBanner(b, reload) {
     field('roleScope', '范围 consumer/stall/cross/supply/login', b.roleScope) +
       field('title', '标题', b.title) +
       field('subTitle', '副标题', b.subTitle) +
-      field('imageUrl', '图片 URL', b.imageUrl) +
+      mediaField('imageUrl', 'Banner 图片', b.imageUrl || '', 'banner') +
       field('linkUrl', '跳转', b.linkUrl || '') +
       field('linkType', '链接类型 navigate/switchTab/none', b.linkType || 'none') +
       field('sortOrder', '排序', b.sortOrder, 'number') +
@@ -1138,6 +1217,88 @@ async function renderSysAccounts() {
     }
   }
   $('btnReload').onclick = load
+  await load()
+}
+
+async function renderSysMedia() {
+  const editable = canEdit('sys_media')
+  content().innerHTML = `
+    <div class="toolbar">
+      <select id="fBiz">
+        <option value="">全部类型</option>
+        <option value="banner">banner</option>
+        <option value="goods">goods</option>
+        <option value="merchant">merchant</option>
+        <option value="general">general</option>
+      </select>
+      <button class="btn" id="btnReload">刷新</button>
+      ${editable ? '<label class="btn primary sm">上传<input id="mediaUpload" type="file" accept="image/*,.pdf" hidden /></label>' : ''}
+    </div>
+    <p class="muted">图片会自动压缩到 3MB 以内并上传到云托管存储桶，删除会同步清理对象存储。</p>
+    <div id="list"></div>`
+  const load = async () => {
+    const biz = $('fBiz').value
+    const rows = await api(`/admin/media${biz ? `?bizType=${biz}` : ''}`)
+    $('list').innerHTML = table(
+      ['预览', 'ID', '类型', '大小', '尺寸', 'URL', '时间', '操作'],
+      rows
+        .map((m) => {
+          const isImg = String(m.mime || '').startsWith('image/')
+          return `<tr>
+          <td>${isImg ? `<img class="thumb" src="${esc(m.fileUrl)}" alt="" />` : '文件'}</td>
+          <td>${m.id}</td><td>${esc(m.bizType)}</td>
+          <td>${(m.size / 1024).toFixed(1)}KB</td>
+          <td>${m.width || '-'}×${m.height || '-'}</td>
+          <td style="max-width:220px;white-space:normal;word-break:break-all">${esc(m.fileUrl)}</td>
+          <td>${fmtTime(m.createdAt)}</td>
+          <td class="actions">
+            <button class="btn sm" data-copy="${esc(m.fileUrl)}">复制</button>
+            ${editable ? `<button class="btn danger sm" data-del="${m.id}" data-key="${esc(m.fileKey)}">删除</button>` : ''}
+          </td></tr>`
+        })
+        .join('')
+    )
+    $('list').querySelectorAll('[data-copy]').forEach((b) => {
+      b.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(b.dataset.copy)
+          b.textContent = '已复制'
+        } catch {
+          prompt('复制链接', b.dataset.copy)
+        }
+      }
+    })
+    $('list').querySelectorAll('[data-del]').forEach((b) => {
+      b.onclick = async () => {
+        if (!confirm('确认删除该资源？')) return
+        await api('/admin/media', {
+          method: 'DELETE',
+          body: JSON.stringify({ id: Number(b.dataset.del), fileKey: b.dataset.key })
+        })
+        load()
+      }
+    })
+  }
+  if ($('mediaUpload')) {
+    $('mediaUpload').onchange = async () => {
+      const file = $('mediaUpload').files[0]
+      if (!file) return
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('bizType', $('fBiz').value || 'general')
+      const headers = {}
+      if (state.token) headers.Authorization = `Bearer ${state.token}`
+      const res = await fetch('/api/admin/media/upload', { method: 'POST', headers, body: fd })
+      const json = await res.json()
+      if (!res.ok || json.code !== 0) {
+        alert(json.message || '上传失败')
+      }
+      $('mediaUpload').value = ''
+      load()
+    }
+  }
+  $('btnReload').onclick = load
+  $('fBiz').onchange = load
   await load()
 }
 

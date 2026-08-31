@@ -67,7 +67,8 @@ async function updateMerchant(id, body) {
     contactName: 'contact_name',
     contactPhone: 'contact_phone',
     status: 'status',
-    coverHue: 'cover_hue'
+    coverHue: 'cover_hue',
+    coverUrl: 'cover_url'
   }
   for (const [k, col] of Object.entries(map)) {
     if (body[k] !== undefined && body[k] !== null && body[k] !== '') {
@@ -112,6 +113,8 @@ async function getMerchantDetail(id) {
     contactPhone: m.contact_phone,
     inviteCode: m.invite_code,
     status: m.status,
+    coverUrl: m.cover_url || '',
+    coverHue: m.cover_hue,
     poolBalance: m.pool_balance,
     accounts,
     poolLedger
@@ -173,7 +176,7 @@ async function listStallGoods({ merchantId, limit = 200 } = {}) {
   const lim = Math.min(Number(limit) || 200, 500)
   let sql = `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name, g.price,
                     g.points_grant AS pointsGrant, g.category, g.desc_text AS description,
-                    g.stock, g.on_sale AS onSale
+                    g.image_url AS imageUrl, g.stock, g.on_sale AS onSale
              FROM stall_goods g JOIN merchants m ON m.id=g.merchant_id`
   const params = {}
   if (merchantId) {
@@ -190,7 +193,7 @@ async function saveStallGoods(body) {
   if (body.id) {
     await query(
       `UPDATE stall_goods SET name=:name, price=:price, points_grant=:pg, category=:cat,
-       desc_text=:desc, stock=:stock, on_sale=:onSale WHERE id=:id AND merchant_id=:mid`,
+       desc_text=:desc, image_url=:img, stock=:stock, on_sale=:onSale WHERE id=:id AND merchant_id=:mid`,
       {
         id: Number(body.id),
         mid: merchantId,
@@ -199,6 +202,7 @@ async function saveStallGoods(body) {
         pg: Number(body.pointsGrant) || 0,
         cat: body.category || '主食',
         desc: body.description || '',
+        img: body.imageUrl || null,
         stock: Number(body.stock) || 9999,
         onSale: body.onSale === 0 ? 0 : 1
       }
@@ -206,8 +210,8 @@ async function saveStallGoods(body) {
     return { id: Number(body.id) }
   }
   const r = await query(
-    `INSERT INTO stall_goods (merchant_id, name, price, points_grant, category, desc_text, stock, on_sale)
-     VALUES (:mid, :name, :price, :pg, :cat, :desc, :stock, :onSale)`,
+    `INSERT INTO stall_goods (merchant_id, name, price, points_grant, category, desc_text, image_url, stock, on_sale)
+     VALUES (:mid, :name, :price, :pg, :cat, :desc, :img, :stock, :onSale)`,
     {
       mid: merchantId,
       name: body.name,
@@ -215,6 +219,7 @@ async function saveStallGoods(body) {
       pg: Number(body.pointsGrant) || 0,
       cat: body.category || '主食',
       desc: body.description || '',
+      img: body.imageUrl || null,
       stock: Number(body.stock) || 9999,
       onSale: body.onSale === 0 ? 0 : 1
     }
@@ -226,7 +231,7 @@ async function listCrossGoods({ merchantId, limit = 200 } = {}) {
   const lim = Math.min(Number(limit) || 200, 500)
   let sql = `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name,
                     g.points_need AS pointsNeed, g.cash_price AS cashPrice,
-                    g.desc_text AS description, g.on_sale AS onSale
+                    g.desc_text AS description, g.image_url AS imageUrl, g.on_sale AS onSale
              FROM cross_goods g JOIN merchants m ON m.id=g.merchant_id`
   const params = {}
   if (merchantId) {
@@ -242,7 +247,8 @@ async function saveCrossGoods(body) {
   if (!merchantId) throw new HttpError(400, '缺少商户ID')
   if (body.id) {
     await query(
-      `UPDATE cross_goods SET name=:name, points_need=:pn, cash_price=:cp, desc_text=:desc, on_sale=:onSale
+      `UPDATE cross_goods SET name=:name, points_need=:pn, cash_price=:cp, desc_text=:desc,
+       image_url=:img, on_sale=:onSale
        WHERE id=:id AND merchant_id=:mid`,
       {
         id: Number(body.id),
@@ -251,20 +257,22 @@ async function saveCrossGoods(body) {
         pn: Number(body.pointsNeed) || 0,
         cp: Number(body.cashPrice) || 0,
         desc: body.description || '',
+        img: body.imageUrl || null,
         onSale: body.onSale === 0 ? 0 : 1
       }
     )
     return { id: Number(body.id) }
   }
   const r = await query(
-    `INSERT INTO cross_goods (merchant_id, name, points_need, cash_price, desc_text, on_sale)
-     VALUES (:mid, :name, :pn, :cp, :desc, :onSale)`,
+    `INSERT INTO cross_goods (merchant_id, name, points_need, cash_price, desc_text, image_url, on_sale)
+     VALUES (:mid, :name, :pn, :cp, :desc, :img, :onSale)`,
     {
       mid: merchantId,
       name: body.name,
       pn: Number(body.pointsNeed) || 0,
       cp: Number(body.cashPrice) || 0,
       desc: body.description || '',
+      img: body.imageUrl || null,
       onSale: body.onSale === 0 ? 0 : 1
     }
   )
@@ -274,7 +282,8 @@ async function saveCrossGoods(body) {
 async function listSupplyGoodsAdmin({ merchantId, limit = 200 } = {}) {
   const lim = Math.min(Number(limit) || 200, 500)
   let sql = `SELECT g.id, g.merchant_id AS merchantId, m.name AS vendor, g.name, g.price, g.stock,
-                    g.points_grant AS pointsGrant, g.points_ratio_text AS pointsRatio, g.status
+                    g.points_grant AS pointsGrant, g.points_ratio_text AS pointsRatio,
+                    g.image_url AS imageUrl, g.status
              FROM supply_goods g JOIN merchants m ON m.id=g.merchant_id`
   const params = {}
   if (merchantId) {
@@ -291,7 +300,7 @@ async function saveSupplyGoods(body) {
   if (body.id) {
     await query(
       `UPDATE supply_goods SET name=:name, price=:price, stock=:stock, points_grant=:pg,
-       points_ratio_text=:ratio, status=:status WHERE id=:id AND merchant_id=:mid`,
+       points_ratio_text=:ratio, image_url=:img, status=:status WHERE id=:id AND merchant_id=:mid`,
       {
         id: Number(body.id),
         mid: merchantId,
@@ -300,14 +309,15 @@ async function saveSupplyGoods(body) {
         stock: Number(body.stock) || 0,
         pg: Number(body.pointsGrant) || 0,
         ratio: body.pointsRatio || '',
+        img: body.imageUrl || null,
         status: body.status === 0 ? 0 : 1
       }
     )
     return { id: Number(body.id) }
   }
   const r = await query(
-    `INSERT INTO supply_goods (merchant_id, name, price, stock, points_grant, points_ratio_text, status)
-     VALUES (:mid, :name, :price, :stock, :pg, :ratio, :status)`,
+    `INSERT INTO supply_goods (merchant_id, name, price, stock, points_grant, points_ratio_text, image_url, status)
+     VALUES (:mid, :name, :price, :stock, :pg, :ratio, :img, :status)`,
     {
       mid: merchantId,
       name: body.name,
@@ -315,6 +325,7 @@ async function saveSupplyGoods(body) {
       stock: Number(body.stock) || 0,
       pg: Number(body.pointsGrant) || 0,
       ratio: body.pointsRatio || '',
+      img: body.imageUrl || null,
       status: body.status === 0 ? 0 : 1
     }
   )

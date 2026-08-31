@@ -25,6 +25,7 @@ app.use('/admin', express.static(path.join(__dirname, '../public/admin'), { inde
 app.get('/admin', (_req, res) => {
   res.redirect(302, '/admin/')
 })
+app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')))
 
 app.use('/api', routes)
 app.use(notFound)

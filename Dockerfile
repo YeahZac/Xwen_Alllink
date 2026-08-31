@@ -3,6 +3,9 @@ FROM node:18-alpine
 
 WORKDIR /app
 
+# sharp 在 alpine 需要兼容层
+RUN apk add --no-cache libc6-compat
+
 COPY package.json ./
 RUN npm install --omit=dev
 
@@ -11,9 +14,9 @@ COPY sql ./sql
 COPY scripts ./scripts
 COPY public ./public
 
-# 不向镜像写入 .env，数据库地址必须由云托管「服务环境变量」注入
 ENV NODE_ENV=production
 ENV PORT=80
+ENV COS_MODE=cloud
 
 EXPOSE 80
 

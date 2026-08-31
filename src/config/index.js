@@ -54,6 +54,18 @@ module.exports = {
   db,
   wx: {
     appId: process.env.WX_APPID || '',
-    appSecret: process.env.WX_APP_SECRET || ''
+    appSecret: process.env.WX_APP_SECRET || '',
+    cloudEnv: process.env.WX_CLOUD_ENV || process.env.CBR_ENV_ID || 'prod-d3g1vkrj3290d085e'
+  },
+  cos: {
+    bucket:
+      process.env.COS_BUCKET ||
+      process.env.WX_COS_BUCKET ||
+      '7072-prod-d3g1vkrj3290d085e-1467541248',
+    region: process.env.COS_REGION || process.env.WX_COS_REGION || 'ap-shanghai',
+    secretId: process.env.COS_SECRET_ID || '',
+    secretKey: process.env.COS_SECRET_KEY || '',
+    // local = 开发落盘；cloud = 云托管 COS（默认）
+    mode: process.env.COS_MODE || (process.env.NODE_ENV === 'development' ? 'local' : 'cloud')
   }
 }

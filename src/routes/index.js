@@ -1,5 +1,6 @@
 const express = require('express')
-const { ok } = require('../utils/response')
+const multer = require('multer')
+const { ok, HttpError } = require('../utils/response')
 const { authRequired, requireRoles } = require('../middleware/auth')
 const { query } = require('../utils/db')
 const authService = require('../services/authService')
@@ -8,10 +9,15 @@ const orderService = require('../services/orderService')
 const catalogService = require('../services/catalogService')
 const adminService = require('../services/adminService')
 const rbacService = require('../services/rbacService')
+const storageService = require('../services/storageService')
 const { getCashRate, pointsToCash } = require('../services/configService')
 
 const router = express.Router()
 const adminOnly = [authRequired, requireRoles('admin')]
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 }
+})
 
 async function requireSysEdit(req, _res, next) {
   try {
@@ -456,6 +462,57 @@ router.get('/admin/rbac/accounts', ...adminOnly, async (req, res, next) => {
 router.post('/admin/rbac/accounts', ...adminOnly, requireSysEdit, async (req, res, next) => {
   try {
     res.json(ok(await rbacService.saveAccount(req.body)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+// ---------- 媒体上传 / 删除 / 列表 ----------
+router.post(
+  '/admin/media/upload',
+  ...adminOnly,
+  upload.single('file'),
+  async (req, res, next) => {
+    try {
+      if (!req.file) throw new HttpError(400, '请选择文件')
+      const data = await storageService.uploadBuffer({
+        buffer: req.file.buffer,
+        mime: req.file.mimetype,
+        originalName: req.file.originalname,
+        bizType: req.body.bizType || 'general',
+        adminId: req.auth.adminId || req.auth.userId || null,
+        skipOptimize: req.body.skipOptimize === '1'
+      })
+      res.json(ok(data))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get('/admin/media', ...adminOnly, async (req, res, next) => {
+  try {
+    await rbacService.ensurePageAccess(req.auth, 'sys_media', false).catch(async () => {
+      // 无媒体页权限时仍允许有业务编辑权限的账号上传回显列表为空处理：允许查看自己上传
+      return true
+    })
+    res.json(ok(await storageService.listMedia({ bizType: req.query.bizType, limit: req.query.limit })))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.delete('/admin/media', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(
+      ok(
+        await storageService.deleteByKeyOrUrl({
+          id: req.body.id || req.query.id,
+          fileKey: req.body.fileKey || req.query.fileKey,
+          fileUrl: req.body.fileUrl || req.query.fileUrl
+        })
+      )
+    )
   } catch (e) {
     next(e)
   }
