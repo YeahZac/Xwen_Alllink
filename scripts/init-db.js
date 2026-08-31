@@ -16,7 +16,7 @@ async function run() {
     multipleStatements: true
   }
   const conn = await mysql.createConnection(conf)
-  for (const file of ['01_schema.sql', '02_seed.sql']) {
+  for (const file of ['01_schema.sql', '03_patch.sql', '02_seed.sql']) {
     const sql = fs.readFileSync(path.join(__dirname, '../sql', file), 'utf8')
     console.log('Executing', file, '...')
     await conn.query(sql)

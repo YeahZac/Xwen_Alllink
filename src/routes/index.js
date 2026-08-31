@@ -505,4 +505,133 @@ router.post(
   }
 )
 
+// ---------- Merchant accounts / withdraw / purchase fulfill ----------
+router.get(
+  '/merchant/accounts',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await orderService.getMerchantAccounts(req.auth.merchantId)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/merchant/withdraw',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await orderService.applyWithdraw({
+            merchantId: req.auth.merchantId,
+            accountType: req.body.accountType,
+            amount: req.body.amount
+          })
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/merchant/purchase/:id/ship',
+  authRequired,
+  requireRoles('supply'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await orderService.shipPurchaseOrder({
+            sellerMerchantId: req.auth.merchantId,
+            orderId: Number(req.params.id)
+          })
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/merchant/purchase/:id/confirm',
+  authRequired,
+  requireRoles('stall', 'cross'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await orderService.confirmPurchaseOrder({
+            buyerMerchantId: req.auth.merchantId,
+            orderId: Number(req.params.id)
+          })
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+// ---------- Referral / complaints / needs ----------
+const referralService = require('../services/referralService')
+
+router.post('/referral/bind', authRequired, requireRoles('consumer'), async (req, res, next) => {
+  try {
+    res.json(ok(await referralService.bindReferrer({ userId: req.auth.userId, inviteCode: req.body.code })))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/referral/mine', authRequired, requireRoles('consumer'), async (req, res, next) => {
+  try {
+    res.json(ok(await referralService.listMyReferrals(req.auth.userId)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/complaints', authRequired, async (req, res, next) => {
+  try {
+    res.json(
+      ok(
+        await catalogService.submitComplaint({
+          userId: req.auth.userId,
+          targetType: req.body.targetType,
+          targetId: req.body.targetId,
+          content: req.body.content
+        })
+      )
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/supply-needs', async (req, res, next) => {
+  try {
+    res.json(
+      ok(
+        await catalogService.submitSupplyNeed({
+          userId: req.auth?.userId || null,
+          goodsName: req.body.goodsName,
+          qtyText: req.body.qtyText,
+          expectTime: req.body.expectTime,
+          note: req.body.note
+        })
+      )
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
 module.exports = router

@@ -2,7 +2,8 @@
  * 积分额度核心服务
  * 采购获额 / 后台发放 / 消费划拨 / 消费者扣减
  */
-const { pointsToCash, getCashRate } = require('./configService')
+const { pointsToCash, getCashRate, getConfig } = require('./configService')
+const { HttpError } = require('../utils/response')
 
 async function ensurePool(conn, merchantId) {
   await conn.execute(
@@ -36,12 +37,18 @@ async function grantPool(conn, { merchantId, points, bizType, bizId, title }) {
 }
 
 /**
- * 从商家额度池划拨给消费者（不足则部分划拨）
+ * 从商家额度池划拨给消费者
+ * pool_shortage_policy=block 时额度不足抛错；默认 partial 部分划拨
  */
 async function allocateToConsumer(conn, { merchantId, userId, wantPoints, shopName, orderNo }) {
   await ensurePool(conn, merchantId)
   const pool = await getPoolBalance(conn, merchantId)
-  const allocated = Math.min(Number(wantPoints) || 0, pool)
+  const want = Number(wantPoints) || 0
+  const policy = String(await getConfig('pool_shortage_policy', 'partial'))
+  if (policy === 'block' && pool < want) {
+    throw new HttpError(400, '商家积分额度不足，暂无法完单划拨')
+  }
+  const allocated = Math.min(want, pool)
   if (allocated > 0) {
     await conn.execute(
       'UPDATE merchant_points_pool SET balance = balance - ? WHERE merchant_id = ?',
@@ -81,7 +88,7 @@ async function allocateToConsumer(conn, { merchantId, userId, wantPoints, shopNa
   return {
     allocated,
     poolLeft: pool - allocated,
-    shortage: allocated < wantPoints
+    shortage: allocated < want
   }
 }
 
@@ -90,9 +97,9 @@ async function spendConsumerPoints(conn, { userId, points, title, bizId }) {
     'SELECT points_balance FROM users WHERE id = ? FOR UPDATE',
     [userId]
   )
-  if (!rows.length) throw Object.assign(new Error('用户不存在'), { status: 404 })
+  if (!rows.length) throw new HttpError(404, '用户不存在')
   if (rows[0].points_balance < points) {
-    throw Object.assign(new Error('积分不足'), { status: 400 })
+    throw new HttpError(400, '积分不足')
   }
   await conn.execute(
     'UPDATE users SET points_balance = points_balance - ? WHERE id = ?',

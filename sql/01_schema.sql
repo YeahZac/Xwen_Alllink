@@ -324,6 +324,41 @@ CREATE TABLE IF NOT EXISTS `withdraw_requests` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='提现申请';
 
 -- -----------------------------------------------------------------------------
+-- 商户资金流水（货款 / 应收 / 积分折现权益）
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `merchant_account_ledger` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `merchant_id` BIGINT UNSIGNED NOT NULL,
+  `account_type` ENUM('cash_goods','cash_settlement','points_redeem') NOT NULL,
+  `change_amount` DECIMAL(14,2) NOT NULL COMMENT '对可用余额的变动；打款核销可为0',
+  `balance_after` DECIMAL(14,2) NOT NULL,
+  `frozen_after` DECIMAL(14,2) NOT NULL DEFAULT 0,
+  `biz_type` VARCHAR(32) NOT NULL COMMENT 'purchase/commission/settle/withdraw_*',
+  `biz_id` VARCHAR(64) DEFAULT NULL,
+  `title` VARCHAR(255) NOT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_merchant_time` (`merchant_id`,`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商户资金流水';
+
+-- -----------------------------------------------------------------------------
+-- 抽成流水（简化：默认费率版本）
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `commission_ledger` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `biz_type` VARCHAR(32) NOT NULL COMMENT 'purchase/cross/stall',
+  `biz_id` VARCHAR(64) NOT NULL,
+  `payer_merchant_id` BIGINT UNSIGNED DEFAULT NULL,
+  `amount_gross` DECIMAL(14,2) NOT NULL,
+  `rate` DECIMAL(10,6) NOT NULL,
+  `commission` DECIMAL(14,2) NOT NULL,
+  `rule_version` VARCHAR(32) NOT NULL DEFAULT 'default',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_biz` (`biz_type`,`biz_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='平台抽成流水';
+
+-- -----------------------------------------------------------------------------
 -- 广告 Banner
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `banners` (
@@ -355,7 +390,7 @@ CREATE TABLE IF NOT EXISTS `referral_records` (
   `reward_points` INT NOT NULL DEFAULT 0,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_invitee` (`invitee_user_id`),
+  UNIQUE KEY `uk_invitee_trigger` (`invitee_user_id`,`trigger_type`),
   KEY `idx_inviter` (`inviter_user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='单级推荐记录';
 

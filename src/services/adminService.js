@@ -1,7 +1,7 @@
-const { query } = require('../utils/db')
+const { query, withTransaction } = require('../utils/db')
 const { HttpError } = require('../utils/response')
-const { orderNo } = require('../utils/id')
 const orderService = require('./orderService')
+const accountService = require('./accountService')
 const { getCashRate, pointsToCash, listConfigs, setConfig } = require('./configService')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链' }
@@ -428,46 +428,58 @@ async function listWithdraws({ status, limit = 100 } = {}) {
 }
 
 async function reviewWithdraw(id, { action, remark } = {}) {
-  const rows = await query('SELECT * FROM withdraw_requests WHERE id=:id', { id })
-  if (!rows.length) throw new HttpError(404, '提现单不存在')
-  const w = rows[0]
-  if (w.status !== 'pending') throw new HttpError(400, '当前状态不可审核')
-  if (action === 'approve') {
-    await query(
-      `UPDATE withdraw_requests SET status='approved', remark=:r WHERE id=:id`,
-      { id, r: remark || '审核通过' }
-    )
-    return { id: Number(id), status: 'approved' }
-  }
-  if (action === 'paid') {
-    await query(
-      `UPDATE withdraw_requests SET status='paid', remark=:r WHERE id=:id`,
-      { id, r: remark || '已打款' }
-    )
-    return { id: Number(id), status: 'paid' }
-  }
-  if (action === 'reject') {
-    await query(
-      `UPDATE withdraw_requests SET status='rejected', remark=:r WHERE id=:id`,
-      { id, r: remark || '已驳回' }
-    )
-    return { id: Number(id), status: 'rejected' }
-  }
-  throw new HttpError(400, 'action 应为 approve/paid/reject')
+  return withTransaction(async (conn) => {
+    const [rows] = await conn.execute('SELECT * FROM withdraw_requests WHERE id=? FOR UPDATE', [id])
+    if (!rows.length) throw new HttpError(404, '提现单不存在')
+    const w = rows[0]
+    if (action === 'approve') {
+      if (w.status !== 'pending') throw new HttpError(400, '当前状态不可审核')
+      await conn.execute(
+        `UPDATE withdraw_requests SET status='approved', remark=? WHERE id=?`,
+        [remark || '审核通过', id]
+      )
+      return { id: Number(id), status: 'approved' }
+    }
+    if (action === 'paid') {
+      if (!['pending', 'approved'].includes(w.status)) throw new HttpError(400, '当前状态不可打款')
+      await accountService.settleWithdrawPaid(conn, {
+        merchantId: w.merchant_id,
+        accountType: w.account_type,
+        amount: w.amount,
+        bizId: w.request_no,
+        title: `提现打款 · ${w.request_no}`
+      })
+      await conn.execute(
+        `UPDATE withdraw_requests SET status='paid', remark=? WHERE id=?`,
+        [remark || '已打款', id]
+      )
+      return { id: Number(id), status: 'paid' }
+    }
+    if (action === 'reject') {
+      if (!['pending', 'approved'].includes(w.status)) throw new HttpError(400, '当前状态不可驳回')
+      await accountService.unfreezeWithdraw(conn, {
+        merchantId: w.merchant_id,
+        accountType: w.account_type,
+        amount: w.amount,
+        bizId: w.request_no,
+        title: `提现驳回 · ${w.request_no}`
+      })
+      await conn.execute(
+        `UPDATE withdraw_requests SET status='rejected', remark=? WHERE id=?`,
+        [remark || '已驳回', id]
+      )
+      return { id: Number(id), status: 'rejected' }
+    }
+    throw new HttpError(400, 'action 应为 approve/paid/reject')
+  })
 }
 
 async function createDemoWithdraw({ merchantId, accountType, amount } = {}) {
-  const mid = Number(merchantId)
-  const amt = Number(amount)
-  if (!mid || !amt) throw new HttpError(400, '参数无效')
-  const type = accountType || 'cash_settlement'
-  const no = orderNo('WD')
-  await query(
-    `INSERT INTO withdraw_requests (request_no, merchant_id, account_type, amount, status, remark)
-     VALUES (:no, :mid, :type, :amt, 'pending', '运营台演示申请')`,
-    { no, mid, type, amt }
-  )
-  return { requestNo: no }
+  return orderService.applyWithdraw({
+    merchantId: Number(merchantId),
+    accountType: accountType || 'cash_settlement',
+    amount: Number(amount)
+  })
 }
 
 /* ---------- complaints / needs / referrals ---------- */

@@ -95,10 +95,46 @@ async function listConsumerOrders(userId) {
   )
 }
 
+async function submitComplaint({ userId, targetType, targetId, content }) {
+  const { HttpError } = require('../utils/response')
+  if (!content || !String(content).trim()) throw new HttpError(400, '请填写投诉内容')
+  const type = ['merchant', 'order', 'other'].includes(targetType) ? targetType : 'other'
+  const r = await query(
+    `INSERT INTO complaints (user_id, target_type, target_id, content, status)
+     VALUES (:uid, :type, :tid, :content, 'open')`,
+    {
+      uid: userId,
+      type,
+      tid: targetId ? Number(targetId) : null,
+      content: String(content).trim()
+    }
+  )
+  return { id: r.insertId, status: 'open' }
+}
+
+async function submitSupplyNeed({ userId, goodsName, qtyText, expectTime, note }) {
+  const { HttpError } = require('../utils/response')
+  if (!goodsName || !String(goodsName).trim()) throw new HttpError(400, '请填写需求品名')
+  const r = await query(
+    `INSERT INTO supply_needs (user_id, goods_name, qty_text, expect_time, note, status)
+     VALUES (:uid, :name, :qty, :et, :note, 'open')`,
+    {
+      uid: userId || null,
+      name: String(goodsName).trim(),
+      qty: qtyText || '',
+      et: expectTime || '',
+      note: note || ''
+    }
+  )
+  return { id: r.insertId, status: 'open' }
+}
+
 module.exports = {
   listBanners,
   listSupplyGoods,
   getPool,
   getUserPoints,
-  listConsumerOrders
+  listConsumerOrders,
+  submitComplaint,
+  submitSupplyNeed
 }
