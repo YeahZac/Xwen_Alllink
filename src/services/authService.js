@@ -50,7 +50,8 @@ async function loginByInviteCode(code) {
       role: m.role,
       merchantId: m.id,
       shopName: m.name,
-      name: m.name
+      name: m.name,
+      inviteCode: m.invite_code
     }
   }
 
@@ -111,7 +112,9 @@ async function loginAsConsumer({ nickname } = {}) {
     userId: u.id,
     name: u.nickname || nickname || '微信用户',
     points: u.points_balance,
-    cashValue: pointsToCash(u.points_balance, rate)
+    cashValue: pointsToCash(u.points_balance, rate),
+    cashRate: rate,
+    inviteCode: 'C001'
   }
 }
 
@@ -128,7 +131,7 @@ async function getProfile(auth) {
   }
   if (auth.role === 'consumer') {
     const rows = await query(
-      'SELECT id, nickname, invite_code, points_balance, phone FROM users WHERE id = :id',
+      'SELECT id, nickname, invite_code, points_balance, phone, avatar_url FROM users WHERE id = :id',
       { id: auth.userId }
     )
     if (!rows.length) throw new HttpError(404, '用户不存在')
@@ -138,13 +141,16 @@ async function getProfile(auth) {
       userId: u.id,
       name: u.nickname,
       inviteCode: u.invite_code,
+      phone: u.phone,
+      avatarUrl: u.avatar_url,
       points: u.points_balance,
       cashValue: pointsToCash(u.points_balance, rate),
       cashRate: rate
     }
   }
   const rows = await query(
-    `SELECT id, role, name, invite_code, city, address, status FROM merchants WHERE id = :id`,
+    `SELECT id, role, name, invite_code, city, address, status, cover_url, contact_name, contact_phone
+     FROM merchants WHERE id = :id`,
     { id: auth.merchantId }
   )
   if (!rows.length) throw new HttpError(404, '商户不存在')
@@ -156,10 +162,13 @@ async function getProfile(auth) {
   return {
     role: m.role,
     merchantId: m.id,
+    name: m.contact_name || m.name,
     shopName: m.name,
     inviteCode: m.invite_code,
     city: m.city,
     address: m.address,
+    coverUrl: m.cover_url,
+    contactPhone: m.contact_phone,
     poolBalance: pools[0] ? pools[0].balance : 0,
     cashRate: rate
   }

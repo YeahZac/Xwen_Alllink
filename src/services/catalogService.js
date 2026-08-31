@@ -17,10 +17,11 @@ async function listBanners(role) {
 async function listSupplyGoods() {
   return query(
     `SELECT g.id, g.name, g.price, g.stock, g.points_grant AS pointsGrant,
-            g.points_ratio_text AS pointsRatio, m.name AS vendor, m.id AS vendorId
+            g.points_ratio_text AS pointsRatio, g.image_url AS imageUrl, g.image_url AS coverImage,
+            g.sku_code AS sku, m.name AS vendor, m.id AS vendorId, m.cover_url AS vendorCover
      FROM supply_goods g
      JOIN merchants m ON m.id = g.merchant_id
-     WHERE g.status = 1 AND m.status = 1
+     WHERE g.status = 1 AND m.status = 1 AND g.deleted_at IS NULL AND m.deleted_at IS NULL
      ORDER BY g.id`
   )
 }

@@ -25,21 +25,37 @@ async function recordCommission(conn, { bizType, bizId, payerMerchantId, amountG
 
 async function listNearbyStalls() {
   return query(
-    `SELECT id, name, city, address, latitude, longitude,
-            cover_hue AS coverHue, status
-     FROM merchants WHERE role='stall' AND status=1 ORDER BY id`
+    `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude,
+            m.cover_hue AS coverHue, m.cover_url AS coverImage, m.status,
+            LEFT(m.name,1) AS initial,
+            IFNULL((SELECT SUM(sales_count) FROM stall_goods g WHERE g.merchant_id=m.id AND g.deleted_at IS NULL),0) AS sales,
+            CASE WHEN m.status=1 THEN 1 ELSE 0 END AS open,
+            IFNULL(m.city,'本地') AS tag,
+            IFNULL(m.city,'') AS distance,
+            4.8 AS rating,
+            m.address AS \`desc\`,
+            '美食' AS category
+     FROM merchants m
+     WHERE m.role='stall' AND m.status=1 AND m.deleted_at IS NULL
+     ORDER BY m.id`
   )
 }
 
 async function listCrossStores() {
   const stores = await query(
-    `SELECT id, name, city, address, latitude, longitude, cover_hue AS coverHue
-     FROM merchants WHERE role='cross' AND status=1 ORDER BY id`
+    `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude,
+            m.cover_hue AS coverHue, m.cover_url AS coverImage,
+            LEFT(m.name,1) AS initial, IFNULL(m.city,'本地') AS category,
+            IFNULL(m.city,'') AS distance, m.address
+     FROM merchants m
+     WHERE m.role='cross' AND m.status=1 AND m.deleted_at IS NULL
+     ORDER BY m.id`
   )
   for (const s of stores) {
     s.items = await query(
-      `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice, desc_text AS \`desc\`
-       FROM cross_goods WHERE merchant_id=:id AND on_sale=1`,
+      `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice,
+              desc_text AS \`desc\`, image_url AS coverImage, sku_code AS sku
+       FROM cross_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
       { id: s.id }
     )
   }
@@ -48,14 +64,17 @@ async function listCrossStores() {
 
 async function getStallMenu(merchantId) {
   const merchants = await query(
-    `SELECT id, name, address, cover_hue AS coverHue FROM merchants
-     WHERE id=:id AND role='stall' AND status=1`,
+    `SELECT id, name, address, city, cover_hue AS coverHue, cover_url AS coverImage,
+            LEFT(name,1) AS initial, status
+     FROM merchants
+     WHERE id=:id AND role='stall' AND status=1 AND deleted_at IS NULL`,
     { id: merchantId }
   )
   if (!merchants.length) throw new HttpError(404, '摊位不存在')
   const goods = await query(
-    `SELECT id, name, price, points_grant AS pointsGrant, category, desc_text AS \`desc\`
-     FROM stall_goods WHERE merchant_id=:id AND on_sale=1`,
+    `SELECT id, name, price, points_grant AS pointsGrant, category, desc_text AS \`desc\`,
+            image_url AS coverImage, image_url AS imageUrl, stock, sku_code AS sku
+     FROM stall_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
     { id: merchantId }
   )
   return { stall: merchants[0], menu: goods }

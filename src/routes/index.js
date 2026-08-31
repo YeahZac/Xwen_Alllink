@@ -11,6 +11,7 @@ const adminService = require('../services/adminService')
 const rbacService = require('../services/rbacService')
 const storageService = require('../services/storageService')
 const opsService = require('../services/opsService')
+const merchantPortalService = require('../services/merchantPortalService')
 const { getCashRate, pointsToCash } = require('../services/configService')
 
 const router = express.Router()
@@ -731,9 +732,64 @@ router.get('/cross-stores', async (_req, res, next) => {
   }
 })
 
+router.get('/cross-stores/:id', async (req, res, next) => {
+  try {
+    res.json(ok(await merchantPortalService.getCrossStoreDetail(Number(req.params.id))))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/supply/merchants', async (_req, res, next) => {
+  try {
+    res.json(ok(await merchantPortalService.listSupplyMerchants()))
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.get('/supply/goods', async (_req, res, next) => {
   try {
     res.json(ok(await catalogService.listSupplyGoods()))
+  } catch (e) {
+    next(e)
+  }
+})
+
+/** 小程序/入驻申请上传（公开，可带 token） */
+router.post('/media/upload', upload.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file) throw new HttpError(400, '请选择文件')
+    const data = await storageService.uploadBuffer({
+      buffer: req.file.buffer,
+      originalName: req.file.originalname,
+      mime: req.file.mimetype,
+      bizType: req.body.bizType || 'license',
+      adminId: null
+    })
+    res.json(ok(data))
+  } catch (e) {
+    next(e)
+  }
+})
+
+/** 小程序 callContainer 友好：base64 上传 */
+router.post('/media/upload-base64', async (req, res, next) => {
+  try {
+    const { content, fileName, mime, bizType } = req.body || {}
+    if (!content) throw new HttpError(400, '缺少文件内容')
+    const raw = String(content).replace(/^data:[^;]+;base64,/, '')
+    const buffer = Buffer.from(raw, 'base64')
+    if (!buffer.length) throw new HttpError(400, '文件内容无效')
+    if (buffer.length > 12 * 1024 * 1024) throw new HttpError(400, '文件过大')
+    const data = await storageService.uploadBuffer({
+      buffer,
+      originalName: fileName || 'upload.bin',
+      mime: mime || 'application/octet-stream',
+      bizType: bizType || 'license',
+      adminId: null
+    })
+    res.json(ok(data))
   } catch (e) {
     next(e)
   }
@@ -837,6 +893,91 @@ router.get(
       data.cashRate = rate
       data.cashValue = pointsToCash(data.balance, rate)
       res.json(ok(data))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get(
+  '/merchant/dashboard',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await merchantPortalService.dashboard(req.auth.merchantId, req.auth.role)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get(
+  '/merchant/orders',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await merchantPortalService.listOrders(req.auth.merchantId, req.auth.role, {
+            type: req.query.type,
+            limit: req.query.limit
+          })
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get(
+  '/merchant/goods',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await merchantPortalService.listGoods(req.auth.merchantId, req.auth.role)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/merchant/goods',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await merchantPortalService.saveGoods(req.auth.merchantId, req.auth.role, req.body)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get(
+  '/merchant/customers',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await merchantPortalService.listCustomers(req.auth.merchantId, req.auth.role, req.query)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get(
+  '/merchant/flow',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await merchantPortalService.listFlow(req.auth.merchantId, req.query)))
     } catch (e) {
       next(e)
     }
