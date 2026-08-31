@@ -1,15 +1,35 @@
 const express = require('express')
 const { ok } = require('../utils/response')
 const { authRequired, requireRoles } = require('../middleware/auth')
+const { query } = require('../utils/db')
 const authService = require('../services/authService')
 const applyService = require('../services/applyService')
 const orderService = require('../services/orderService')
 const catalogService = require('../services/catalogService')
 const adminService = require('../services/adminService')
+const rbacService = require('../services/rbacService')
 const { getCashRate, pointsToCash } = require('../services/configService')
 
 const router = express.Router()
 const adminOnly = [authRequired, requireRoles('admin')]
+
+async function requireSysEdit(req, _res, next) {
+  try {
+    await rbacService.ensurePageAccess(req.auth, 'sys_accounts', true)
+    next()
+  } catch (e) {
+    next(e)
+  }
+}
+
+async function requireSysRolesEdit(req, _res, next) {
+  try {
+    await rbacService.ensurePageAccess(req.auth, 'sys_roles', true)
+    next()
+  } catch (e) {
+    next(e)
+  }
+}
 
 router.get('/health', async (_req, res) => {
   let db = { ok: false }
@@ -42,8 +62,21 @@ router.get('/health', async (_req, res) => {
 // ---------- Auth ----------
 router.post('/auth/login', async (req, res, next) => {
   try {
-    const data = await authService.loginByInviteCode(req.body.code)
+    // 支持：邀请码 / 运营账号密码（username+password）
+    if (req.body.username && req.body.password) {
+      res.json(ok(await authService.loginAdmin(req.body.username, req.body.password)))
+      return
+    }
+    const data = await authService.loginByInviteCode(req.body.code || req.body.username)
     res.json(ok(data))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/auth/admin-login', async (req, res, next) => {
+  try {
+    res.json(ok(await authService.loginAdmin(req.body.username, req.body.password)))
   } catch (e) {
     next(e)
   }
@@ -353,6 +386,76 @@ router.patch('/admin/supply-needs/:id', ...adminOnly, async (req, res, next) => 
 router.get('/admin/referrals', ...adminOnly, async (req, res, next) => {
   try {
     res.json(ok(await adminService.listReferrals(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+// ---------- 系统管理：角色 / 账号 / 权限 ----------
+router.get('/admin/rbac/permissions', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await rbacService.listPermissionCatalog()))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/rbac/me', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await rbacService.getMyPermissions(req.auth)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/rbac/roles', ...adminOnly, async (req, res, next) => {
+  try {
+    await rbacService.ensurePageAccess(req.auth, 'sys_roles', false)
+    res.json(ok(await rbacService.listRoles()))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/rbac/roles/:id', ...adminOnly, async (req, res, next) => {
+  try {
+    await rbacService.ensurePageAccess(req.auth, 'sys_roles', false)
+    res.json(ok(await rbacService.getRoleDetail(Number(req.params.id))))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/rbac/roles', ...adminOnly, requireSysRolesEdit, async (req, res, next) => {
+  try {
+    res.json(ok(await rbacService.saveRole(req.body)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.put('/admin/rbac/roles/:id/permissions', ...adminOnly, requireSysRolesEdit, async (req, res, next) => {
+  try {
+    res.json(
+      ok(await rbacService.saveRolePermissions(Number(req.params.id), req.body.permissions || []))
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/rbac/accounts', ...adminOnly, async (req, res, next) => {
+  try {
+    await rbacService.ensurePageAccess(req.auth, 'sys_accounts', false)
+    res.json(ok(await rbacService.listAccounts()))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/rbac/accounts', ...adminOnly, requireSysEdit, async (req, res, next) => {
+  try {
+    res.json(ok(await rbacService.saveAccount(req.body)))
   } catch (e) {
     next(e)
   }

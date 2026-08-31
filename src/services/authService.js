@@ -3,29 +3,16 @@ const { signToken } = require('../middleware/auth')
 const { HttpError } = require('../utils/response')
 const { shortCode } = require('../utils/id')
 const { getCashRate, pointsToCash } = require('./configService')
+const rbacService = require('./rbacService')
 
 /** 演示邀请码登录（与小程序演示码对齐） */
 async function loginByInviteCode(code) {
   const invite = String(code || '').trim()
   if (!invite) throw new HttpError(400, '请输入邀请码/账号')
 
-  // 平台运营账号（环境变量 ADMIN_CODE，默认 A001）
-  const adminCode = String(process.env.ADMIN_CODE || 'A001').trim()
-  if (invite === adminCode) {
-    const token = signToken({
-      role: 'admin',
-      userId: 0,
-      merchantId: null,
-      shopName: '平台运营'
-    })
-    return {
-      token,
-      role: 'admin',
-      userId: 0,
-      name: '平台运营',
-      shopName: '万业互联云运营台'
-    }
-  }
+  // 运营邀请码 / 兼容 A001 → 超级管理员
+  const adminSession = await rbacService.loginByAdminInviteCode(invite)
+  if (adminSession) return adminSession
 
   // 商户邀请码
   const merchants = await query(
@@ -178,4 +165,9 @@ async function getProfile(auth) {
   }
 }
 
-module.exports = { loginByInviteCode, loginAsConsumer, getProfile }
+module.exports = {
+  loginByInviteCode,
+  loginAsConsumer,
+  getProfile,
+  loginAdmin: (username, password) => rbacService.loginByPassword(username, password)
+}

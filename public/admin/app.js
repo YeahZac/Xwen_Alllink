@@ -4,23 +4,50 @@ const PROFILE_KEY = 'xwen_admin_profile'
 const state = {
   token: localStorage.getItem(TOKEN_KEY) || '',
   profile: JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null'),
-  page: 'dashboard'
+  page: 'dashboard',
+  permissions: {}
 }
 
-const NAV = [
-  { id: 'dashboard', label: '概览' },
-  { id: 'applies', label: '入驻审核' },
-  { id: 'merchants', label: '商户管理' },
-  { id: 'users', label: '用户积分' },
-  { id: 'goods', label: '商品目录' },
-  { id: 'orders', label: '订单中心' },
-  { id: 'banners', label: 'Banner' },
-  { id: 'configs', label: '平台配置' },
-  { id: 'withdraws', label: '提现审核' },
-  { id: 'complaints', label: '投诉工单' },
-  { id: 'needs', label: '供应需求' },
-  { id: 'referrals', label: '推荐记录' }
+const NAV_GROUPS = [
+  {
+    name: '业务运营',
+    items: [
+      { id: 'dashboard', label: '概览' },
+      { id: 'applies', label: '入驻审核' },
+      { id: 'merchants', label: '商户管理' },
+      { id: 'users', label: '用户积分' },
+      { id: 'goods', label: '商品目录' },
+      { id: 'orders', label: '订单中心' },
+      { id: 'banners', label: 'Banner' },
+      { id: 'configs', label: '平台配置' },
+      { id: 'withdraws', label: '提现审核' },
+      { id: 'complaints', label: '投诉工单' },
+      { id: 'needs', label: '供应需求' },
+      { id: 'referrals', label: '推荐记录' }
+    ]
+  },
+  {
+    name: '系统管理',
+    items: [
+      { id: 'sys_roles', label: '角色权限' },
+      { id: 'sys_accounts', label: '账号管理' }
+    ]
+  }
 ]
+
+const ALL_NAV = NAV_GROUPS.flatMap((g) => g.items)
+
+function canView(page) {
+  const p = state.permissions?.[page]
+  if (!p && (state.profile?.roleCode === 'super_admin' || state.profile?.roleId === 1)) return true
+  return !!(p && p.view)
+}
+
+function canEdit(page) {
+  const p = state.permissions?.[page]
+  if (!p && (state.profile?.roleCode === 'super_admin' || state.profile?.roleId === 1)) return true
+  return !!(p && p.edit)
+}
 
 const $ = (id) => document.getElementById(id)
 const content = () => $('content')
@@ -43,6 +70,7 @@ async function api(path, options = {}) {
 function logout(reload = true) {
   state.token = ''
   state.profile = null
+  state.permissions = {}
   localStorage.removeItem(TOKEN_KEY)
   localStorage.removeItem(PROFILE_KEY)
   if (reload) location.reload()
@@ -53,27 +81,57 @@ function showLogin() {
   $('dashView').classList.add('hidden')
 }
 
-function showDash() {
+async function showDash() {
   $('loginView').classList.add('hidden')
   $('dashView').classList.remove('hidden')
-  $('who').textContent = state.profile?.nickname || '运营'
+  $('who').textContent =
+    `${state.profile?.name || state.profile?.nickname || '运营'}` +
+    (state.profile?.roleName ? ` · ${state.profile.roleName}` : '')
+  state.permissions = state.profile?.permissions || {}
+  try {
+    const me = await api('/admin/rbac/me')
+    state.permissions = me.permissions || state.permissions
+    if (state.profile) {
+      state.profile.permissions = state.permissions
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(state.profile))
+    }
+  } catch (_) {
+    /* ignore if table not ready */
+  }
+  if (!canView(state.page)) {
+    const first = ALL_NAV.find((n) => canView(n.id))
+    state.page = first ? first.id : 'dashboard'
+  }
   renderNav()
   go(state.page)
 }
 
 function renderNav() {
   const nav = $('nav')
-  nav.innerHTML = NAV.map(
-    (n) => `<button type="button" data-page="${n.id}" class="${state.page === n.id ? 'on' : ''}">${n.label}</button>`
-  ).join('')
-  nav.querySelectorAll('button').forEach((btn) => {
+  const html = []
+  for (const g of NAV_GROUPS) {
+    const items = g.items.filter((n) => canView(n.id))
+    if (!items.length) continue
+    html.push(`<div class="nav-group">${esc(g.name)}</div>`)
+    for (const n of items) {
+      html.push(
+        `<button type="button" data-page="${n.id}" class="${state.page === n.id ? 'on' : ''}">${n.label}</button>`
+      )
+    }
+  }
+  nav.innerHTML = html.join('')
+  nav.querySelectorAll('button[data-page]').forEach((btn) => {
     btn.onclick = () => go(btn.dataset.page)
   })
 }
 
 function go(page) {
+  if (!canView(page)) {
+    content().innerHTML = `<div class="empty">无权限访问该页面</div>`
+    return
+  }
   state.page = page
-  $('pageTitle').textContent = NAV.find((n) => n.id === page)?.label || page
+  $('pageTitle').textContent = ALL_NAV.find((n) => n.id === page)?.label || page
   renderNav()
   const map = {
     dashboard: renderDashboard,
@@ -87,7 +145,9 @@ function go(page) {
     withdraws: renderWithdraws,
     complaints: renderComplaints,
     needs: renderNeeds,
-    referrals: renderReferrals
+    referrals: renderReferrals,
+    sys_roles: renderSysRoles,
+    sys_accounts: renderSysAccounts
   }
   ;(map[page] || renderDashboard)().catch((e) => {
     content().innerHTML = `<div class="empty">${esc(e.message)}</div>`
@@ -885,22 +945,245 @@ async function renderReferrals() {
   await load()
 }
 
+/* ---------- 系统管理 ---------- */
+async function renderSysRoles() {
+  const editable = canEdit('sys_roles')
+  content().innerHTML = `
+    <div class="toolbar">
+      <button class="btn" id="btnReload">刷新</button>
+      ${editable ? '<button class="btn primary" id="btnAdd">新建角色</button>' : ''}
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const rows = await api('/admin/rbac/roles')
+    $('list').innerHTML = table(
+      ['ID', '编码', '名称', '账号数', '系统', '状态', '操作'],
+      rows
+        .map(
+          (r) => `<tr>
+        <td>${r.id}</td><td><code>${esc(r.code)}</code></td><td>${esc(r.name)}</td>
+        <td>${r.accountCount}</td><td>${r.isSystem ? '是' : '否'}</td><td>${r.status}</td>
+        <td class="actions">
+          <button class="btn sm" data-perm="${r.id}">配置权限</button>
+          ${editable ? `<button class="btn sm" data-edit='${encodeURIComponent(JSON.stringify(r))}'>编辑</button>` : ''}
+        </td></tr>`
+        )
+        .join('')
+    )
+    $('list').querySelectorAll('[data-perm]').forEach((b) => {
+      b.onclick = () => editRolePermissions(Number(b.dataset.perm), editable)
+    })
+    $('list').querySelectorAll('[data-edit]').forEach((b) => {
+      b.onclick = () => {
+        const r = JSON.parse(decodeURIComponent(b.getAttribute('data-edit')))
+        openModal(
+          '编辑角色',
+          field('name', '名称', r.name) +
+            field('remark', '备注', r.remark || '') +
+            field('status', '状态(1/0)', r.status, 'number'),
+          async () => {
+            await api('/admin/rbac/roles', {
+              method: 'POST',
+              body: JSON.stringify({
+                id: r.id,
+                name: formVal('name'),
+                remark: formVal('remark'),
+                status: Number(formVal('status'))
+              })
+            })
+            load()
+          }
+        )
+      }
+    })
+  }
+  if ($('btnAdd')) {
+    $('btnAdd').onclick = () => {
+      openModal(
+        '新建角色',
+        field('code', '编码（英文）', 'operator') +
+          field('name', '名称', '运营专员') +
+          field('remark', '备注', ''),
+        async () => {
+          await api('/admin/rbac/roles', {
+            method: 'POST',
+            body: JSON.stringify({
+              code: formVal('code'),
+              name: formVal('name'),
+              remark: formVal('remark'),
+              status: 1
+            })
+          })
+          load()
+        }
+      )
+    }
+  }
+  $('btnReload').onclick = load
+  await load()
+}
+
+async function editRolePermissions(roleId, editable) {
+  const detail = await api(`/admin/rbac/roles/${roleId}`)
+  const rows = detail.permissions || []
+  const body = `
+    <p class="muted">${esc(detail.name)}（${esc(detail.code)}）· 勾选浏览 / 编辑</p>
+    <div class="perm-grid" id="permGrid">
+      ${rows
+        .map(
+          (p) => `<div class="perm-row" data-key="${esc(p.pageKey)}">
+        <span>${esc(p.groupName)} / ${esc(p.pageName)}</span>
+        <label><input type="checkbox" data-v ${p.canView ? 'checked' : ''} ${editable ? '' : 'disabled'}/>浏览</label>
+        <label><input type="checkbox" data-e ${p.canEdit ? 'checked' : ''} ${editable ? '' : 'disabled'}/>编辑</label>
+      </div>`
+        )
+        .join('')}
+    </div>`
+  openModal(
+    '配置权限',
+    body,
+    editable
+      ? async () => {
+          const permissions = [...$('permGrid').querySelectorAll('.perm-row')].map((row) => ({
+            pageKey: row.dataset.key,
+            canView: row.querySelector('[data-v]').checked,
+            canEdit: row.querySelector('[data-e]').checked
+          }))
+          await api(`/admin/rbac/roles/${roleId}/permissions`, {
+            method: 'PUT',
+            body: JSON.stringify({ permissions })
+          })
+        }
+      : null
+  )
+}
+
+async function renderSysAccounts() {
+  const editable = canEdit('sys_accounts')
+  const roles = await api('/admin/rbac/roles')
+  content().innerHTML = `
+    <div class="toolbar">
+      <button class="btn" id="btnReload">刷新</button>
+      ${editable ? '<button class="btn primary" id="btnAdd">新建账号</button>' : ''}
+    </div>
+    <div id="list"></div>`
+  const roleOptions = roles
+    .map((r) => `<option value="${r.id}">${esc(r.name)} (${esc(r.code)})</option>`)
+    .join('')
+  const load = async () => {
+    const rows = await api('/admin/rbac/accounts')
+    $('list').innerHTML = table(
+      ['ID', '账号', '姓名', '角色', '状态', '最近登录', '操作'],
+      rows
+        .map(
+          (a) => `<tr>
+        <td>${a.id}</td><td><code>${esc(a.username)}</code></td><td>${esc(a.displayName)}</td>
+        <td>${esc(a.roleName)}</td><td>${a.status}</td><td>${fmtTime(a.lastLoginAt)}</td>
+        <td class="actions">
+          ${editable ? `<button class="btn sm" data-edit='${encodeURIComponent(JSON.stringify(a))}'>编辑</button>` : '-'}
+        </td></tr>`
+        )
+        .join('')
+    )
+    $('list').querySelectorAll('[data-edit]').forEach((b) => {
+      b.onclick = () => {
+        const a = JSON.parse(decodeURIComponent(b.getAttribute('data-edit')))
+        openModal(
+          '编辑账号',
+          field('displayName', '显示名', a.displayName) +
+            `<label>角色<select name="roleId">${roleOptions}</select></label>` +
+            field('password', '新密码（留空不改）', '', 'password') +
+            field('status', '状态(1/0)', a.status, 'number'),
+          async () => {
+            await api('/admin/rbac/accounts', {
+              method: 'POST',
+              body: JSON.stringify({
+                id: a.id,
+                username: a.username,
+                displayName: formVal('displayName'),
+                roleId: Number(formVal('roleId')),
+                password: formVal('password') || undefined,
+                status: Number(formVal('status'))
+              })
+            })
+            load()
+          }
+        )
+        $('modalBody').querySelector('[name="roleId"]').value = String(a.roleId)
+      }
+    })
+  }
+  if ($('btnAdd')) {
+    $('btnAdd').onclick = () => {
+      openModal(
+        '新建账号',
+        field('username', '登录账号', '') +
+          field('displayName', '显示名', '') +
+          field('password', '初始密码', '', 'password') +
+          `<label>角色<select name="roleId">${roleOptions}</select></label>`,
+        async () => {
+          await api('/admin/rbac/accounts', {
+            method: 'POST',
+            body: JSON.stringify({
+              username: formVal('username'),
+              displayName: formVal('displayName'),
+              password: formVal('password'),
+              roleId: Number(formVal('roleId')),
+              status: 1
+            })
+          })
+          load()
+        }
+      )
+    }
+  }
+  $('btnReload').onclick = load
+  await load()
+}
+
 /* ---------- boot ---------- */
 $('btnLogin').onclick = async () => {
   $('loginErr').textContent = ''
   try {
-    const data = await api('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ code: $('loginCode').value.trim() })
-    })
-    if (data.role !== 'admin') throw new Error('请使用运营邀请码登录')
+    const username = $('loginUser').value.trim()
+    const password = $('loginPass').value
+    let data
+    if (password) {
+      data = await api('/auth/admin-login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password })
+      })
+    } else {
+      data = await api('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ code: username })
+      })
+    }
+    if (data.role !== 'admin') throw new Error('请使用运营账号登录')
     state.token = data.token
     state.profile = data
+    state.permissions = data.permissions || {}
     localStorage.setItem(TOKEN_KEY, data.token)
     localStorage.setItem(PROFILE_KEY, JSON.stringify(data))
-    showDash()
+    await showDash()
   } catch (e) {
-    $('loginErr').textContent = e.message
+    // 密码登录失败时，尝试邀请码
+    try {
+      const username = $('loginUser').value.trim()
+      const data = await api('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ code: username })
+      })
+      if (data.role !== 'admin') throw new Error(e.message)
+      state.token = data.token
+      state.profile = data
+      state.permissions = data.permissions || {}
+      localStorage.setItem(TOKEN_KEY, data.token)
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(data))
+      await showDash()
+    } catch (e2) {
+      $('loginErr').textContent = e.message || e2.message
+    }
   }
 }
 

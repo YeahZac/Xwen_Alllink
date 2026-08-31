@@ -12,9 +12,12 @@
       <div class="login-card">
         <p class="brand">万业互联云</p>
         <h1>运营管理台</h1>
-        <p class="muted">邀请码登录 · 默认 <code>A001</code></p>
-        <label>邀请码</label>
-        <input id="loginCode" value="A001" autocomplete="off" />
+        <p class="muted">账号密码登录 · 默认 <code>admin / Admin@123</code></p>
+        <label>账号</label>
+        <input id="loginUser" value="admin" autocomplete="username" />
+        <label>密码</label>
+        <input id="loginPass" type="password" value="Admin@123" autocomplete="current-password" />
+        <p class="muted tip">也可使用运营邀请码 <code>A001</code>（填在账号框，密码可空）</p>
         <button id="btnLogin" class="btn primary">进入运营台</button>
         <p id="loginErr" class="err"></p>
         <p class="muted tip"><a href="/api/health" target="_blank">API 健康检查</a></p>

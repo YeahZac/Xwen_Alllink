@@ -112,6 +112,13 @@ label { display: block; font-size: 13px; color: var(--muted); }
 .side-brand strong { display: block; font-size: 16px; }
 .side-brand span { color: var(--muted); font-size: 12px; }
 .nav { display: flex; flex-direction: column; gap: 4px; flex: 1; overflow: auto; }
+.nav-group {
+  margin: 10px 8px 4px;
+  font-size: 11px;
+  letter-spacing: .08em;
+  color: #6b7c8f;
+  text-transform: uppercase;
+}
 .nav button {
   text-align: left;
   background: transparent;
@@ -128,6 +135,24 @@ label { display: block; font-size: 13px; color: var(--muted); }
   color: #fff;
   border-left: 3px solid var(--accent);
 }
+
+.perm-grid {
+  display: grid;
+  gap: 8px;
+  max-height: 50vh;
+  overflow: auto;
+}
+.perm-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  background: var(--panel-2);
+  border-radius: 8px;
+}
+.perm-row label { margin: 0; color: var(--text); display: flex; gap: 6px; align-items: center; }
+.perm-row input { width: auto; margin: 0; }
 .side-foot {
   border-top: 1px solid var(--line);
   padding-top: 12px;
