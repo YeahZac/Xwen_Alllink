@@ -1,5 +1,6 @@
 const { query, withTransaction } = require('../utils/db')
 const { HttpError } = require('../utils/response')
+const { enrichScreen } = require('./screenSim')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链', consumer: 'C端用户' }
 
@@ -86,28 +87,42 @@ async function bigScreen() {
       FROM supply_goods WHERE deleted_at IS NULL ORDER BY sales_count DESC LIMIT 5)`
   )
 
-  return {
-    updatedAt: new Date().toISOString(),
-    kpis: {
-      visitsToday,
-      visits7d,
-      ordersToday,
-      gmvTotal,
-      consumerGmv,
-      crossGmv,
-      purchaseGmv,
-      openStores,
-      consumers,
-      stalls,
-      crosses,
-      supplies
-    },
-    roleMix,
-    hotCities,
-    geoPoints,
-    visitTrend,
-    topGoods
+  let hourly = []
+  try {
+    hourly = await query(
+      `SELECT HOUR(created_at) AS hour, COUNT(*) AS count
+       FROM visit_logs WHERE created_at >= CURDATE()
+       GROUP BY HOUR(created_at)`
+    )
+  } catch (_) {
+    hourly = []
   }
+
+  return enrichScreen(
+    {
+      updatedAt: new Date().toISOString(),
+      kpis: {
+        visitsToday,
+        visits7d,
+        ordersToday,
+        gmvTotal,
+        consumerGmv,
+        crossGmv,
+        purchaseGmv,
+        openStores,
+        consumers,
+        stalls,
+        crosses,
+        supplies
+      },
+      roleMix,
+      hotCities,
+      geoPoints,
+      visitTrend,
+      topGoods
+    },
+    { hourly }
+  )
 }
 
 async function trackVisit(body = {}) {

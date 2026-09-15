@@ -17,7 +17,7 @@ app.get('/', (_req, res) => {
     version: '1.0.0',
     health: '/api/health',
     admin: '/admin/',
-    docs: '运营后台请打开 /admin/ ，使用邀请码 A001 登录'
+    docs: '运营后台请打开 /admin/ ，账号 admin / 密码 123456'
   })
 })
 

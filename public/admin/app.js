@@ -51,6 +51,7 @@ const NAV_GROUPS = [
   {
     name: '系统管理',
     items: [
+      { id: 'referral_triggers', label: '推荐奖励设置' },
       { id: 'sys_roles', label: '角色权限' },
       { id: 'sys_accounts', label: '账号管理' },
       { id: 'sys_media', label: '媒体资源' }
@@ -60,15 +61,25 @@ const NAV_GROUPS = [
 
 const ALL_NAV = NAV_GROUPS.flatMap((g) => g.items)
 
+function isSuper() {
+  const p = state.profile || {}
+  return (
+    p.roleCode === 'super_admin' ||
+    Number(p.roleId) === 1 ||
+    p.adminId === 0 ||
+    p.username === 'admin'
+  )
+}
+
 function canView(page) {
+  if (isSuper()) return true
   const p = state.permissions?.[page]
-  if (!p && (state.profile?.roleCode === 'super_admin' || state.profile?.roleId === 1)) return true
   return !!(p && p.view)
 }
 
 function canEdit(page) {
+  if (isSuper()) return true
   const p = state.permissions?.[page]
-  if (!p && (state.profile?.roleCode === 'super_admin' || state.profile?.roleId === 1)) return true
   return !!(p && p.edit)
 }
 
@@ -82,6 +93,7 @@ async function api(path, options = {}) {
   const json = await res.json().catch(() => ({}))
   if (res.status === 401) {
     logout(false)
+    showLogin()
     throw new Error('登录已失效，请重新登录')
   }
   if (!res.ok || (json.code !== undefined && json.code !== 0)) {
@@ -116,10 +128,16 @@ async function showDash() {
     state.permissions = me.permissions || state.permissions
     if (state.profile) {
       state.profile.permissions = state.permissions
+      if (me.roleCode) state.profile.roleCode = me.roleCode
       localStorage.setItem(PROFILE_KEY, JSON.stringify(state.profile))
     }
-  } catch (_) {
-    /* ignore if table not ready */
+  } catch (e) {
+    if (!state.token || !state.profile) {
+      showLogin()
+      const err = $('loginErr')
+      if (err) err.textContent = e.message || '登录已失效，请重新登录'
+      return
+    }
   }
   if (!canView(state.page)) {
     const first = ALL_NAV.find((n) => canView(n.id))
@@ -181,6 +199,7 @@ function go(page) {
     complaints: renderComplaints,
     needs: renderNeeds,
     referrals: renderReferrals,
+    referral_triggers: renderReferralTriggers,
     sys_roles: renderSysRoles,
     sys_accounts: renderSysAccounts,
     sys_media: renderSysMedia
@@ -1059,7 +1078,10 @@ async function renderGoods() {
           <td>${g.id}</td><td>${esc(g.shopName)}</td><td>${esc(g.name)}</td>
           <td>${g.price}</td><td>${g.pointsGrant}</td><td>${esc(g.category)}</td><td>${g.stock}</td>
           <td>${g.onSale}</td>
-          <td><button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button></td></tr>`
+          <td>
+            <button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button>
+            <button class="btn sm" data-opts="${g.id}" data-name="${esc(g.name)}">规格</button>
+          </td></tr>`
           )
           .join('')
       )
@@ -1094,11 +1116,185 @@ async function renderGoods() {
     $('list').querySelectorAll('[data-edit]').forEach((b) => {
       b.onclick = () => editGoods(type, JSON.parse(decodeURIComponent(b.getAttribute('data-edit'))), load)
     })
+    $('list').querySelectorAll('[data-opts]').forEach((b) => {
+      b.onclick = () => editStallOptions(Number(b.getAttribute('data-opts')), b.getAttribute('data-name'), load)
+    })
   }
   $('btnAdd').onclick = () => editGoods($('gType').value, null, load)
   $('btnReload').onclick = load
   $('gType').onchange = load
   await load()
+}
+
+async function editStallOptions(goodsId, goodsName, reload) {
+  let groups = []
+  try {
+    groups = (await api(`/admin/goods/stall/${goodsId}/options`)) || []
+  } catch (e) {
+    alert(e.message || '加载规格失败，请先执行 sql/08_stall_options.sql')
+    return
+  }
+  if (!groups.length) {
+    groups = [
+      {
+        name: '口味',
+        type: 'flavor',
+        required: 1,
+        multiSelect: 0,
+        minSelect: 1,
+        maxSelect: 1,
+        options: [
+          { name: '微辣', priceDelta: 0, pointsDelta: 0, isDefault: 1 },
+          { name: '中辣', priceDelta: 0, pointsDelta: 0, isDefault: 0 },
+          { name: '特辣', priceDelta: 1, pointsDelta: 1, isDefault: 0 }
+        ]
+      },
+      {
+        name: '分量',
+        type: 'portion',
+        required: 1,
+        multiSelect: 0,
+        minSelect: 1,
+        maxSelect: 1,
+        options: [
+          { name: '标准', priceDelta: 0, pointsDelta: 0, isDefault: 1 },
+          { name: '大份', priceDelta: 3, pointsDelta: 2, isDefault: 0 },
+          { name: '小份', priceDelta: -2, pointsDelta: -1, isDefault: 0 }
+        ]
+      },
+      {
+        name: '配料',
+        type: 'topping',
+        required: 0,
+        multiSelect: 1,
+        minSelect: 0,
+        maxSelect: 5,
+        options: [
+          { name: '加蛋', priceDelta: 2, pointsDelta: 1, isDefault: 0 },
+          { name: '加火腿肠', priceDelta: 3, pointsDelta: 1, isDefault: 0 }
+        ]
+      }
+    ]
+  }
+
+  const renderBody = () => {
+    const blocks = groups
+      .map((g, gi) => {
+        const opts = (g.options || [])
+          .map(
+            (o, oi) => `<div class="opt-row" data-gi="${gi}" data-oi="${oi}">
+            <input data-k="name" value="${esc(o.name || '')}" placeholder="选项名" />
+            <input data-k="priceDelta" type="number" step="0.01" value="${o.priceDelta ?? 0}" placeholder="加价" title="价格增减" />
+            <input data-k="pointsDelta" type="number" value="${o.pointsDelta ?? 0}" placeholder="积分增减" title="积分增减" />
+            <label class="chk"><input data-k="isDefault" type="checkbox" ${o.isDefault ? 'checked' : ''}/>默认</label>
+            <button type="button" class="btn sm danger" data-del-opt="${gi}:${oi}">删</button>
+          </div>`
+          )
+          .join('')
+        return `<div class="opt-group" data-gi="${gi}">
+          <div class="opt-group__head">
+            <input data-gk="name" value="${esc(g.name || '')}" placeholder="组名" />
+            <select data-gk="type">
+              <option value="flavor" ${g.type === 'flavor' ? 'selected' : ''}>口味</option>
+              <option value="portion" ${g.type === 'portion' ? 'selected' : ''}>分量</option>
+              <option value="topping" ${g.type === 'topping' ? 'selected' : ''}>配料</option>
+              <option value="custom" ${g.type === 'custom' ? 'selected' : ''}>自定义</option>
+            </select>
+            <label class="chk"><input data-gk="required" type="checkbox" ${g.required ? 'checked' : ''}/>必选</label>
+            <label class="chk"><input data-gk="multiSelect" type="checkbox" ${g.multiSelect ? 'checked' : ''}/>多选</label>
+            <button type="button" class="btn sm danger" data-del-group="${gi}">删除组</button>
+          </div>
+          <div class="opt-list">${opts}</div>
+          <button type="button" class="btn sm" data-add-opt="${gi}">+ 选项</button>
+        </div>`
+      })
+      .join('')
+    return `<p class="muted">单价 = 基础价 + 所选规格加价；积分同理。多选配料可叠加。</p>
+      <div id="optEditor">${blocks}</div>
+      <button type="button" class="btn" id="btnAddGroup">+ 规格组</button>`
+  }
+
+  const syncFromDom = () => {
+    const root = $('optEditor')
+    if (!root) return
+    root.querySelectorAll('.opt-group').forEach((el) => {
+      const gi = Number(el.getAttribute('data-gi'))
+      if (!groups[gi]) return
+      groups[gi].name = el.querySelector('[data-gk="name"]').value
+      groups[gi].type = el.querySelector('[data-gk="type"]').value
+      groups[gi].required = el.querySelector('[data-gk="required"]').checked ? 1 : 0
+      groups[gi].multiSelect = el.querySelector('[data-gk="multiSelect"]').checked ? 1 : 0
+      groups[gi].minSelect = groups[gi].required ? 1 : 0
+      groups[gi].maxSelect = groups[gi].multiSelect ? 5 : 1
+      groups[gi].options = []
+      el.querySelectorAll('.opt-row').forEach((row) => {
+        groups[gi].options.push({
+          name: row.querySelector('[data-k="name"]').value,
+          priceDelta: Number(row.querySelector('[data-k="priceDelta"]').value || 0),
+          pointsDelta: Number(row.querySelector('[data-k="pointsDelta"]').value || 0),
+          isDefault: row.querySelector('[data-k="isDefault"]').checked ? 1 : 0
+        })
+      })
+    })
+  }
+
+  const bindEditor = () => {
+    const root = $('modalBody')
+    root.querySelector('#btnAddGroup')?.addEventListener('click', () => {
+      syncFromDom()
+      groups.push({
+        name: '新规格',
+        type: 'custom',
+        required: 0,
+        multiSelect: 0,
+        options: [{ name: '选项1', priceDelta: 0, pointsDelta: 0, isDefault: 1 }]
+      })
+      $('modalBody').innerHTML = renderBody()
+      bindEditor()
+    })
+    root.querySelectorAll('[data-add-opt]').forEach((b) => {
+      b.onclick = () => {
+        syncFromDom()
+        const gi = Number(b.getAttribute('data-add-opt'))
+        groups[gi].options = groups[gi].options || []
+        groups[gi].options.push({ name: '', priceDelta: 0, pointsDelta: 0, isDefault: 0 })
+        $('modalBody').innerHTML = renderBody()
+        bindEditor()
+      }
+    })
+    root.querySelectorAll('[data-del-opt]').forEach((b) => {
+      b.onclick = () => {
+        syncFromDom()
+        const [gi, oi] = b.getAttribute('data-del-opt').split(':').map(Number)
+        groups[gi].options.splice(oi, 1)
+        $('modalBody').innerHTML = renderBody()
+        bindEditor()
+      }
+    })
+    root.querySelectorAll('[data-del-group]').forEach((b) => {
+      b.onclick = () => {
+        syncFromDom()
+        groups.splice(Number(b.getAttribute('data-del-group')), 1)
+        $('modalBody').innerHTML = renderBody()
+        bindEditor()
+      }
+    })
+  }
+
+  openModal(
+    `规格 · ${goodsName || goodsId}`,
+    renderBody(),
+    async () => {
+      syncFromDom()
+      await api(`/admin/goods/stall/${goodsId}/options`, {
+        method: 'PUT',
+        body: JSON.stringify({ groups })
+      })
+      if (reload) reload()
+    },
+    true
+  )
+  bindEditor()
 }
 
 function editGoods(type, g, reload) {
@@ -1647,21 +1843,109 @@ async function renderNeeds() {
 }
 
 async function renderReferrals() {
-  content().innerHTML = `<div class="toolbar"><button class="btn" id="btnReload">刷新</button></div><div id="list"></div>`
+  content().innerHTML = `<div class="toolbar"><button class="btn" id="btnReload">刷新</button>
+    <button class="btn" id="btnRules">去配置奖励</button></div><div id="list"></div>`
   const load = async () => {
     const rows = await api('/admin/referrals')
     $('list').innerHTML = table(
-      ['ID', '邀请人', '被邀请', '触发', '奖励积分', '时间'],
+      ['ID', '邀请人', '被邀请', '触发点', '奖励积分', '时间'],
       rows
         .map(
           (r) => `<tr>
         <td>${r.id}</td>
         <td>${esc(r.inviterName)} <code>${esc(r.inviterCode)}</code></td>
-        <td>${esc(r.inviteeName)} <code>${esc(r.inviteeCode)}</code></td>
-        <td>${esc(r.triggerType)}</td><td>${r.rewardPoints}</td><td>${fmtTime(r.createdAt)}</td></tr>`
+        <td>${esc(r.inviteeName || r.inviteeMerchantName || '—')} <code>${esc(r.inviteeCode || '')}</code></td>
+        <td>${esc(r.triggerName || r.triggerType)}</td><td>${r.rewardPoints}</td><td>${fmtTime(r.createdAt)}</td></tr>`
         )
         .join('')
     )
+  }
+  $('btnRules').onclick = () => go('referral_triggers')
+  $('btnReload').onclick = load
+  await load()
+}
+
+async function renderReferralTriggers() {
+  const editable = canEdit('referral_triggers') || canEdit('configs') || isSuper()
+  content().innerHTML = `
+    <p class="muted">每个登录用户默认是推广员。奖励只发给直接邀请人（单级）。此处开关与积分即时生效。</p>
+    <div class="toolbar" style="flex-wrap:wrap;gap:12px;align-items:flex-end">
+      <label style="margin:0">总开关
+        <select id="refEnabled" ${editable ? '' : 'disabled'}>
+          <option value="1">开启</option>
+          <option value="0">关闭</option>
+        </select>
+      </label>
+      <label style="margin:0">每人每日发奖上限（0=不限）
+        <input id="refCap" type="number" min="0" style="width:120px;margin:4px 0 0" ${editable ? '' : 'disabled'} />
+      </label>
+      ${editable ? '<button class="btn primary" id="btnSaveGlobal">保存全局</button>' : ''}
+      <button class="btn" id="btnReload">刷新</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const data = await api('/admin/referral-triggers')
+    $('refEnabled').value = String(data.enabled ? 1 : 0)
+    $('refCap').value = data.dailyCap != null ? data.dailyCap : 10
+    const rows = data.triggers || []
+    $('list').innerHTML = table(
+      ['触发点', '说明', '启用', '奖励积分', '可叠加', '每日上限', '操作'],
+      rows
+        .map(
+          (t) => `<tr data-key="${esc(t.triggerKey)}">
+        <td><code>${esc(t.triggerKey)}</code><br/><strong>${esc(t.name)}</strong></td>
+        <td class="muted">${esc(t.remark || '')}</td>
+        <td>${Number(t.enabled) ? '启用' : '停用'}</td>
+        <td>${t.rewardPoints}</td>
+        <td>${Number(t.stackable) ? '是' : '否'}</td>
+        <td>${t.dailyLimit || 0}</td>
+        <td>${editable ? `<button class="btn sm" data-edit="${esc(t.triggerKey)}">编辑</button>` : ''}</td>
+      </tr>`
+        )
+        .join('')
+    )
+    $('list').querySelectorAll('[data-edit]').forEach((b) => {
+      b.onclick = () => {
+        const t = rows.find((x) => x.triggerKey === b.dataset.edit)
+        if (!t) return
+        openModal(
+          `配置 ${t.name}`,
+          field('name', '名称', t.name) +
+            field('enabled', '启用(1/0)', t.enabled ? 1 : 0, 'number') +
+            field('rewardPoints', '奖励积分', t.rewardPoints, 'number') +
+            field('stackable', '可叠加(1/0)', t.stackable ? 1 : 0, 'number') +
+            field('dailyLimit', '每人每日上限(0不限)', t.dailyLimit || 0, 'number') +
+            field('remark', '说明', t.remark || ''),
+          async () => {
+            await api(`/admin/referral-triggers/${encodeURIComponent(t.triggerKey)}`, {
+              method: 'PUT',
+              body: JSON.stringify({
+                name: formVal('name'),
+                enabled: Number(formVal('enabled')) === 1,
+                rewardPoints: Number(formVal('rewardPoints')),
+                stackable: Number(formVal('stackable')) === 1,
+                dailyLimit: Number(formVal('dailyLimit')),
+                remark: formVal('remark'),
+                sortOrder: t.sortOrder
+              })
+            })
+            load()
+          }
+        )
+      }
+    })
+  }
+  if ($('btnSaveGlobal')) {
+    $('btnSaveGlobal').onclick = async () => {
+      await api('/admin/referral-triggers', {
+        method: 'PUT',
+        body: JSON.stringify({
+          enabled: Number($('refEnabled').value) === 1,
+          dailyCap: Number($('refCap').value)
+        })
+      })
+      await load()
+    }
   }
   $('btnReload').onclick = load
   await load()

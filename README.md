@@ -103,7 +103,7 @@ npm start
 ## 微信云托管部署
 
 1. 控制台创建环境 → 开通 **MySQL**  
-2. 在 MySQL 中执行 `sql/01_schema.sql`、存量库再执行 `sql/03_patch.sql`、最后 `sql/02_seed.sql`（含闭环演示订单/流水）  
+2. 在 MySQL 中执行 `sql/01_schema.sql`、存量库再执行 `sql/03_patch.sql`、最后 `sql/02_seed.sql`（含闭环演示订单/流水）；地摊点餐规格（口味/分量/配料）执行 `sql/08_stall_options.sql`
 3. 创建服务，选择「通过 Dockerfile 部署」，上传本目录或关联本 Git 仓库  
 4. **构建目录填 `backend`**（若仓库是 monorepo 根）；若仓库根就是 backend 则填 `.`  
 5. 服务环境变量（**必填，否则会连 127.0.0.1:3306 报 ECONNREFUSED**）：  

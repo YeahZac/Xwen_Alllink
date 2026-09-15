@@ -13,6 +13,9 @@ const storageService = require('../services/storageService')
 const opsService = require('../services/opsService')
 const merchantPortalService = require('../services/merchantPortalService')
 const { getCashRate, pointsToCash } = require('../services/configService')
+const cityService = require('../services/cityService')
+const feeService = require('../services/feeService')
+const referralService = require('../services/referralService')
 
 const router = express.Router()
 const adminOnly = [authRequired, requireRoles('admin')]
@@ -247,6 +250,26 @@ router.post('/admin/goods/stall', ...adminOnly, async (req, res, next) => {
   }
 })
 
+router.get('/admin/goods/stall/:id/options', ...adminOnly, async (req, res, next) => {
+  try {
+    const stallOptionsService = require('../services/stallOptionsService')
+    res.json(ok(await stallOptionsService.getGoodsOptionGroups(Number(req.params.id))))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.put('/admin/goods/stall/:id/options', ...adminOnly, async (req, res, next) => {
+  try {
+    const stallOptionsService = require('../services/stallOptionsService')
+    res.json(
+      ok(await stallOptionsService.saveGoodsOptionGroups(Number(req.params.id), req.body.groups || []))
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.get('/admin/goods/cross', ...adminOnly, async (req, res, next) => {
   try {
     res.json(ok(await adminService.listCrossGoods(req.query)))
@@ -448,6 +471,37 @@ router.patch('/admin/supply-needs/:id', ...adminOnly, async (req, res, next) => 
 router.get('/admin/referrals', ...adminOnly, async (req, res, next) => {
   try {
     res.json(ok(await adminService.listReferrals(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/referral-triggers', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await referralService.getSettings()))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.put('/admin/referral-triggers', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await referralService.saveSettings(req.body || {})))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.put('/admin/referral-triggers/:key', ...adminOnly, async (req, res, next) => {
+  try {
+    res.json(
+      ok(
+        await referralService.saveTrigger({
+          ...(req.body || {}),
+          triggerKey: req.params.key
+        })
+      )
+    )
   } catch (e) {
     next(e)
   }
@@ -804,6 +858,14 @@ router.get('/config/cash-rate', async (_req, res, next) => {
   }
 })
 
+router.get('/cities', async (_req, res, next) => {
+  try {
+    res.json(ok(await cityService.listOpenCities()))
+  } catch (e) {
+    next(e)
+  }
+})
+
 // ---------- Consumer orders / points ----------
 router.post(
   '/orders/stall/pay',
@@ -932,6 +994,48 @@ router.get(
   }
 )
 
+router.post(
+  '/merchant/orders/:id/complete',
+  authRequired,
+  requireRoles('stall'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(await merchantPortalService.completeStallOrder(req.auth.merchantId, req.params.id))
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/merchant/profile/status',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      const open = req.body.open === 1 || req.body.open === true || req.body.open === '1'
+      res.json(ok(await merchantPortalService.setMerchantOpen(req.auth.merchantId, open)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get(
+  '/merchant/fees/status',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await feeService.merchantFeeStatus(req.auth.merchantId)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
 router.get(
   '/merchant/goods',
   authRequired,
@@ -952,6 +1056,42 @@ router.post(
   async (req, res, next) => {
     try {
       res.json(ok(await merchantPortalService.saveGoods(req.auth.merchantId, req.auth.role, req.body)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get(
+  '/merchant/goods/:id/options',
+  authRequired,
+  requireRoles('stall'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(await merchantPortalService.getMerchantGoodsOptions(req.auth.merchantId, req.params.id))
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.put(
+  '/merchant/goods/:id/options',
+  authRequired,
+  requireRoles('stall'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await merchantPortalService.saveMerchantGoodsOptions(
+            req.auth.merchantId,
+            req.params.id,
+            req.body.groups || []
+          )
+        )
+      )
     } catch (e) {
       next(e)
     }
@@ -984,6 +1124,41 @@ router.get(
   }
 )
 
+router.get(
+  '/merchant/supply-needs',
+  authRequired,
+  requireRoles('supply'),
+  async (_req, res, next) => {
+    try {
+      res.json(ok(await adminService.listSupplyNeeds({ limit: 100 })))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/merchant/supply-needs/:id/quote',
+  authRequired,
+  requireRoles('supply'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await catalogService.quoteSupplyNeed(Number(req.params.id), {
+            merchantId: req.auth.merchantId,
+            status: req.body.status,
+            quotePrice: req.body.quotePrice,
+            quoteNote: req.body.quoteNote
+          })
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
 router.post('/admin/points-pool/grant', ...adminOnly, async (req, res, next) => {
   try {
     res.json(
@@ -1008,6 +1183,19 @@ router.get(
   async (req, res, next) => {
     try {
       res.json(ok(await orderService.getMerchantAccounts(req.auth.merchantId)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get(
+  '/merchant/withdraws',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await orderService.listMerchantWithdraws(req.auth.merchantId)))
     } catch (e) {
       next(e)
     }
@@ -1075,20 +1263,62 @@ router.post(
   }
 )
 
-// ---------- Referral / complaints / needs ----------
-const referralService = require('../services/referralService')
+router.post(
+  '/merchant/purchase/:id/cancel',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await orderService.cancelPurchaseOrder({
+            merchantId: req.auth.merchantId,
+            orderId: Number(req.params.id),
+            reason: req.body.reason,
+            role: req.auth.role
+          })
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
 
-router.post('/referral/bind', authRequired, requireRoles('consumer'), async (req, res, next) => {
+// ---------- Referral / complaints / needs ----------
+const promoterRoles = ['consumer', 'stall', 'cross', 'supply']
+
+router.post('/referral/bind', authRequired, requireRoles(...promoterRoles), async (req, res, next) => {
   try {
-    res.json(ok(await referralService.bindReferrer({ userId: req.auth.userId, inviteCode: req.body.code })))
+    const userId = req.auth.userId
+    if (!userId) throw new HttpError(400, '当前账号未绑定推广身份')
+    res.json(ok(await referralService.bindReferrer({ userId, inviteCode: req.body.code })))
   } catch (e) {
     next(e)
   }
 })
 
-router.get('/referral/mine', authRequired, requireRoles('consumer'), async (req, res, next) => {
+router.get('/referral/mine', authRequired, requireRoles(...promoterRoles), async (req, res, next) => {
   try {
-    res.json(ok(await referralService.listMyReferrals(req.auth.userId)))
+    const userId = req.auth.userId
+    if (!userId) throw new HttpError(400, '当前账号未绑定推广身份')
+    res.json(ok(await referralService.listMyReferrals(userId)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/referral/home', authRequired, requireRoles(...promoterRoles), async (req, res, next) => {
+  try {
+    const userId = req.auth.userId
+    if (!userId) throw new HttpError(400, '当前账号未绑定推广身份')
+    res.json(
+      ok(
+        await referralService.getHome(userId, {
+          merchantId: req.auth.merchantId || null
+        })
+      )
+    )
   } catch (e) {
     next(e)
   }
@@ -1111,12 +1341,20 @@ router.post('/complaints', authRequired, async (req, res, next) => {
   }
 })
 
-router.post('/supply-needs', async (req, res, next) => {
+router.get('/supply-needs/mine', authRequired, requireRoles('consumer'), async (req, res, next) => {
+  try {
+    res.json(ok(await catalogService.listMySupplyNeeds(req.auth.userId)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/supply-needs', authRequired, requireRoles('consumer'), async (req, res, next) => {
   try {
     res.json(
       ok(
         await catalogService.submitSupplyNeed({
-          userId: req.auth?.userId || null,
+          userId: req.auth.userId,
           goodsName: req.body.goodsName,
           qtyText: req.body.qtyText,
           expectTime: req.body.expectTime,

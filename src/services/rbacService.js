@@ -9,6 +9,16 @@ function hashPassword(password, salt = DEFAULT_SALT) {
   return crypto.createHash('sha256').update(String(salt) + String(password)).digest('hex')
 }
 
+function isSuperAdmin(auth) {
+  if (!auth || auth.role !== 'admin') return false
+  if (auth.roleCode === 'super_admin') return true
+  if (Number(auth.roleId) === 1) return true
+  if (auth.adminId === 0) return true
+  if (String(auth.username || '') === 'admin') return true
+  if (auth.roleId == null || auth.roleId === '') return true
+  return false
+}
+
 function verifyPassword(password, salt, passwordHash) {
   return hashPassword(password, salt) === passwordHash
 }
@@ -285,7 +295,7 @@ async function saveAccount(body) {
 }
 
 async function getMyPermissions(auth) {
-  if (auth.roleCode === 'super_admin' || auth.roleId === 1 || auth.adminId === 0) {
+  if (isSuperAdmin(auth)) {
     const catalog = await listPermissionCatalog()
     const permissions = {}
     catalog.forEach((p) => {
@@ -300,15 +310,9 @@ async function getMyPermissions(auth) {
   }
 }
 
-function assertPageAccess(auth, pageKey, needEdit = false) {
-  // bootstrap / super
-  if (auth.roleCode === 'super_admin' || auth.roleId === 1 || auth.adminId === 0) return
-  // permissions may be loaded later; for route middleware we query DB
-}
-
 async function ensurePageAccess(auth, pageKey, needEdit = false) {
   if (!auth || auth.role !== 'admin') throw new HttpError(403, '无权限')
-  if (auth.roleCode === 'super_admin' || auth.roleId === 1 || auth.adminId === 0) return true
+  if (isSuperAdmin(auth)) return true
   if (!auth.roleId) throw new HttpError(403, '无权限访问')
   const rows = await query(
     `SELECT can_view, can_edit FROM admin_role_permissions
@@ -322,6 +326,7 @@ async function ensurePageAccess(auth, pageKey, needEdit = false) {
 
 module.exports = {
   hashPassword,
+  isSuperAdmin,
   listPermissionCatalog,
   getRolePermissions,
   permissionsMapForRole,

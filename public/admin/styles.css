@@ -351,3 +351,30 @@ img.thumb.lg {
 .media-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .media-actions label.btn { margin: 0; cursor: pointer; }
 .media-tip { font-size: 12px; }
+
+.opt-group {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: #fafbfc;
+}
+.opt-group__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.opt-group__head input,
+.opt-group__head select { max-width: 140px; }
+.opt-row {
+  display: grid;
+  grid-template-columns: 1.4fr 90px 90px auto auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.chk { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; white-space: nowrap; }
+.btn.danger { color: #9b1530; border-color: #f0c8d0; }
+.muted { color: #6b7280; font-size: 13px; }

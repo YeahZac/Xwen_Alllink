@@ -3,120 +3,173 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>万业互联云 · 数据指挥大屏</title>
+  <title>万业互联云 · 夜市指挥大屏</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700;800&family=Noto+Sans+SC:wght@400;500;700&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="./screen.css" />
 </head>
 <body>
-  <div class="fx-grid" aria-hidden="true"></div>
-  <div class="fx-scan" aria-hidden="true"></div>
+  <div class="fx-lanterns" aria-hidden="true"></div>
+  <div class="fx-grain" aria-hidden="true"></div>
 
   <div class="screen">
     <header class="screen-head">
-      <div class="head-deco left"></div>
-      <div class="head-center">
-        <p class="brand">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2l3 7h7l-5.5 4.5L18 21l-6-4-6 4 1.5-7.5L2 9h7z"/></svg>
-          万业互联云 · COMMAND CENTER
-        </p>
-        <h1>运营数据指挥大屏</h1>
+      <div class="head-left">
+        <div class="seal" aria-hidden="true">万</div>
+        <div>
+          <p class="brand">万业互联云 · 夜市指挥</p>
+          <p class="brand-sub">供货 · 地摊 · 积分 · 异业</p>
+        </div>
       </div>
+      <nav class="page-tabs" id="pageTabs" role="tablist">
+        <button type="button" class="tab on" data-page="ops" role="tab" aria-selected="true">夜市指挥</button>
+        <button type="button" class="tab" data-page="flow" role="tab" aria-selected="false">货脉流向</button>
+        <button type="button" class="tab" data-page="points" role="tab" aria-selected="false">积分异业</button>
+      </nav>
       <div class="head-right">
-        <div class="live-pill"><span class="pulse"></span> LIVE</div>
+        <div class="live-pill"><span class="pulse"></span> 夜市在线</div>
         <span id="clock"></span>
-        <a class="back" href="./">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-          运营台
-        </a>
+        <a class="back" href="./">返回运营台</a>
       </div>
-      <div class="head-deco right"></div>
     </header>
 
-    <section class="kpi-row" id="kpis"></section>
+    <div class="ticker" aria-label="实时成交">
+      <span class="ticker-tag">实时</span>
+      <div class="ticker-mask"><div class="ticker-track" id="ticker"></div></div>
+    </div>
 
-    <section class="main-grid">
-      <aside class="col left">
-        <div class="panel">
-          <div class="panel-hd">
-            <span class="ico">
-              <svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15v4M12 11v8M16 7v12"/></svg>
-            </span>
-            <h3>近 7 日访问趋势</h3>
+    <!-- 1 夜市指挥 -->
+    <section class="board on" id="board-ops" data-page="ops">
+      <div class="kpi-row" id="kpisOps"></div>
+      <div class="main-grid">
+        <aside class="col left">
+          <div class="panel">
+            <div class="panel-hd"><span class="ico lantern"></span><h3>24 小时夜市脉搏</h3></div>
+            <canvas id="hourlyOps" height="168"></canvas>
           </div>
-          <canvas id="trend" width="560" height="200"></canvas>
-        </div>
-        <div class="panel">
-          <div class="panel-hd">
-            <span class="ico">
-              <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>
-            </span>
-            <h3>角色构成</h3>
+          <div class="panel">
+            <div class="panel-hd"><span class="ico coin"></span><h3>交易结构</h3></div>
+            <div id="gmvMix" class="gmv-mix"></div>
           </div>
-          <div id="roleMix" class="bars"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-hd">
-            <span class="ico">
-              <svg viewBox="0 0 24 24"><path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4z"/></svg>
-            </span>
-            <h3>交易结构</h3>
+          <div class="panel">
+            <div class="panel-hd"><span class="ico people"></span><h3>角色构成</h3></div>
+            <div id="roleMix" class="bars"></div>
           </div>
-          <div id="gmvMix" class="gmv-mix"></div>
-        </div>
-      </aside>
-
-      <section class="col center">
-        <div class="panel map-panel">
-          <div class="panel-hd">
-            <span class="ico">
-              <svg viewBox="0 0 24 24"><path d="M12 22s7-6.2 7-12a7 7 0 10-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>
-            </span>
-            <h3>位置热点地图</h3>
-            <div class="map-filters" id="mapFilters">
-              <button type="button" class="chip on" data-role="all">全部</button>
-              <button type="button" class="chip stall" data-role="stall">地摊</button>
-              <button type="button" class="chip cross" data-role="cross">异业</button>
-              <button type="button" class="chip supply" data-role="supply">供应链</button>
+        </aside>
+        <section class="col center">
+          <div class="panel map-panel">
+            <div class="panel-hd">
+              <span class="ico pin"></span>
+              <h3>夜市点位 · 赣北走廊</h3>
+              <div class="map-filters" id="mapFiltersOps">
+                <button type="button" class="chip on" data-role="all">全部</button>
+                <button type="button" class="chip stall" data-role="stall">地摊</button>
+                <button type="button" class="chip cross" data-role="cross">异业</button>
+                <button type="button" class="chip supply" data-role="supply">仓网</button>
+              </div>
             </div>
+            <div id="mapOps" class="leaflet-host"></div>
+            <div class="map-stat" id="mapStatOps"></div>
           </div>
-          <div id="leafletMap" class="leaflet-host"></div>
-          <div class="map-stat" id="mapStat"></div>
-        </div>
-      </section>
+        </section>
+        <aside class="col right">
+          <div class="panel">
+            <div class="panel-hd"><span class="ico city"></span><h3>热门城市</h3></div>
+            <div id="cities" class="bars"></div>
+          </div>
+          <div class="panel grow">
+            <div class="panel-hd"><span class="ico bag"></span><h3>热销档口</h3></div>
+            <div id="goodsOps" class="rank-list"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
 
-      <aside class="col right">
-        <div class="panel">
-          <div class="panel-hd">
-            <span class="ico">
-              <svg viewBox="0 0 24 24"><path d="M12 21s7-5.5 7-11a7 7 0 10-14 0c0 5.5 7 11 7 11z"/></svg>
-            </span>
-            <h3>热门城市</h3>
+    <!-- 2 货脉流向 -->
+    <section class="board" id="board-flow" data-page="flow">
+      <div class="kpi-row" id="kpisFlow"></div>
+      <div class="main-grid">
+        <aside class="col left">
+          <div class="panel grow">
+            <div class="panel-hd"><span class="ico truck"></span><h3>仓 → 摊 货脉</h3></div>
+            <div id="cargoList" class="route-list"></div>
           </div>
-          <div id="cities" class="bars"></div>
-        </div>
-        <div class="panel grow">
-          <div class="panel-hd">
-            <span class="ico">
-              <svg viewBox="0 0 24 24"><path d="M4 7h16v12H4z"/><path d="M8 7V5h8v2M9 11h6"/></svg>
-            </span>
-            <h3>热销商品 TOP</h3>
+          <div class="panel">
+            <div class="panel-hd"><span class="ico split"></span><h3>履约方式</h3></div>
+            <div id="fulfill" class="gmv-mix"></div>
           </div>
-          <div id="goods" class="rank-list"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-hd">
-            <span class="ico">
-              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-            </span>
-            <h3>热点门店雷达</h3>
+        </aside>
+        <section class="col center">
+          <div class="panel map-panel">
+            <div class="panel-hd">
+              <span class="ico pin"></span>
+              <h3>灯笼线 · 供货弧</h3>
+              <p class="hint">仓网出发，落在夜市档口</p>
+            </div>
+            <div id="mapFlow" class="leaflet-host"></div>
+            <div class="map-stat" id="mapStatFlow"></div>
           </div>
-          <div id="hotStores" class="hot-stores"></div>
-        </div>
-      </aside>
+        </section>
+        <aside class="col right">
+          <div class="panel">
+            <div class="panel-hd"><span class="ico warehouse"></span><h3>仓网点</h3></div>
+            <div id="warehouses" class="hot-stores"></div>
+          </div>
+          <div class="panel grow">
+            <div class="panel-hd"><span class="ico bag"></span><h3>进货热 SKU</h3></div>
+            <div id="goodsFlow" class="rank-list"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 3 积分异业 -->
+    <section class="board" id="board-points" data-page="points">
+      <div class="kpi-row" id="kpisPoints"></div>
+      <div class="main-grid">
+        <aside class="col left">
+          <div class="panel">
+            <div class="panel-hd"><span class="ico coin"></span><h3>积分健康</h3></div>
+            <div id="pointsHealth" class="gmv-mix"></div>
+            <p class="foot-note" id="pointsNote"></p>
+          </div>
+          <div class="panel">
+            <div class="panel-hd"><span class="ico lantern"></span><h3>兑换时段</h3></div>
+            <canvas id="hourlyPoints" height="168"></canvas>
+          </div>
+          <div class="panel">
+            <div class="panel-hd"><span class="ico warn"></span><h3>池子纪律</h3></div>
+            <ul class="discipline" id="discipline"></ul>
+          </div>
+        </aside>
+        <section class="col center">
+          <div class="panel map-panel">
+            <div class="panel-hd">
+              <span class="ico pin"></span>
+              <h3>积分去向 · 异业核销热力</h3>
+              <p class="hint">摊位发分，门店收分</p>
+            </div>
+            <div id="mapPoints" class="leaflet-host"></div>
+            <div class="map-stat" id="mapStatPoints"></div>
+          </div>
+        </section>
+        <aside class="col right">
+          <div class="panel grow">
+            <div class="panel-hd"><span class="ico shop"></span><h3>异业核销雷达</h3></div>
+            <div id="crossRadar" class="hot-stores"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-hd"><span class="ico bag"></span><h3>兑换热品</h3></div>
+            <div id="goodsPoints" class="rank-list"></div>
+          </div>
+        </aside>
+      </div>
     </section>
 
     <footer class="screen-foot">
-      <span>数据每 60 秒自动刷新</span>
+      <span>键 1 / 2 / 3 切页 · 约 50 秒轮播 · 地图可拖动标注</span>
       <span id="updatedAt">—</span>
     </footer>
   </div>

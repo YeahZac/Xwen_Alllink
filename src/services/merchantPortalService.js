@@ -1,6 +1,9 @@
 const { query } = require('../utils/db')
 const { HttpError } = require('../utils/response')
 const adminService = require('./adminService')
+const orderService = require('./orderService')
+const stallOptionsService = require('./stallOptionsService')
+const feeService = require('./feeService')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链' }
 
@@ -24,15 +27,23 @@ async function dashboard(merchantId, role) {
   let monthOrders = 0
   let monthAmount = 0
   let goodsCount = 0
+  let todayPointsAllocated = 0
+  let monthPointsAllocated = 0
+  let todayPointsOrders = 0
+  let todayCashOrders = 0
 
   if (role === 'stall') {
     const [t] = await query(
-      `SELECT COUNT(*) c, IFNULL(SUM(total_amount),0) a FROM consumer_orders
+      `SELECT COUNT(*) c, IFNULL(SUM(total_amount),0) a,
+              IFNULL(SUM(CASE WHEN order_status='completed' THEN points_allocated ELSE 0 END),0) p
+       FROM consumer_orders
        WHERE merchant_id=:id AND pay_status='paid' AND DATE(created_at)=CURDATE()`,
       { id: mid }
     )
     const [m] = await query(
-      `SELECT COUNT(*) c, IFNULL(SUM(total_amount),0) a FROM consumer_orders
+      `SELECT COUNT(*) c, IFNULL(SUM(total_amount),0) a,
+              IFNULL(SUM(CASE WHEN order_status='completed' THEN points_allocated ELSE 0 END),0) p
+       FROM consumer_orders
        WHERE merchant_id=:id AND pay_status='paid' AND created_at>=DATE_FORMAT(NOW(),'%Y-%m-01')`,
       { id: mid }
     )
@@ -40,6 +51,8 @@ async function dashboard(merchantId, role) {
     todayAmount = Number(t.a)
     monthOrders = Number(m.c)
     monthAmount = Number(m.a)
+    todayPointsAllocated = Number(t.p) || 0
+    monthPointsAllocated = Number(m.p) || 0
     const [g] = await query(
       `SELECT COUNT(*) c FROM stall_goods WHERE merchant_id=:id AND deleted_at IS NULL`,
       { id: mid }
@@ -47,12 +60,17 @@ async function dashboard(merchantId, role) {
     goodsCount = Number(g.c)
   } else if (role === 'cross') {
     const [t] = await query(
-      `SELECT COUNT(*) c, IFNULL(SUM(cash_amount),0) a FROM cross_orders
+      `SELECT COUNT(*) c,
+              IFNULL(SUM(cash_amount),0) a,
+              SUM(CASE WHEN pay_mode='points' THEN 1 ELSE 0 END) pts,
+              SUM(CASE WHEN pay_mode='cash' THEN 1 ELSE 0 END) cash
+       FROM cross_orders
        WHERE merchant_id=:id AND DATE(created_at)=CURDATE()`,
       { id: mid }
     )
     const [m] = await query(
-      `SELECT COUNT(*) c, IFNULL(SUM(cash_amount),0) a FROM cross_orders
+      `SELECT COUNT(*) c, IFNULL(SUM(cash_amount),0) a
+       FROM cross_orders
        WHERE merchant_id=:id AND created_at>=DATE_FORMAT(NOW(),'%Y-%m-01')`,
       { id: mid }
     )
@@ -60,6 +78,8 @@ async function dashboard(merchantId, role) {
     todayAmount = Number(t.a)
     monthOrders = Number(m.c)
     monthAmount = Number(m.a)
+    todayPointsOrders = Number(t.pts) || 0
+    todayCashOrders = Number(t.cash) || 0
     const [g] = await query(
       `SELECT COUNT(*) c FROM cross_goods WHERE merchant_id=:id AND deleted_at IS NULL`,
       { id: mid }
@@ -88,10 +108,18 @@ async function dashboard(merchantId, role) {
   }
 
   const merchant = await query(
-    `SELECT id, name, role, cover_url AS coverUrl, city, invite_code AS inviteCode, status
+    `SELECT id, name, role, cover_url AS coverUrl, city, invite_code AS inviteCode, status,
+            service_status AS serviceStatus, trial_end_at AS trialEndAt
      FROM merchants WHERE id=:id`,
     { id: mid }
   )
+
+  let fee = null
+  try {
+    fee = await feeService.merchantFeeStatus(mid)
+  } catch (_) {
+    fee = null
+  }
 
   return {
     merchant: merchant[0] || null,
@@ -101,7 +129,12 @@ async function dashboard(merchantId, role) {
     todayAmount,
     monthOrders,
     monthAmount,
-    goodsCount
+    todayPointsAllocated,
+    monthPointsAllocated,
+    todayPointsOrders,
+    todayCashOrders,
+    goodsCount,
+    fee
   }
 }
 
@@ -109,32 +142,6 @@ async function listOrders(merchantId, role, { type, limit = 50 } = {}) {
   const mid = Number(merchantId)
   const lim = Math.min(Number(limit) || 50, 100)
 
-  if (role === 'stall' || type === 'consumer') {
-    return query(
-      `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount,
-              o.points_allocated AS pointsAllocated, o.pay_status AS payStatus,
-              o.order_status AS status, o.created_at AS time,
-              u.nickname AS userName, 'stall' AS type
-       FROM consumer_orders o
-       JOIN users u ON u.id=o.user_id
-       WHERE o.merchant_id=:id
-       ORDER BY o.id DESC LIMIT ${lim}`,
-      { id: mid }
-    )
-  }
-  if (role === 'cross' || type === 'cross') {
-    return query(
-      `SELECT o.id, o.order_no AS orderNo, o.goods_name AS goodsName, o.pay_mode AS payMode,
-              o.points_spend AS pointsSpend, o.cash_amount AS cashAmount, o.status,
-              o.created_at AS time, u.nickname AS userName, 'cross' AS type
-       FROM cross_orders o
-       JOIN users u ON u.id=o.user_id
-       WHERE o.merchant_id=:id
-       ORDER BY o.id DESC LIMIT ${lim}`,
-      { id: mid }
-    )
-  }
-  // supply / purchase
   if (type === 'buy') {
     return query(
       `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount, o.points_grant AS pointsGrant,
@@ -147,16 +154,74 @@ async function listOrders(merchantId, role, { type, limit = 50 } = {}) {
       { id: mid }
     )
   }
+  if (type === 'sell' || role === 'supply') {
+    return query(
+      `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount, o.points_grant AS pointsGrant,
+              o.fulfill_type AS fulfillType, o.status, o.created_at AS time,
+              b.name AS peerName, 'purchase_sell' AS type
+       FROM purchase_orders o
+       JOIN merchants b ON b.id=o.buyer_merchant_id
+       WHERE o.seller_merchant_id=:id
+       ORDER BY o.id DESC LIMIT ${lim}`,
+      { id: mid }
+    )
+  }
+  if (type === 'cross' || role === 'cross') {
+    return query(
+      `SELECT o.id, o.order_no AS orderNo, o.goods_name AS goodsName, o.pay_mode AS payMode,
+              o.points_spend AS pointsSpend, o.cash_amount AS cashAmount, o.status,
+              o.created_at AS time, u.nickname AS userName, 'cross' AS type
+       FROM cross_orders o
+       JOIN users u ON u.id=o.user_id
+       WHERE o.merchant_id=:id
+       ORDER BY o.id DESC LIMIT ${lim}`,
+      { id: mid }
+    )
+  }
+  // stall consumer / type=consumer
   return query(
-    `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount, o.points_grant AS pointsGrant,
-            o.fulfill_type AS fulfillType, o.status, o.created_at AS time,
-            b.name AS peerName, 'purchase_sell' AS type
-     FROM purchase_orders o
-     JOIN merchants b ON b.id=o.buyer_merchant_id
-     WHERE o.seller_merchant_id=:id
+    `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount,
+            o.points_allocated AS pointsAllocated, o.pay_status AS payStatus,
+            o.order_status AS status, o.created_at AS time,
+            u.nickname AS userName, 'stall' AS type
+     FROM consumer_orders o
+     JOIN users u ON u.id=o.user_id
+     WHERE o.merchant_id=:id
      ORDER BY o.id DESC LIMIT ${lim}`,
     { id: mid }
   )
+}
+
+async function completeStallOrder(merchantId, orderId) {
+  return orderService.completeStallOrder({ merchantId: Number(merchantId), orderId: Number(orderId) })
+}
+
+async function setMerchantOpen(merchantId, open) {
+  const status = open ? 1 : 0
+  const result = await query('UPDATE merchants SET status=:s WHERE id=:id AND deleted_at IS NULL', {
+    s: status,
+    id: Number(merchantId)
+  })
+  if (!result.affectedRows) throw new HttpError(404, '商户不存在')
+  return { merchantId: Number(merchantId), status, open: !!status }
+}
+
+async function getMerchantGoodsOptions(merchantId, goodsId) {
+  const rows = await query(
+    'SELECT id FROM stall_goods WHERE id=:id AND merchant_id=:mid AND deleted_at IS NULL',
+    { id: Number(goodsId), mid: Number(merchantId) }
+  )
+  if (!rows.length) throw new HttpError(404, '商品不存在')
+  return stallOptionsService.getGoodsOptionGroups(Number(goodsId))
+}
+
+async function saveMerchantGoodsOptions(merchantId, goodsId, groups) {
+  const rows = await query(
+    'SELECT id FROM stall_goods WHERE id=:id AND merchant_id=:mid AND deleted_at IS NULL',
+    { id: Number(goodsId), mid: Number(merchantId) }
+  )
+  if (!rows.length) throw new HttpError(404, '商品不存在')
+  return stallOptionsService.saveGoodsOptionGroups(Number(goodsId), groups || [])
 }
 
 async function listGoods(merchantId, role) {
@@ -214,7 +279,10 @@ async function listCustomers(merchantId, role, { limit = 50 } = {}) {
   if (role === 'cross') {
     return query(
       `SELECT u.id, u.nickname AS name, u.avatar_url AS avatarUrl,
-              COUNT(*) AS orders, IFNULL(SUM(o.cash_amount),0) AS spend,
+              COUNT(*) AS orders,
+              IFNULL(SUM(o.cash_amount),0) AS spend,
+              SUM(CASE WHEN o.pay_mode='points' THEN 1 ELSE 0 END) AS pointsOrders,
+              SUM(CASE WHEN o.pay_mode='cash' THEN 1 ELSE 0 END) AS cashOrders,
               MAX(o.created_at) AS last
        FROM cross_orders o
        JOIN users u ON u.id=o.user_id
@@ -242,14 +310,14 @@ async function listFlow(merchantId, { limit = 50 } = {}) {
   const lim = Math.min(Number(limit) || 50, 100)
   const account = await query(
     `SELECT id, account_type AS accountType, change_amount AS amount, title,
-            biz_type AS type, created_at AS time
+            biz_type AS type, created_at AS time, 'cash' AS unit
      FROM merchant_account_ledger WHERE merchant_id=:id
      ORDER BY id DESC LIMIT ${lim}`,
     { id: mid }
   )
   const pool = await query(
     `SELECT id, 'pool' AS accountType, change_amount AS amount, title,
-            biz_type AS type, created_at AS time
+            biz_type AS type, created_at AS time, 'points' AS unit
      FROM merchant_pool_ledger WHERE merchant_id=:id
      ORDER BY id DESC LIMIT ${lim}`,
     { id: mid }
@@ -286,7 +354,6 @@ async function getCrossStoreDetail(id) {
      FROM cross_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
     { id }
   )
-  s.distance = s.city || ''
   return s
 }
 
@@ -294,6 +361,10 @@ module.exports = {
   ROLE_LABEL,
   dashboard,
   listOrders,
+  completeStallOrder,
+  setMerchantOpen,
+  getMerchantGoodsOptions,
+  saveMerchantGoodsOptions,
   listGoods,
   saveGoods,
   listCustomers,

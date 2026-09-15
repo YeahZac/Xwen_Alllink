@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node src/app.js",
     "dev": "NODE_ENV=development COS_MODE=local node src/app.js",
-    "db:init": "node scripts/init-db.js"
+    "db:init": "node scripts/init-db.js",
+    "db:sql": "node scripts/run-sql.js",
+    "db:smoke": "node scripts/smoke-seed.js"
   },
   "engines": {
     "node": ">=18"

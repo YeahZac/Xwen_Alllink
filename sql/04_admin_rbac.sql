@@ -88,16 +88,18 @@ INSERT INTO `admin_role_permissions` (`role_id`, `page_key`, `can_view`, `can_ed
 SELECT 1, p.page_key, 1, 1 FROM `admin_permissions` p
 ON DUPLICATE KEY UPDATE `can_view`=1, `can_edit`=1;
 
--- 默认超级管理员账号 admin / Admin@123
+-- 默认超级管理员账号 admin / 123456
 -- salt=xwen_admin_salt_v1  hash=sha256(salt + password)
 INSERT INTO `admin_accounts`
   (`id`, `username`, `password_hash`, `password_salt`, `display_name`, `role_id`, `status`)
 VALUES
 (1, 'admin',
- '71843258803369413baec8620a0020dac0e84bffa4634e805728b2429ee88c3a',
+ 'b6a192c0d4d4ff4c8d9ced0f7b33d5a6644580696c38088ece51bacb03edfa3e',
  'xwen_admin_salt_v1',
  '超级管理员', 1, 1)
 ON DUPLICATE KEY UPDATE
+  `password_hash`=VALUES(`password_hash`),
+  `password_salt`=VALUES(`password_salt`),
   `display_name`=VALUES(`display_name`),
   `role_id`=1,
   `status`=1;

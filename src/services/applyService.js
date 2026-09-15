@@ -1,6 +1,8 @@
 const { query, withTransaction } = require('../utils/db')
 const { HttpError } = require('../utils/response')
 const { orderNo, shortCode } = require('../utils/id')
+const cityService = require('./cityService')
+const referralService = require('./referralService')
 
 const ROLE_LICENSE_RULES = {
   stall: ['businessLicense', 'foodLicense', 'idCardFront', 'idCardBack'],
@@ -36,10 +38,39 @@ function assertApplyPayload(body) {
   for (const key of ROLE_LICENSE_RULES[role]) {
     if (!licenses[key]) throw new HttpError(400, `请上传必填证照：${key}`)
   }
+  // 异业门店必须标注地图点位（BRD §4.1 第 3 步）
+  if (role === 'cross') {
+    const lat = Number(body.latitude)
+    const lng = Number(body.longitude)
+    if (!(lat >= -90 && lat <= 90) || !(lng >= -180 && lng <= 180)) {
+      throw new HttpError(400, '异业门店请在地图上标注门店点位')
+    }
+  }
+}
+
+/** 推荐码可来自 C 端用户，也可来自已入驻商户的邀请码 */
+async function resolveReferrer(code) {
+  const c = String(code || '').trim()
+  if (!c) return { code: null, userId: null }
+  const users = await query(
+    'SELECT id FROM users WHERE invite_code = :c AND status = 1 LIMIT 1',
+    { c }
+  )
+  if (users.length) return { code: c, userId: Number(users[0].id) }
+  const merchants = await query(
+    'SELECT owner_user_id AS uid FROM merchants WHERE invite_code = :c AND status = 1 LIMIT 1',
+    { c }
+  )
+  if (merchants.length) {
+    return { code: c, userId: merchants[0].uid ? Number(merchants[0].uid) : null }
+  }
+  throw new HttpError(400, '推荐人邀请码无效')
 }
 
 async function submitApply(body) {
   assertApplyPayload(body)
+  await cityService.ensureOpen(body.city)
+  const referrer = await resolveReferrer(body.referrerCode)
   const pending = await query(
     `SELECT id FROM merchant_applications
      WHERE contact_phone = :phone AND status = 'pending' LIMIT 1`,
@@ -52,10 +83,10 @@ async function submitApply(body) {
   await query(
     `INSERT INTO merchant_applications
       (apply_no, role, shop_name, credit_code, legal_person, contact_name, contact_phone,
-       city, address, license_json, status)
+       city, address, license_json, referrer_code, latitude, longitude, status)
      VALUES
       (:applyNo, :role, :shopName, :creditCode, :legalPerson, :contactName, :contactPhone,
-       :city, :address, CAST(:licenseJson AS JSON), 'pending')`,
+       :city, :address, CAST(:licenseJson AS JSON), :referrerCode, :lat, :lng, 'pending')`,
     {
       applyNo,
       role: body.role,
@@ -66,13 +97,17 @@ async function submitApply(body) {
       contactPhone: body.contactPhone,
       city: body.city,
       address: body.address,
-      licenseJson: JSON.stringify(body.licenses || {})
+      licenseJson: JSON.stringify(body.licenses || {}),
+      referrerCode: referrer.code,
+      lat: Number(body.latitude) || null,
+      lng: Number(body.longitude) || null
     }
   )
   return {
     applyNo,
     status: 'pending',
     statusText: '审核中',
+    referrerCode: referrer.code,
     remark: '预计1-3个工作日审核，通过后将通知商户邀请码'
   }
 }
@@ -111,13 +146,47 @@ async function approveApply(applyId, { reviewerId } = {}) {
     const a = rows[0]
     if (a.status !== 'pending') throw new HttpError(400, '申请状态不可审核')
 
+    // 审核通过即开通经营权限，城市必须仍处于开通状态
+    const [city] = await conn.execute(
+      'SELECT status FROM operating_cities WHERE name=? LIMIT 1',
+      [a.city]
+    )
+    if (!city.length || !Number(city[0].status)) {
+      throw new HttpError(400, `经营城市「${a.city}」未开通，请先开城再审核通过`)
+    }
+
+    // 商户级推荐人：入驻时写入的推荐码在此固化为关系（BRD §4.1）
+    let referrerUserId = null
+    if (a.referrer_code) {
+      const [ru] = await conn.execute(
+        'SELECT id FROM users WHERE invite_code=? AND status=1 LIMIT 1',
+        [a.referrer_code]
+      )
+      if (ru.length) referrerUserId = Number(ru[0].id)
+      else {
+        const [rm] = await conn.execute(
+          'SELECT owner_user_id AS uid FROM merchants WHERE invite_code=? LIMIT 1',
+          [a.referrer_code]
+        )
+        if (rm.length && rm[0].uid) referrerUserId = Number(rm[0].uid)
+      }
+    }
+
+    // 体验期按等级档位计算（BRD §4.6.3 ①：入驻后免费体验 1-3 个月）
+    const [lv] = await conn.execute(
+      "SELECT trial_months FROM merchant_levels WHERE code='normal' LIMIT 1"
+    )
+    const trialMonths = lv.length ? Number(lv[0].trial_months) || 1 : 1
+
     const inviteCode = shortCode(a.role === 'stall' ? 'D' : a.role === 'cross' ? 'Y' : 'G')
     const merchantNo = orderNo('M')
     const [ins] = await conn.execute(
       `INSERT INTO merchants
         (merchant_no, role, name, credit_code, legal_person, contact_name, contact_phone,
-         city, address, status, invite_code)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+         city, address, latitude, longitude, status, invite_code,
+         referrer_user_id, level_code, trial_end_at, service_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 'normal',
+               DATE_ADD(CURDATE(), INTERVAL ? MONTH), 'trial')`,
       [
         merchantNo,
         a.role,
@@ -128,7 +197,11 @@ async function approveApply(applyId, { reviewerId } = {}) {
         a.contact_phone,
         a.city,
         a.address,
-        inviteCode
+        a.latitude,
+        a.longitude,
+        inviteCode,
+        referrerUserId,
+        trialMonths
       ]
     )
     const merchantId = ins.insertId
@@ -136,6 +209,27 @@ async function approveApply(applyId, { reviewerId } = {}) {
       `INSERT INTO merchant_points_pool (merchant_id, balance) VALUES (?, 0)`,
       [merchantId]
     )
+
+    // 按联系电话创建/关联经营主体用户，写入 owner_user_id
+    let ownerUserId = 0
+    const [byPhone] = await conn.execute(
+      "SELECT id FROM users WHERE phone=? AND status=1 LIMIT 1",
+      [a.contact_phone]
+    )
+    if (byPhone.length) {
+      ownerUserId = Number(byPhone[0].id)
+    } else {
+      const ownerInvite = `${inviteCode}_U`
+      const [uins] = await conn.execute(
+        `INSERT INTO users (invite_code, nickname, phone, points_balance, status)
+         VALUES (?, ?, ?, 0, 1)`,
+        [ownerInvite, a.contact_name || a.shop_name, a.contact_phone]
+      )
+      ownerUserId = Number(uins.insertId) || 0
+    }
+    if (ownerUserId) {
+      await conn.execute('UPDATE merchants SET owner_user_id=? WHERE id=?', [ownerUserId, merchantId])
+    }
     if (a.role === 'supply') {
       await conn.execute(
         `INSERT INTO merchant_accounts (merchant_id, account_type, balance) VALUES
@@ -155,7 +249,23 @@ async function approveApply(applyId, { reviewerId } = {}) {
        WHERE id=?`,
       [merchantId, reviewerId || null, applyId]
     )
-    return { merchantId, inviteCode, merchantNo }
+
+    // 触发点：商户入驻审核通过（BRD §4.5 第 4 步第 3 项）
+    const rewarded = await referralService.rewardMerchantApproved(conn, {
+      inviterUserId: referrerUserId,
+      merchantId,
+      applyNo: a.apply_no,
+      inviteeUserId: ownerUserId
+    })
+
+    return {
+      merchantId,
+      inviteCode,
+      merchantNo,
+      ownerUserId,
+      referrerUserId,
+      referralReward: rewarded && rewarded.reward ? rewarded.reward : 0
+    }
   })
 }
 
@@ -193,6 +303,9 @@ function mapApplyRow(r) {
     statusText: statusMap[r.status] || r.status,
     rejectReason: r.reject_reason,
     merchantId: r.merchant_id,
+    referrerCode: r.referrer_code || '',
+    latitude: r.latitude == null ? null : Number(r.latitude),
+    longitude: r.longitude == null ? null : Number(r.longitude),
     createdAt: r.created_at,
     reviewedAt: r.reviewed_at
   }
@@ -201,7 +314,8 @@ function mapApplyRow(r) {
 async function listApplies({ status, limit = 50 } = {}) {
   const lim = Math.min(Number(limit) || 50, 200)
   let sql = `SELECT id, apply_no, role, shop_name, credit_code, legal_person, contact_name, contact_phone,
-                    city, address, license_json, status, reject_reason, merchant_id, created_at, reviewed_at
+                    city, address, license_json, referrer_code, latitude, longitude,
+                    status, reject_reason, merchant_id, created_at, reviewed_at
              FROM merchant_applications`
   const params = {}
   if (status && ['pending', 'approved', 'rejected'].includes(status)) {
@@ -216,7 +330,8 @@ async function listApplies({ status, limit = 50 } = {}) {
 async function getApplyDetail(id) {
   const rows = await query(
     `SELECT id, apply_no, role, shop_name, credit_code, legal_person, contact_name, contact_phone,
-            city, address, license_json, status, reject_reason, merchant_id, created_at, reviewed_at
+            city, address, license_json, referrer_code, latitude, longitude,
+                    status, reject_reason, merchant_id, created_at, reviewed_at
      FROM merchant_applications WHERE id=:id`,
     { id }
   )

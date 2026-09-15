@@ -64,7 +64,8 @@ async function getUserPoints(userId) {
 async function listConsumerOrders(userId) {
   const orders = await query(
     `SELECT o.order_no AS id, o.total_amount AS totalPrice, o.points_allocated AS pointsGrant,
-            o.order_status AS status, o.created_at AS time, m.name AS stallName
+            o.points_want AS pointsWant, o.order_status AS status, o.created_at AS time,
+            m.name AS stallName, o.merchant_id AS merchantId
      FROM consumer_orders o
      JOIN merchants m ON m.id = o.merchant_id
      WHERE o.user_id = :uid
@@ -82,7 +83,8 @@ async function listConsumerOrders(userId) {
   }
   const cross = await query(
     `SELECT order_no AS id, points_spend AS pointsSpend, cash_amount AS totalPrice,
-            status, created_at AS time, goods_name,
+            pay_mode AS payMode, status, created_at AS time, goods_name,
+            merchant_id AS merchantId,
             (SELECT name FROM merchants WHERE id = merchant_id) AS storeName
      FROM cross_orders WHERE user_id = :uid ORDER BY id DESC LIMIT 50`,
     { uid: userId }
@@ -130,6 +132,47 @@ async function submitSupplyNeed({ userId, goodsName, qtyText, expectTime, note }
   return { id: r.insertId, status: 'open' }
 }
 
+async function listMySupplyNeeds(userId) {
+  return query(
+    `SELECT id, goods_name AS goodsName, qty_text AS qtyText,
+            expect_time AS expectTime, note, status, created_at AS createdAt,
+            quote_price AS quotePrice, quote_note AS quoteNote, quoted_at AS quotedAt
+     FROM supply_needs
+     WHERE user_id=:userId
+     ORDER BY id DESC LIMIT 50`,
+    { userId: Number(userId) }
+  )
+}
+
+async function quoteSupplyNeed(id, { merchantId, status, quotePrice, quoteNote } = {}) {
+  const { HttpError } = require('../utils/response')
+  const next = status || 'quoted'
+  if (!['quoted', 'closed'].includes(next)) throw new HttpError(400, '状态无效')
+  const rows = await query('SELECT id, status FROM supply_needs WHERE id=:id', { id: Number(id) })
+  if (!rows.length) throw new HttpError(404, '需求不存在')
+  try {
+    await query(
+      `UPDATE supply_needs
+       SET status=:s, quote_price=:p, quote_note=:n, quoted_merchant_id=:mid, quoted_at=NOW()
+       WHERE id=:id`,
+      {
+        s: next,
+        p: quotePrice != null && quotePrice !== '' ? Number(quotePrice) : null,
+        n: quoteNote || null,
+        mid: merchantId ? Number(merchantId) : null,
+        id: Number(id)
+      }
+    )
+  } catch (e) {
+    if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('quote_'))) {
+      await query('UPDATE supply_needs SET status=:s WHERE id=:id', { s: next, id: Number(id) })
+    } else {
+      throw e
+    }
+  }
+  return { id: Number(id), status: next, quotePrice: quotePrice != null ? Number(quotePrice) : null }
+}
+
 module.exports = {
   listBanners,
   listSupplyGoods,
@@ -137,5 +180,7 @@ module.exports = {
   getUserPoints,
   listConsumerOrders,
   submitComplaint,
-  submitSupplyNeed
+  submitSupplyNeed,
+  listMySupplyNeeds,
+  quoteSupplyNeed
 }

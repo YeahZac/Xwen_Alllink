@@ -90,7 +90,8 @@ async function loginByInviteCode(code) {
       userId: u.id,
       name: u.nickname,
       points: u.points_balance,
-      cashValue: pointsToCash(u.points_balance, rate)
+      cashValue: pointsToCash(u.points_balance, rate),
+      inviteCode: u.invite_code
     }
   }
 
@@ -128,7 +129,7 @@ async function loginAsConsumer({ nickname } = {}) {
     points: u.points_balance,
     cashValue: pointsToCash(u.points_balance, rate),
     cashRate: rate,
-    inviteCode: 'C001'
+    inviteCode: u.invite_code || 'C001'
   }
 }
 
@@ -163,7 +164,8 @@ async function getProfile(auth) {
     }
   }
   const rows = await query(
-    `SELECT id, role, name, invite_code, city, address, status, cover_url, contact_name, contact_phone
+    `SELECT id, role, name, invite_code, city, address, status, cover_url, contact_name, contact_phone,
+            owner_user_id
      FROM merchants WHERE id = :id`,
     { id: auth.merchantId }
   )
@@ -176,6 +178,7 @@ async function getProfile(auth) {
   return {
     role: m.role,
     merchantId: m.id,
+    userId: auth.userId || m.owner_user_id || 0,
     name: m.contact_name || m.name,
     shopName: m.name,
     inviteCode: m.invite_code,
@@ -184,7 +187,9 @@ async function getProfile(auth) {
     coverUrl: m.cover_url,
     contactPhone: m.contact_phone,
     poolBalance: pools[0] ? pools[0].balance : 0,
-    cashRate: rate
+    cashRate: rate,
+    status: m.status,
+    open: Number(m.status) === 1
   }
 }
 

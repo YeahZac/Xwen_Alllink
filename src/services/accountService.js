@@ -62,6 +62,33 @@ async function creditAccount(conn, { merchantId, accountType, amount, bizType, b
   return next
 }
 
+/**
+ * 冲正扣减（拒收 / 退款 / 缺货回滚）。
+ * 已结算的货款可能已被提现，冲正后允许出现负余额并如实记账，
+ * 由运营在提现审核环节兜住，不能靠静默不扣来掩盖。
+ */
+async function debitAccount(conn, { merchantId, accountType, amount, bizType, bizId, title }) {
+  const amt = Math.round(Number(amount) * 100) / 100
+  if (!amt || amt <= 0) return null
+  const acc = await getAccount(conn, merchantId, accountType)
+  const next = Math.round((Number(acc.balance) - amt) * 100) / 100
+  await conn.execute(
+    `UPDATE merchant_accounts SET balance=? WHERE merchant_id=? AND account_type=?`,
+    [next, merchantId, accountType]
+  )
+  await writeLedger(conn, {
+    merchantId,
+    accountType,
+    changeAmount: -amt,
+    balanceAfter: next,
+    frozenAfter: Number(acc.frozen),
+    bizType,
+    bizId,
+    title
+  })
+  return next
+}
+
 /** 提现申请：可用余额 → 冻结 */
 async function freezeForWithdraw(conn, { merchantId, accountType, amount, bizId, title }) {
   const amt = Math.round(Number(amount) * 100) / 100
@@ -138,6 +165,7 @@ module.exports = {
   ensureAccount,
   getAccount,
   creditAccount,
+  debitAccount,
   freezeForWithdraw,
   unfreezeWithdraw,
   settleWithdrawPaid

@@ -2,6 +2,7 @@ const { query, withTransaction } = require('../utils/db')
 const { HttpError } = require('../utils/response')
 const orderService = require('./orderService')
 const accountService = require('./accountService')
+const catalogService = require('./catalogService')
 const { getCashRate, pointsToCash, listConfigs, setConfig } = require('./configService')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链' }
@@ -531,7 +532,9 @@ async function updateComplaint(id, { status } = {}) {
 async function listSupplyNeeds({ status, limit = 100 } = {}) {
   const lim = Math.min(Number(limit) || 100, 300)
   let sql = `SELECT id, goods_name AS goodsName, qty_text AS qtyText, expect_time AS expectTime,
-                    note, status, created_at AS createdAt, user_id AS userId
+                    note, status, created_at AS createdAt, user_id AS userId,
+                    quote_price AS quotePrice, quote_note AS quoteNote,
+                    quoted_merchant_id AS quotedMerchantId, quoted_at AS quotedAt
              FROM supply_needs`
   const params = {}
   if (status) {
@@ -539,10 +542,23 @@ async function listSupplyNeeds({ status, limit = 100 } = {}) {
     params.status = status
   }
   sql += ` ORDER BY id DESC LIMIT ${lim}`
-  return query(sql, params)
+  try {
+    return await query(sql, params)
+  } catch (e) {
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('quote_')))) throw e
+    let fallback = `SELECT id, goods_name AS goodsName, qty_text AS qtyText, expect_time AS expectTime,
+                    note, status, created_at AS createdAt, user_id AS userId
+             FROM supply_needs`
+    if (status) fallback += ` WHERE status=:status`
+    fallback += ` ORDER BY id DESC LIMIT ${lim}`
+    return query(fallback, params)
+  }
 }
 
-async function updateSupplyNeed(id, { status } = {}) {
+async function updateSupplyNeed(id, { status, quotePrice, quoteNote, merchantId } = {}) {
+  if (['quoted', 'closed'].includes(status) || quotePrice != null) {
+    return catalogService.quoteSupplyNeed(id, { merchantId, status: status || 'quoted', quotePrice, quoteNote })
+  }
   if (!['open', 'quoted', 'closed'].includes(status)) throw new HttpError(400, '状态无效')
   await query('UPDATE supply_needs SET status=:s WHERE id=:id', { id, s: status })
   return { id: Number(id), status }
@@ -552,11 +568,16 @@ async function listReferrals({ limit = 100 } = {}) {
   const lim = Math.min(Number(limit) || 100, 300)
   return query(
     `SELECT r.id, r.trigger_type AS triggerType, r.reward_points AS rewardPoints, r.created_at AS createdAt,
+            r.biz_id AS bizId,
+            IFNULL(t.name, r.trigger_type) AS triggerName,
             a.nickname AS inviterName, a.invite_code AS inviterCode,
-            b.nickname AS inviteeName, b.invite_code AS inviteeCode
+            b.nickname AS inviteeName, b.invite_code AS inviteeCode,
+            m.name AS inviteeMerchantName
      FROM referral_records r
      LEFT JOIN users a ON a.id=r.inviter_user_id
-     LEFT JOIN users b ON b.id=r.invitee_user_id
+     LEFT JOIN users b ON b.id=r.invitee_user_id AND r.invitee_user_id > 0
+     LEFT JOIN merchants m ON m.id=r.invitee_merchant_id
+     LEFT JOIN referral_triggers t ON t.trigger_key=r.trigger_type
      ORDER BY r.id DESC LIMIT ${lim}`
   )
 }
