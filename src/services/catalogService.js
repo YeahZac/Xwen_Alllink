@@ -13,18 +13,38 @@ const BANNER_IMAGES = {
 }
 const STALE_BANNER = /(consumer-[123]|stall-[12]|cross-[12]|supply-[12]|login-[12])\.png$/i
 
-async function listBanners(role) {
+async function listBanners(role, page) {
   const scope = role || 'consumer'
-  const rows = await query(
-    `SELECT id, role_scope AS role, title, sub_title AS sub, image_url AS image,
-            link_url AS link, link_type AS linkType, sort_order AS sortOrder
-     FROM banners
-     WHERE role_scope = :scope AND status = 1
-       AND (start_at IS NULL OR start_at <= NOW())
-       AND (end_at IS NULL OR end_at >= NOW())
-     ORDER BY sort_order ASC, id ASC`,
-    { scope }
-  )
+  const slot = String(page || '').trim()
+  let rows
+  try {
+    rows = await query(
+      `SELECT id, role_scope AS role, page_key AS pageKey, title, sub_title AS sub, image_url AS image,
+              link_url AS link, link_type AS linkType, sort_order AS sortOrder
+       FROM banners
+       WHERE role_scope = :scope AND status = 1
+         AND (start_at IS NULL OR start_at <= NOW())
+         AND (end_at IS NULL OR end_at >= NOW())
+         AND (:slot = '' OR page_key = :slot OR page_key IS NULL OR page_key = '')
+       ORDER BY sort_order ASC, id ASC`,
+      { scope, slot }
+    )
+    if (slot && rows.some((row) => row.pageKey)) {
+      rows = rows.filter((row) => row.pageKey === slot)
+    }
+  } catch (e) {
+    if (!e || e.code !== 'ER_BAD_FIELD_ERROR') throw e
+    rows = await query(
+      `SELECT id, role_scope AS role, title, sub_title AS sub, image_url AS image,
+              link_url AS link, link_type AS linkType, sort_order AS sortOrder
+       FROM banners
+       WHERE role_scope = :scope AND status = 1
+         AND (start_at IS NULL OR start_at <= NOW())
+         AND (end_at IS NULL OR end_at >= NOW())
+       ORDER BY sort_order ASC, id ASC`,
+      { scope }
+    )
+  }
   const pack = BANNER_IMAGES[scope] || BANNER_IMAGES.consumer
   return rows.map((row, i) => {
     const image = String(row.image || '').trim()

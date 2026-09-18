@@ -793,7 +793,7 @@ router.post('/track/visit', async (req, res, next) => {
 // ---------- Banners ----------
 router.get('/banners', async (req, res, next) => {
   try {
-    res.json(ok(await catalogService.listBanners(req.query.role || 'consumer')))
+    res.json(ok(await catalogService.listBanners(req.query.role || 'consumer', req.query.page || '')))
   } catch (e) {
     next(e)
   }

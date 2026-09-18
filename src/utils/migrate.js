@@ -87,6 +87,11 @@ async function ensureSchema() {
       'users',
       'gender',
       "`gender` TINYINT NOT NULL DEFAULT 0 COMMENT '0不展示 1男 2女' AFTER `phone`"
+    ),
+    addColumn(
+      'banners',
+      'page_key',
+      "`page_key` VARCHAR(32) DEFAULT NULL COMMENT 'C端页面 index/cross/points/mine' AFTER `role_scope`"
     )
   ]
   for (const job of jobs) {
