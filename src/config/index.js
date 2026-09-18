@@ -35,7 +35,11 @@ const db = {
   waitForConnections: true,
   connectionLimit: 10,
   namedPlaceholders: true,
-  connectTimeout: 15000
+  connectTimeout: 15000,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 10000,
+  maxIdle: 2,
+  idleTimeout: 20000
 }
 
 if (require.main === module || process.env.LOG_DB_TARGET === '1') {
