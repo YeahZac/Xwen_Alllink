@@ -1,17 +1,18 @@
 const { query } = require('../utils/db')
 
+const BANNER_HOST = 'https://7072-prod-d3g1vkrj3290d085e-1467541248.tcb.qcloud.la/admin/banner/20260918'
 const BANNER_IMAGES = {
   consumer: [
-    '/assets/banners/consumer-scan.jpg',
-    '/assets/banners/consumer-points.jpg',
-    '/assets/banners/consumer-market.jpg'
+    `${BANNER_HOST}/8e81329f825d6afd.webp`,
+    `${BANNER_HOST}/e71d33452d517e39.webp`,
+    `${BANNER_HOST}/ee3b164869f21c57.webp`
   ],
-  stall: ['/assets/banners/stall-purchase.jpg'],
-  cross: ['/assets/banners/cross-redeem.jpg'],
-  supply: ['/assets/banners/supply-warehouse.jpg'],
-  login: ['/assets/banners/login-join.jpg']
+  stall: [`${BANNER_HOST}/1ef8e0176023fed0.webp`],
+  cross: [`${BANNER_HOST}/2b04f7adc3fccb07.webp`],
+  supply: [`${BANNER_HOST}/4fab0609b9f304b3.webp`],
+  login: [`${BANNER_HOST}/7f54551761013628.webp`]
 }
-const STALE_BANNER = /(consumer-[123]|stall-[12]|cross-[12]|supply-[12]|login-[12])\.png$/i
+const LOCAL_BANNER = /\/assets\/banners\/|(consumer-[123]|stall-[12]|cross-[12]|supply-[12]|login-[12])\.png$/i
 
 async function listBanners(role, page) {
   const scope = role || 'consumer'
@@ -48,7 +49,7 @@ async function listBanners(role, page) {
   const pack = BANNER_IMAGES[scope] || BANNER_IMAGES.consumer
   return rows.map((row, i) => {
     const image = String(row.image || '').trim()
-    if (!image || STALE_BANNER.test(image)) {
+    if (!image || LOCAL_BANNER.test(image)) {
       row.image = pack[i % pack.length]
     }
     return row
