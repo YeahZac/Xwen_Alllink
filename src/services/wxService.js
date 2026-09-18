@@ -1,19 +1,38 @@
+const fs = require('fs')
+const http = require('http')
 const https = require('https')
+const tls = require('tls')
 const { URL } = require('url')
 const config = require('../config')
 const { HttpError } = require('../utils/response')
 
+const CLOUD_CA = '/app/cert/certificate.crt'
+const PHONE_PATH = '/wxa/business/getuserphonenumber'
+
+let extraCa
+function httpsAgentOptions() {
+  if (extraCa !== undefined) return extraCa
+  extraCa = null
+  try {
+    const pem = fs.readFileSync(CLOUD_CA)
+    extraCa = { ca: tls.rootCertificates.concat(pem.toString()) }
+  } catch (_) {}
+  return extraCa
+}
+
 function requestJson(method, url, body) {
   return new Promise((resolve, reject) => {
     const u = new URL(url)
+    const lib = u.protocol === 'http:' ? http : https
     const payload = body == null ? null : JSON.stringify(body)
-    const req = https.request(
+    const req = lib.request(
       {
         protocol: u.protocol,
         hostname: u.hostname,
         path: `${u.pathname}${u.search}`,
         method,
         timeout: 12000,
+        ...(lib === https ? httpsAgentOptions() || {} : {}),
         headers: payload
           ? {
               'Content-Type': 'application/json',
@@ -96,29 +115,49 @@ async function code2Session(jsCode) {
   }
 }
 
-async function getPhoneNumber(phoneCode) {
+function phoneFromPayload(data) {
+  if (!data || (data.errcode && data.errcode !== 0)) return ''
+  const info = data.phone_info || {}
+  return String(info.purePhoneNumber || info.phoneNumber || '').replace(/\s+/g, '')
+}
+
+async function getPhoneNumber(phoneCode, openid) {
   const code = String(phoneCode || '').trim()
   if (!code) throw new HttpError(400, '缺少手机号授权码')
+  const body = { code }
+  const oid = String(openid || '').trim()
+  if (oid) body.openid = oid
 
-  let data = await requestJson(
-    'POST',
-    'https://api.weixin.qq.com/wxa/business/getuserphonenumber',
-    { code }
-  )
-  if (data.errcode && data.errcode !== 0) {
+  // 云托管开放接口走 http，由网关注入 token。直接 https 会撞上容器自签证书。
+  let cloudError = ''
+  try {
+    const cloud = await requestJson('POST', `http://api.weixin.qq.com${PHONE_PATH}`, body)
+    const phone = phoneFromPayload(cloud)
+    if (phone) return phone
+    cloudError = cloud.errmsg || ''
+  } catch (e) {
+    cloudError = e.message || ''
+  }
+
+  let data
+  try {
     const token = await getAccessToken()
     data = await requestJson(
       'POST',
-      `https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token=${encodeURIComponent(token)}`,
-      { code }
+      `https://api.weixin.qq.com${PHONE_PATH}?access_token=${encodeURIComponent(token)}`,
+      body
+    )
+  } catch (e) {
+    if (e instanceof HttpError) throw e
+    throw new HttpError(
+      502,
+      '换取手机号失败。请在云托管开启「开放接口服务」，把 /wxa/business/getuserphonenumber 加入微信令牌权限后重新发布；或配置 WX_APPID / WX_APP_SECRET'
     )
   }
-  if (data.errcode && data.errcode !== 0) {
-    throw new HttpError(400, data.errmsg || '手机号授权失败')
+  const phone = phoneFromPayload(data)
+  if (!phone) {
+    throw new HttpError(400, (data && data.errmsg) || cloudError || '手机号授权失败')
   }
-  const info = data.phone_info || {}
-  const phone = String(info.purePhoneNumber || info.phoneNumber || '').replace(/\s+/g, '')
-  if (!phone) throw new HttpError(400, '未取得手机号')
   return phone
 }
 

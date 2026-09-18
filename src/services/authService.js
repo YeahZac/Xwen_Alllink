@@ -269,8 +269,8 @@ async function loginWithWeChat({ jsCode, nickname, avatarUrl, openid, unionid } 
   return consumerSession(pickUserRow(rows[0]))
 }
 
-async function bindPhone(userId, phoneCode) {
-  const phone = await wxService.getPhoneNumber(phoneCode)
+async function bindPhone(userId, phoneCode, openid) {
+  const phone = await wxService.getPhoneNumber(phoneCode, openid)
   const uid = Number(userId)
   let rows
   try {

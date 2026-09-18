@@ -110,7 +110,15 @@ router.post('/auth/wx-login', async (req, res, next) => {
 
 router.post('/auth/bind-phone', authRequired, requireRoles('consumer'), async (req, res, next) => {
   try {
-    res.json(ok(await authService.bindPhone(req.auth.userId, req.body.code || req.body.phoneCode)))
+    res.json(
+      ok(
+        await authService.bindPhone(
+          req.auth.userId,
+          req.body.code || req.body.phoneCode,
+          req.headers['x-wx-openid'] || req.headers['x-wx-from-openid']
+        )
+      )
+    )
   } catch (e) {
     next(e)
   }
