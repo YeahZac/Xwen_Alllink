@@ -1,8 +1,21 @@
 const { query } = require('../utils/db')
 
+const BANNER_IMAGES = {
+  consumer: [
+    '/assets/banners/consumer-scan.jpg',
+    '/assets/banners/consumer-points.jpg',
+    '/assets/banners/consumer-market.jpg'
+  ],
+  stall: ['/assets/banners/stall-purchase.jpg'],
+  cross: ['/assets/banners/cross-redeem.jpg'],
+  supply: ['/assets/banners/supply-warehouse.jpg'],
+  login: ['/assets/banners/login-join.jpg']
+}
+const STALE_BANNER = /(consumer-[123]|stall-[12]|cross-[12]|supply-[12]|login-[12])\.png$/i
+
 async function listBanners(role) {
   const scope = role || 'consumer'
-  return query(
+  const rows = await query(
     `SELECT id, role_scope AS role, title, sub_title AS sub, image_url AS image,
             link_url AS link, link_type AS linkType, sort_order AS sortOrder
      FROM banners
@@ -12,6 +25,14 @@ async function listBanners(role) {
      ORDER BY sort_order ASC, id ASC`,
     { scope }
   )
+  const pack = BANNER_IMAGES[scope] || BANNER_IMAGES.consumer
+  return rows.map((row, i) => {
+    const image = String(row.image || '').trim()
+    if (!image || STALE_BANNER.test(image)) {
+      row.image = pack[i % pack.length]
+    }
+    return row
+  })
 }
 
 async function listSupplyGoods() {

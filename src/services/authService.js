@@ -1,9 +1,10 @@
-const { query, withTransaction } = require('../utils/db')
+const { query } = require('../utils/db')
 const { signToken } = require('../middleware/auth')
 const { HttpError } = require('../utils/response')
 const { shortCode } = require('../utils/id')
 const { getCashRate, pointsToCash } = require('./configService')
 const rbacService = require('./rbacService')
+const wxService = require('./wxService')
 
 /** 演示邀请码登录（与小程序演示码对齐） */
 async function loginByInviteCode(code) {
@@ -98,22 +99,32 @@ async function loginByInviteCode(code) {
   throw new HttpError(400, '邀请码/账号无效')
 }
 
-/** 微信快捷登录演示：无 code 时创建/返回默认消费者 */
-async function loginAsConsumer({ nickname } = {}) {
-  let rows = await query(
-    `SELECT id, nickname, points_balance FROM users WHERE invite_code = 'C001' LIMIT 1`
-  )
-  if (!rows.length) {
-    await query(
-      `INSERT INTO users (openid, invite_code, nickname, points_balance, status)
-       VALUES ('wx_demo', 'C001', :n, 0, 1)`,
-      { n: nickname || '微信用户' }
-    )
-    rows = await query(
-      `SELECT id, nickname, points_balance FROM users WHERE invite_code = 'C001' LIMIT 1`
-    )
+function isAutoNickname(name) {
+  const n = String(name || '').trim()
+  if (!n) return true
+  if (n === '微信用户') return true
+  return /^尾号\d{4}微信用户$/.test(n)
+}
+
+function nicknameFromPhone(phone) {
+  const digits = String(phone || '').replace(/\D/g, '')
+  const last4 = digits.slice(-4)
+  return last4.length === 4 ? `尾号${last4}微信用户` : '微信用户'
+}
+
+function pickUserRow(u) {
+  return {
+    id: u.id,
+    nickname: u.nickname,
+    avatar_url: u.avatar_url,
+    phone: u.phone,
+    gender: u.gender != null ? Number(u.gender) : 0,
+    points_balance: u.points_balance,
+    invite_code: u.invite_code
   }
-  const u = rows[0]
+}
+
+async function consumerSession(u) {
   const token = signToken({
     role: 'consumer',
     userId: u.id,
@@ -125,12 +136,211 @@ async function loginAsConsumer({ nickname } = {}) {
     token,
     role: 'consumer',
     userId: u.id,
-    name: u.nickname || nickname || '微信用户',
+    name: u.nickname || '微信用户',
+    avatarUrl: u.avatar_url || '',
+    coverUrl: u.avatar_url || '',
+    phone: u.phone || '',
+    gender: u.gender != null ? Number(u.gender) : 0,
+    needPhone: !u.phone,
     points: u.points_balance,
     cashValue: pointsToCash(u.points_balance, rate),
     cashRate: rate,
-    inviteCode: u.invite_code || 'C001'
+    inviteCode: u.invite_code
   }
+}
+
+/** 演示消费者：仅测试入口 C001 使用，不再作为真实微信登录 */
+async function loginAsConsumer({ nickname } = {}) {
+  let rows = await query(
+    `SELECT id, nickname, avatar_url, phone, points_balance, invite_code
+     FROM users WHERE invite_code = 'C001' LIMIT 1`
+  )
+  if (!rows.length) {
+    await query(
+      `INSERT INTO users (openid, invite_code, nickname, points_balance, status)
+       VALUES ('wx_demo', 'C001', :n, 0, 1)`,
+      { n: nickname || '演示消费者' }
+    )
+    rows = await query(
+      `SELECT id, nickname, avatar_url, phone, points_balance, invite_code
+       FROM users WHERE invite_code = 'C001' LIMIT 1`
+    )
+  }
+  return consumerSession(pickUserRow(rows[0]))
+}
+
+async function loginWithWeChat({ jsCode, nickname, avatarUrl, openid, unionid } = {}) {
+  let oid = String(openid || '').trim()
+  let uid = String(unionid || '').trim()
+  if (!oid && jsCode) {
+    const sess = await wxService.code2Session(jsCode)
+    oid = sess.openid || ''
+    uid = sess.unionid || uid
+  }
+  if (!oid) {
+    throw new HttpError(
+      400,
+      '未能获取微信身份。请在微信内打开小程序，或在云托管环境使用 callContainer。测试请用下方演示身份。'
+    )
+  }
+
+  let rows
+  try {
+    rows = await query(
+      `SELECT id, nickname, avatar_url, phone, gender, points_balance, invite_code, openid, unionid
+       FROM users WHERE openid = :oid LIMIT 1`,
+      { oid }
+    )
+  } catch (e) {
+    rows = await query(
+      `SELECT id, nickname, avatar_url, phone, points_balance, invite_code, openid, unionid
+       FROM users WHERE openid = :oid LIMIT 1`,
+      { oid }
+    )
+  }
+  if (!rows.length && uid) {
+    try {
+      rows = await query(
+        `SELECT id, nickname, avatar_url, phone, gender, points_balance, invite_code, openid, unionid
+         FROM users WHERE unionid = :uid LIMIT 1`,
+        { uid }
+      )
+    } catch (e) {
+      rows = await query(
+        `SELECT id, nickname, avatar_url, phone, points_balance, invite_code, openid, unionid
+         FROM users WHERE unionid = :uid LIMIT 1`,
+        { uid }
+      )
+    }
+  }
+
+  const nextName = String(nickname || '').trim().slice(0, 64)
+  const nextAvatar = String(avatarUrl || '').trim().slice(0, 512)
+
+  if (!rows.length) {
+    let invite = shortCode('W')
+    for (let i = 0; i < 5; i += 1) {
+      const clash = await query('SELECT id FROM users WHERE invite_code = :c LIMIT 1', { c: invite })
+      if (!clash.length) break
+      invite = shortCode('W')
+    }
+    const r = await query(
+      `INSERT INTO users (openid, unionid, invite_code, nickname, avatar_url, points_balance, status)
+       VALUES (:oid, :uid, :invite, :n, :a, 0, 1)`,
+      {
+        oid,
+        uid: uid || null,
+        invite,
+        n: nextName || '微信用户',
+        a: nextAvatar || null
+      }
+    )
+    rows = await query(
+      `SELECT id, nickname, avatar_url, phone, gender, points_balance, invite_code
+       FROM users WHERE id = :id LIMIT 1`,
+      { id: r.insertId }
+    )
+  } else {
+    const u = rows[0]
+    if (!u.openid) {
+      await query('UPDATE users SET openid = :oid WHERE id = :id', { oid, id: u.id })
+    }
+    if (uid && !u.unionid) {
+      await query('UPDATE users SET unionid = :uid WHERE id = :id', { uid, id: u.id })
+    }
+    const patch = {}
+    if (nextName) patch.nickname = nextName
+    if (nextAvatar) patch.avatar_url = nextAvatar
+    if (Object.keys(patch).length) {
+      await query(
+        `UPDATE users SET
+           nickname = IFNULL(:n, nickname),
+           avatar_url = IFNULL(:a, avatar_url)
+         WHERE id = :id`,
+        { id: u.id, n: patch.nickname || null, a: patch.avatar_url || null }
+      )
+    }
+    rows = await query(
+      `SELECT id, nickname, avatar_url, phone, gender, points_balance, invite_code
+       FROM users WHERE id = :id LIMIT 1`,
+      { id: u.id }
+    )
+  }
+  return consumerSession(pickUserRow(rows[0]))
+}
+
+async function bindPhone(userId, phoneCode) {
+  const phone = await wxService.getPhoneNumber(phoneCode)
+  const uid = Number(userId)
+  let rows
+  try {
+    rows = await query(
+      `SELECT id, nickname, avatar_url, phone, gender, points_balance, invite_code
+       FROM users WHERE id = :id LIMIT 1`,
+      { id: uid }
+    )
+  } catch (e) {
+    rows = await query(
+      `SELECT id, nickname, avatar_url, phone, points_balance, invite_code
+       FROM users WHERE id = :id LIMIT 1`,
+      { id: uid }
+    )
+  }
+  if (!rows.length) throw new HttpError(404, '用户不存在')
+  const u = rows[0]
+  const nextName = isAutoNickname(u.nickname) ? nicknameFromPhone(phone) : u.nickname
+  try {
+    await query('UPDATE users SET phone = :p, nickname = :n WHERE id = :id', {
+      p: phone,
+      n: nextName,
+      id: uid
+    })
+  } catch (e) {
+    await query('UPDATE users SET phone = :p WHERE id = :id', { p: phone, id: uid })
+    if (isAutoNickname(u.nickname) && nextName) {
+      await query('UPDATE users SET nickname = :n WHERE id = :id', { n: nextName, id: uid })
+    }
+  }
+  const fresh = await query(
+    `SELECT id, nickname, avatar_url, phone, gender, points_balance, invite_code
+     FROM users WHERE id = :id LIMIT 1`,
+    { id: uid }
+  )
+  return consumerSession(pickUserRow(fresh[0] || { ...u, phone, nickname: nextName }))
+}
+
+async function updateConsumerProfile(userId, { nickname, avatarUrl, gender } = {}) {
+  const nextName = String(nickname || '').trim().slice(0, 64)
+  const nextAvatar = String(avatarUrl || '').trim().slice(0, 512)
+  const hasGender = gender !== undefined && gender !== null && gender !== ''
+  const nextGender = hasGender ? Math.min(2, Math.max(0, Number(gender) || 0)) : null
+  if (!nextName && !nextAvatar && !hasGender) throw new HttpError(400, '没有可更新的资料')
+  try {
+    await query(
+      `UPDATE users SET
+         nickname = IF(:n = '', nickname, :n),
+         avatar_url = IF(:a = '', avatar_url, :a),
+         gender = IF(:g IS NULL, gender, :g)
+       WHERE id = :id`,
+      { id: Number(userId), n: nextName, a: nextAvatar, g: nextGender }
+    )
+  } catch (e) {
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('gender')))) throw e
+    await query(
+      `UPDATE users SET
+         nickname = IF(:n = '', nickname, :n),
+         avatar_url = IF(:a = '', avatar_url, :a)
+       WHERE id = :id`,
+      { id: Number(userId), n: nextName, a: nextAvatar }
+    )
+  }
+  const rows = await query(
+    `SELECT id, nickname, avatar_url, phone, gender, points_balance, invite_code
+     FROM users WHERE id = :id LIMIT 1`,
+    { id: Number(userId) }
+  )
+  if (!rows.length) throw new HttpError(404, '用户不存在')
+  return consumerSession(pickUserRow(rows[0]))
 }
 
 async function getProfile(auth) {
@@ -145,10 +355,18 @@ async function getProfile(auth) {
     }
   }
   if (auth.role === 'consumer') {
-    const rows = await query(
-      'SELECT id, nickname, invite_code, points_balance, phone, avatar_url FROM users WHERE id = :id',
-      { id: auth.userId }
-    )
+    let rows
+    try {
+      rows = await query(
+        'SELECT id, nickname, invite_code, points_balance, phone, avatar_url, gender FROM users WHERE id = :id',
+        { id: auth.userId }
+      )
+    } catch (e) {
+      rows = await query(
+        'SELECT id, nickname, invite_code, points_balance, phone, avatar_url FROM users WHERE id = :id',
+        { id: auth.userId }
+      )
+    }
     if (!rows.length) throw new HttpError(404, '用户不存在')
     const u = rows[0]
     return {
@@ -156,8 +374,11 @@ async function getProfile(auth) {
       userId: u.id,
       name: u.nickname,
       inviteCode: u.invite_code,
-      phone: u.phone,
-      avatarUrl: u.avatar_url,
+      phone: u.phone || '',
+      avatarUrl: u.avatar_url || '',
+      coverUrl: u.avatar_url || '',
+      gender: u.gender != null ? Number(u.gender) : 0,
+      needPhone: !u.phone,
       points: u.points_balance,
       cashValue: pointsToCash(u.points_balance, rate),
       cashRate: rate
@@ -196,6 +417,9 @@ async function getProfile(auth) {
 module.exports = {
   loginByInviteCode,
   loginAsConsumer,
+  loginWithWeChat,
+  bindPhone,
+  updateConsumerProfile,
   getProfile,
   loginAdmin: (username, password) => rbacService.loginByPassword(username, password)
 }

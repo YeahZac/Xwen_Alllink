@@ -4,12 +4,52 @@
  */
 const { query } = require('../utils/db')
 const { HttpError } = require('../utils/response')
+const { haversineKm } = require('../utils/geo')
 
 async function listOpenCities() {
-  return query(
-    `SELECT id, name, province, opened_at AS openedAt
-     FROM operating_cities WHERE status = 1 ORDER BY name`
+  const rows = await query(
+    `SELECT c.id, c.name, c.province, c.opened_at AS openedAt,
+            (SELECT AVG(m.latitude) FROM merchants m
+              WHERE m.city = c.name AND m.deleted_at IS NULL AND m.latitude IS NOT NULL) AS centerLat,
+            (SELECT AVG(m.longitude) FROM merchants m
+              WHERE m.city = c.name AND m.deleted_at IS NULL AND m.longitude IS NOT NULL) AS centerLng
+     FROM operating_cities c WHERE c.status = 1 ORDER BY c.name`
   )
+  return rows.map((r) => ({
+    ...r,
+    centerLat: r.centerLat == null ? null : Number(r.centerLat),
+    centerLng: r.centerLng == null ? null : Number(r.centerLng)
+  }))
+}
+
+async function resolveCity(lat, lng) {
+  const a = Number(lat)
+  const n = Number(lng)
+  if (!Number.isFinite(a) || !Number.isFinite(n)) {
+    throw new HttpError(400, '缺少定位坐标')
+  }
+  const cities = await listOpenCities()
+  if (!cities.length) throw new HttpError(404, '暂无开通城市')
+  let best = cities[0]
+  let bestKm = Number.POSITIVE_INFINITY
+  for (const c of cities) {
+    const km = haversineKm(a, n, c.centerLat, c.centerLng)
+    if (km == null) continue
+    if (km < bestKm) {
+      bestKm = km
+      best = c
+    }
+  }
+  return {
+    city: best.name,
+    name: best.name,
+    province: best.province,
+    centerLat: best.centerLat,
+    centerLng: best.centerLng,
+    distanceKm: Number.isFinite(bestKm) ? Number(bestKm.toFixed(3)) : null,
+    lat: a,
+    lng: n
+  }
 }
 
 async function listCities() {
@@ -74,4 +114,4 @@ async function closeCity(id) {
   return { id, status: 0, activeMerchants: Number(cnt[0].n) || 0 }
 }
 
-module.exports = { listOpenCities, listCities, ensureOpen, saveCity, closeCity }
+module.exports = { listOpenCities, listCities, resolveCity, ensureOpen, saveCity, closeCity }

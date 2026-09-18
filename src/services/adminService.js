@@ -194,41 +194,75 @@ async function listStallGoods({ merchantId, limit = 200 } = {}) {
 async function saveStallGoods(body) {
   const merchantId = Number(body.merchantId)
   if (!merchantId) throw new HttpError(400, '缺少商户ID')
-  if (body.id) {
-    await query(
-      `UPDATE stall_goods SET name=:name, price=:price, points_grant=:pg, category=:cat,
-       desc_text=:desc, image_url=:img, stock=:stock, on_sale=:onSale WHERE id=:id AND merchant_id=:mid`,
-      {
-        id: Number(body.id),
-        mid: merchantId,
-        name: body.name,
-        price: Number(body.price),
-        pg: Number(body.pointsGrant) || 0,
-        cat: body.category || '主食',
-        desc: body.description || '',
-        img: body.imageUrl || null,
-        stock: Number(body.stock) || 9999,
-        onSale: body.onSale === 0 ? 0 : 1
-      }
-    )
-    return { id: Number(body.id) }
+  const name = String(body.name || '').trim()
+  if (!name) throw new HttpError(400, '请填写商品名称')
+  const payload = {
+    id: body.id ? Number(body.id) : 0,
+    mid: merchantId,
+    name,
+    price: Number(body.price),
+    pg: Number(body.pointsGrant) || 0,
+    cat: body.category || '主食',
+    unit: body.unit || '份',
+    desc: body.description || body.desc || '',
+    img: body.imageUrl || null,
+    stock: Number(body.stock) || 9999,
+    sku: String(body.sku || '').trim() || null,
+    onSale: body.onSale === 0 ? 0 : 1,
+    mix: body.mixEnabled === 0 ? 0 : 1
   }
-  const r = await query(
-    `INSERT INTO stall_goods (merchant_id, name, price, points_grant, category, desc_text, image_url, stock, on_sale)
-     VALUES (:mid, :name, :price, :pg, :cat, :desc, :img, :stock, :onSale)`,
-    {
-      mid: merchantId,
-      name: body.name,
-      price: Number(body.price),
-      pg: Number(body.pointsGrant) || 0,
-      cat: body.category || '主食',
-      desc: body.description || '',
-      img: body.imageUrl || null,
-      stock: Number(body.stock) || 9999,
-      onSale: body.onSale === 0 ? 0 : 1
+  if (!Number.isFinite(payload.price) || payload.price < 0) {
+    throw new HttpError(400, '请填写正确的售价')
+  }
+  if (payload.id) {
+    try {
+      await query(
+        `UPDATE stall_goods SET name=:name, price=:price, points_grant=:pg, category=:cat,
+         unit=:unit, desc_text=:desc, image_url=:img, stock=:stock, sku_code=IFNULL(:sku, sku_code),
+         on_sale=:onSale, mix_enabled=:mix
+         WHERE id=:id AND merchant_id=:mid`,
+        payload
+      )
+    } catch (e) {
+      if (e && e.code === 'ER_BAD_FIELD_ERROR') {
+        await query(
+          `UPDATE stall_goods SET name=:name, price=:price, points_grant=:pg, category=:cat,
+           desc_text=:desc, image_url=:img, stock=:stock, on_sale=:onSale
+           WHERE id=:id AND merchant_id=:mid`,
+          payload
+        )
+      } else {
+        throw e
+      }
     }
-  )
-  return { id: r.insertId }
+    return { id: payload.id }
+  }
+  let r
+  try {
+    r = await query(
+      `INSERT INTO stall_goods
+        (merchant_id, name, sku_code, price, points_grant, category, unit, desc_text, image_url, stock, on_sale, mix_enabled)
+       VALUES (:mid, :name, :sku, :price, :pg, :cat, :unit, :desc, :img, :stock, :onSale, :mix)`,
+      payload
+    )
+  } catch (e) {
+    if (e && e.code === 'ER_BAD_FIELD_ERROR') {
+      r = await query(
+        `INSERT INTO stall_goods (merchant_id, name, price, points_grant, category, desc_text, image_url, stock, on_sale)
+         VALUES (:mid, :name, :price, :pg, :cat, :desc, :img, :stock, :onSale)`,
+        payload
+      )
+    } else {
+      throw e
+    }
+  }
+  const id = r.insertId
+  if (!payload.sku && id) {
+    await query(`UPDATE stall_goods SET sku_code = CONCAT('ST', LPAD(id, 6, '0')) WHERE id=:id AND (sku_code IS NULL OR sku_code='')`, {
+      id
+    })
+  }
+  return { id }
 }
 
 async function listCrossGoods({ merchantId, limit = 200 } = {}) {
@@ -251,38 +285,73 @@ async function listCrossGoods({ merchantId, limit = 200 } = {}) {
 async function saveCrossGoods(body) {
   const merchantId = Number(body.merchantId)
   if (!merchantId) throw new HttpError(400, '缺少商户ID')
-  if (body.id) {
-    await query(
-      `UPDATE cross_goods SET name=:name, points_need=:pn, cash_price=:cp, desc_text=:desc,
-       image_url=:img, on_sale=:onSale
-       WHERE id=:id AND merchant_id=:mid`,
-      {
-        id: Number(body.id),
-        mid: merchantId,
-        name: body.name,
-        pn: Number(body.pointsNeed) || 0,
-        cp: Number(body.cashPrice) || 0,
-        desc: body.description || '',
-        img: body.imageUrl || null,
-        onSale: body.onSale === 0 ? 0 : 1
-      }
-    )
-    return { id: Number(body.id) }
+  const name = String(body.name || '').trim()
+  if (!name) throw new HttpError(400, '请填写商品名称')
+  const payload = {
+    id: body.id ? Number(body.id) : 0,
+    mid: merchantId,
+    name,
+    pn: Number(body.pointsNeed) || 0,
+    cp: Number(body.cashPrice) || 0,
+    cat: body.category || '服务',
+    desc: body.description || body.desc || '',
+    img: body.imageUrl || null,
+    stock: Number(body.stock) || 9999,
+    sku: String(body.sku || '').trim() || null,
+    onSale: body.onSale === 0 ? 0 : 1,
+    mix: body.allowMix === 0 ? 0 : 1
   }
-  const r = await query(
-    `INSERT INTO cross_goods (merchant_id, name, points_need, cash_price, desc_text, image_url, on_sale)
-     VALUES (:mid, :name, :pn, :cp, :desc, :img, :onSale)`,
-    {
-      mid: merchantId,
-      name: body.name,
-      pn: Number(body.pointsNeed) || 0,
-      cp: Number(body.cashPrice) || 0,
-      desc: body.description || '',
-      img: body.imageUrl || null,
-      onSale: body.onSale === 0 ? 0 : 1
+  if (payload.pn < 0 || payload.cp < 0) throw new HttpError(400, '请填写正确的积分价/现金价')
+  if (payload.id) {
+    try {
+      await query(
+        `UPDATE cross_goods SET name=:name, points_need=:pn, cash_price=:cp, category=:cat,
+         desc_text=:desc, image_url=:img, stock=:stock, sku_code=IFNULL(:sku, sku_code),
+         on_sale=:onSale, allow_mix=:mix
+         WHERE id=:id AND merchant_id=:mid`,
+        payload
+      )
+    } catch (e) {
+      if (e && e.code === 'ER_BAD_FIELD_ERROR') {
+        await query(
+          `UPDATE cross_goods SET name=:name, points_need=:pn, cash_price=:cp, desc_text=:desc,
+           image_url=:img, on_sale=:onSale
+           WHERE id=:id AND merchant_id=:mid`,
+          payload
+        )
+      } else {
+        throw e
+      }
     }
-  )
-  return { id: r.insertId }
+    return { id: payload.id }
+  }
+  let r
+  try {
+    r = await query(
+      `INSERT INTO cross_goods
+        (merchant_id, name, sku_code, category, points_need, cash_price, desc_text, image_url, stock, on_sale, allow_mix)
+       VALUES (:mid, :name, :sku, :cat, :pn, :cp, :desc, :img, :stock, :onSale, :mix)`,
+      payload
+    )
+  } catch (e) {
+    if (e && e.code === 'ER_BAD_FIELD_ERROR') {
+      r = await query(
+        `INSERT INTO cross_goods (merchant_id, name, points_need, cash_price, desc_text, image_url, on_sale)
+         VALUES (:mid, :name, :pn, :cp, :desc, :img, :onSale)`,
+        payload
+      )
+    } else {
+      throw e
+    }
+  }
+  const id = r.insertId
+  if (!payload.sku && id) {
+    await query(
+      `UPDATE cross_goods SET sku_code = CONCAT('CR', LPAD(id, 6, '0')) WHERE id=:id AND (sku_code IS NULL OR sku_code='')`,
+      { id }
+    )
+  }
+  return { id }
 }
 
 async function listSupplyGoodsAdmin({ merchantId, limit = 200 } = {}) {
@@ -304,39 +373,74 @@ async function listSupplyGoodsAdmin({ merchantId, limit = 200 } = {}) {
 async function saveSupplyGoods(body) {
   const merchantId = Number(body.merchantId)
   if (!merchantId) throw new HttpError(400, '缺少供应链商户ID')
-  if (body.id) {
-    await query(
-      `UPDATE supply_goods SET name=:name, price=:price, stock=:stock, points_grant=:pg,
-       points_ratio_text=:ratio, image_url=:img, status=:status WHERE id=:id AND merchant_id=:mid`,
-      {
-        id: Number(body.id),
-        mid: merchantId,
-        name: body.name,
-        price: Number(body.price),
-        stock: Number(body.stock) || 0,
-        pg: Number(body.pointsGrant) || 0,
-        ratio: body.pointsRatio || '',
-        img: body.imageUrl || null,
-        status: body.status === 0 ? 0 : 1
-      }
-    )
-    return { id: Number(body.id) }
+  const name = String(body.name || '').trim()
+  if (!name) throw new HttpError(400, '请填写商品名称')
+  const payload = {
+    id: body.id ? Number(body.id) : 0,
+    mid: merchantId,
+    name,
+    price: Number(body.price),
+    stock: Number(body.stock) || 0,
+    pg: Number(body.pointsGrant) || 0,
+    ratio: body.pointsRatio || '',
+    cat: body.category || '原料',
+    desc: body.description || body.desc || '',
+    img: body.imageUrl || null,
+    sku: String(body.sku || '').trim() || null,
+    status: body.status === 0 || body.onSale === 0 ? 0 : 1
   }
-  const r = await query(
-    `INSERT INTO supply_goods (merchant_id, name, price, stock, points_grant, points_ratio_text, image_url, status)
-     VALUES (:mid, :name, :price, :stock, :pg, :ratio, :img, :status)`,
-    {
-      mid: merchantId,
-      name: body.name,
-      price: Number(body.price),
-      stock: Number(body.stock) || 0,
-      pg: Number(body.pointsGrant) || 0,
-      ratio: body.pointsRatio || '',
-      img: body.imageUrl || null,
-      status: body.status === 0 ? 0 : 1
+  if (!Number.isFinite(payload.price) || payload.price < 0) {
+    throw new HttpError(400, '请填写正确的供货价')
+  }
+  if (payload.id) {
+    try {
+      await query(
+        `UPDATE supply_goods SET name=:name, price=:price, stock=:stock, points_grant=:pg,
+         points_ratio_text=:ratio, category=:cat, desc_text=:desc, image_url=:img,
+         sku_code=IFNULL(:sku, sku_code), status=:status
+         WHERE id=:id AND merchant_id=:mid`,
+        payload
+      )
+    } catch (e) {
+      if (e && e.code === 'ER_BAD_FIELD_ERROR') {
+        await query(
+          `UPDATE supply_goods SET name=:name, price=:price, stock=:stock, points_grant=:pg,
+           points_ratio_text=:ratio, image_url=:img, status=:status WHERE id=:id AND merchant_id=:mid`,
+          payload
+        )
+      } else {
+        throw e
+      }
     }
-  )
-  return { id: r.insertId }
+    return { id: payload.id }
+  }
+  let r
+  try {
+    r = await query(
+      `INSERT INTO supply_goods
+        (merchant_id, name, sku_code, category, price, stock, points_grant, points_ratio_text, desc_text, image_url, status)
+       VALUES (:mid, :name, :sku, :cat, :price, :stock, :pg, :ratio, :desc, :img, :status)`,
+      payload
+    )
+  } catch (e) {
+    if (e && e.code === 'ER_BAD_FIELD_ERROR') {
+      r = await query(
+        `INSERT INTO supply_goods (merchant_id, name, price, stock, points_grant, points_ratio_text, image_url, status)
+         VALUES (:mid, :name, :price, :stock, :pg, :ratio, :img, :status)`,
+        payload
+      )
+    } else {
+      throw e
+    }
+  }
+  const id = r.insertId
+  if (!payload.sku && id) {
+    await query(
+      `UPDATE supply_goods SET sku_code = CONCAT('SP', LPAD(id, 6, '0')) WHERE id=:id AND (sku_code IS NULL OR sku_code='')`,
+      { id }
+    )
+  }
+  return { id }
 }
 
 /* ---------- orders ---------- */

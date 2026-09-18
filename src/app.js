@@ -4,6 +4,7 @@ const cors = require('cors')
 const config = require('./config')
 const routes = require('./routes')
 const { notFound, errorHandler } = require('./middleware/error')
+const { ensureSchema } = require('./utils/migrate')
 
 const app = express()
 
@@ -26,6 +27,7 @@ app.get('/admin', (_req, res) => {
   res.redirect(302, '/admin/')
 })
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')))
+app.use('/banners', express.static(path.join(__dirname, '../public/banners')))
 
 app.use('/api', routes)
 app.use(notFound)
@@ -44,6 +46,7 @@ if (require.main === module) {
   app.listen(config.port, () => {
     console.log(`[xwen-alllink-api] listening on :${config.port}`)
     console.log(`[xwen-alllink-api] admin UI: http://127.0.0.1:${config.port}/admin/`)
+    ensureSchema().catch((e) => console.warn('[schema]', e.message))
   })
 }
 

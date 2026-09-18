@@ -602,12 +602,13 @@ ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `price`=VALUES(`price`), `stock`=
 -- ---------- Banner ----------
 DELETE FROM `banners`;
 INSERT INTO `banners` (`role_scope`, `title`, `sub_title`, `image_url`, `link_url`, `link_type`, `sort_order`, `status`) VALUES
-('consumer', '新客专享', '首单立减 · 扫码点餐', '/assets/banners/consumer-1.png', '/pages/stall-menu/stall-menu?id=1&from=scan', 'navigate', 1, 1),
-('consumer', '积分抵现周', '100积分=1元 · 异业通用', '/assets/banners/consumer-2.png', '/pages/points/points', 'switchTab', 2, 1),
-('stall', '采购获额度', '向供应链进货 · 划拨给顾客', '/assets/banners/stall-2.png', '/merchant/purchase/purchase', 'navigate', 1, 1),
-('cross', '承接积分客', '自定兑换规则 · 全现金兜底', '/assets/banners/cross-1.png', '/merchant/goods/goods', 'navigate', 1, 1),
-('supply', '拓展地摊客户', '货款与积分权益分账户', '/assets/banners/supply-1.png', '/merchant/customers/customers', 'navigate', 1, 1),
-('login', '商户入驻', '地摊 / 异业 / 供应链', '/assets/banners/login-2.png', '/pages/apply/apply', 'navigate', 1, 1);
+('consumer', '夜市扫码点餐', '就近下单 · 积分马上到账', '/assets/banners/consumer-scan.jpg', '', 'none', 1, 1),
+('consumer', '积分抵现周', '100积分=1元 · 异业通用', '/assets/banners/consumer-points.jpg', '/pages/cross/cross', 'switchTab', 2, 1),
+('consumer', '附近夜市好店', '炒面烤串麻辣烫都有', '/assets/banners/consumer-market.jpg', '/pages/index/index', 'switchTab', 3, 1),
+('stall', '采购获额度', '向供应链进货 · 划拨给顾客', '/assets/banners/stall-purchase.jpg', '/merchant/purchase/purchase', 'navigate', 1, 1),
+('cross', '承接积分客', '自定兑换规则 · 全现金兜底', '/assets/banners/cross-redeem.jpg', '/merchant/goods/goods', 'navigate', 1, 1),
+('supply', '拓展地摊客户', '货款与积分权益分账户', '/assets/banners/supply-warehouse.jpg', '/merchant/customers/customers', 'navigate', 1, 1),
+('login', '商户入驻', '地摊 / 异业 / 供应链', '/assets/banners/login-join.jpg', '/pages/apply/apply', 'navigate', 1, 1);
 
 -- ---------- 入驻申请（待审 + 历史） ----------
 INSERT INTO `merchant_applications` (

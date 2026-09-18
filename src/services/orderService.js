@@ -9,6 +9,18 @@ const commissionService = require('./commissionService')
 const feeService = require('./feeService')
 
 const { getCashRate, pointsToCash } = require('./configService')
+const wxService = require('./wxService')
+const { applyGeo } = require('../utils/geo')
+
+function round2(n) {
+  return Math.round(Number(n || 0) * 100) / 100
+}
+
+function cashToPoints(cash, rate) {
+  const r = Number(rate) || 0.01
+  if (r <= 0) return 0
+  return Math.max(0, Math.floor(Number(cash || 0) / r))
+}
 
 /**
  * 抽成落到 commissionService（角色 × 价格区间 × 规则版本）
@@ -27,15 +39,14 @@ async function recordCommission(conn, { bizType, bizId, payerMerchantId, amountG
   return res.commission
 }
 
-async function listNearbyStalls() {
-  return query(
+async function listNearbyStalls(opts = {}) {
+  const rows = await query(
     `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude,
             m.cover_hue AS coverHue, m.cover_url AS coverImage, m.status,
             LEFT(m.name,1) AS initial,
             IFNULL((SELECT SUM(sales_count) FROM stall_goods g WHERE g.merchant_id=m.id AND g.deleted_at IS NULL),0) AS sales,
             CASE WHEN m.status=1 THEN 1 ELSE 0 END AS open,
             '夜市' AS tag,
-            NULL AS distance,
             4.8 AS rating,
             m.address AS \`desc\`,
             '美食' AS category
@@ -43,27 +54,38 @@ async function listNearbyStalls() {
      WHERE m.role='stall' AND m.status=1 AND m.deleted_at IS NULL
      ORDER BY m.id`
   )
+  return applyGeo(rows, opts)
 }
 
-async function listCrossStores() {
+async function listCrossStores(opts = {}) {
   const stores = await query(
     `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude,
             m.cover_hue AS coverHue, m.cover_url AS coverImage,
-            LEFT(m.name,1) AS initial, '异业' AS category,
-            NULL AS distance, m.address
+            LEFT(m.name,1) AS initial, '异业' AS category
      FROM merchants m
      WHERE m.role='cross' AND m.status=1 AND m.deleted_at IS NULL
      ORDER BY m.id`
   )
-  for (const s of stores) {
-    s.items = await query(
-      `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice,
-              desc_text AS \`desc\`, image_url AS coverImage, sku_code AS sku
-       FROM cross_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
-      { id: s.id }
-    )
+  const located = applyGeo(stores, opts)
+  for (const s of located) {
+    try {
+      s.items = await query(
+        `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice,
+                desc_text AS \`desc\`, image_url AS coverImage, sku_code AS sku,
+                IFNULL(allow_mix,1) AS allowMix
+         FROM cross_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
+        { id: s.id }
+      )
+    } catch (e) {
+      s.items = await query(
+        `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice,
+                desc_text AS \`desc\`, image_url AS coverImage, sku_code AS sku, 1 AS allowMix
+         FROM cross_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
+        { id: s.id }
+      )
+    }
   }
-  return stores
+  return located
 }
 
 async function getStallMenu(merchantId) {
@@ -71,10 +93,11 @@ async function getStallMenu(merchantId) {
     `SELECT id, name, address, city, cover_hue AS coverHue, cover_url AS coverImage,
             LEFT(name,1) AS initial, status
      FROM merchants
-     WHERE id=:id AND role='stall' AND status=1 AND deleted_at IS NULL`,
+     WHERE id=:id AND role='stall' AND deleted_at IS NULL`,
     { id: merchantId }
   )
   if (!merchants.length) throw new HttpError(404, '摊位不存在')
+  if (Number(merchants[0].status) !== 1) throw new HttpError(400, '本店已歇业，暂不能收款')
   const goods = await query(
     `SELECT id, name, price, points_grant AS pointsGrant, category, desc_text AS \`desc\`,
             image_url AS coverImage, image_url AS imageUrl, stock, sku_code AS sku
@@ -85,8 +108,8 @@ async function getStallMenu(merchantId) {
   return { stall: merchants[0], menu }
 }
 
-/** 创建点餐订单并模拟支付成功：货款入账；积分划拨推迟到出餐完成（BRD §4.3） */
-async function createAndPayStallOrder({ userId, merchantId, items }) {
+/** 创建点餐订单：积分抵现 + 剩余微信（未配商户号则模拟成功）；积分划拨推迟到出餐完成 */
+async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0 }) {
   if (!items || !items.length) throw new HttpError(400, '购物车为空')
   await feeService.assertCanTransact(merchantId, { action: '接单' })
   return withTransaction(async (conn) => {
@@ -104,15 +127,54 @@ async function createAndPayStallOrder({ userId, merchantId, items }) {
       pointsWant += Number(line.pointsGrant) * line.qty
       lines.push(line)
     }
-    totalAmount = Math.round(totalAmount * 100) / 100
-    const ono = orderNo('O')
-    const [ins] = await conn.execute(
-      `INSERT INTO consumer_orders
-        (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
-         pay_status, order_status, paid_at)
-       VALUES (?, ?, ?, ?, ?, 0, 'paid', 'preparing', NOW())`,
-      [ono, userId, merchantId, totalAmount, pointsWant]
+    totalAmount = round2(totalAmount)
+    const rate = await getCashRate()
+    const [urows] = await conn.execute(
+      'SELECT points_balance FROM users WHERE id=? FOR UPDATE',
+      [userId]
     )
+    if (!urows.length) throw new HttpError(404, '用户不存在')
+    const balance = Number(urows[0].points_balance) || 0
+    const cap = Math.min(balance, cashToPoints(totalAmount, rate))
+    let pointsSpend = Math.max(0, Math.floor(Number(pointsUse) || 0))
+    if (pointsSpend > cap) pointsSpend = cap
+    const offset = round2(pointsToCash(pointsSpend, rate))
+    const cashPaid = round2(Math.max(0, totalAmount - offset))
+    const ono = orderNo('O')
+    if (pointsSpend > 0) {
+      await pointsService.spendConsumerPoints(conn, {
+        userId,
+        points: pointsSpend,
+        title: '点餐积分抵现',
+        bizId: ono
+      })
+    }
+    const payMeta = wxService.buildPayResult({
+      orderNo: ono,
+      cashAmount: cashPaid
+    })
+    let ins
+    try {
+      ;[ins] = await conn.execute(
+        `INSERT INTO consumer_orders
+          (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
+           points_spend, cash_paid, pay_channel, pay_status, order_status, paid_at)
+         VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, 'paid', 'preparing', NOW())`,
+        [ono, userId, merchantId, totalAmount, pointsWant, pointsSpend, cashPaid, payMeta.payChannel]
+      )
+    } catch (e) {
+      if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('points_spend'))) {
+        ;[ins] = await conn.execute(
+          `INSERT INTO consumer_orders
+            (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
+             pay_status, order_status, paid_at)
+           VALUES (?, ?, ?, ?, ?, 0, 'paid', 'preparing', NOW())`,
+          [ono, userId, merchantId, totalAmount, pointsWant]
+        )
+      } else {
+        throw e
+      }
+    }
     const orderId = ins.insertId
     for (const l of lines) {
       const displayName = l.optionsText ? `${l.name}（${l.optionsText}）` : l.name
@@ -170,11 +232,164 @@ async function createAndPayStallOrder({ userId, merchantId, items }) {
       orderId,
       orderNo: ono,
       totalAmount,
+      cashPaid,
+      pointsSpend,
+      offsetCash: offset,
       pointsWant,
       pointsAllocated: 0,
       status: 'preparing',
       commission,
-      merchantNet: net
+      merchantNet: net,
+      ...payMeta
+    }
+  })
+}
+
+async function createScanPayOrder({ userId, merchantId, amount }) {
+  const cash = round2(amount)
+  if (!Number.isFinite(cash) || cash < 0.01) throw new HttpError(400, '请输入消费金额')
+  if (cash > 99999.99) throw new HttpError(400, '单笔金额不能超过 99999.99 元')
+  const uid = Number(userId)
+  const mid = Number(merchantId)
+  if (!uid) throw new HttpError(401, '请先登录')
+  if (!mid) throw new HttpError(400, '缺少摊位')
+
+  const merchants = await query(
+    `SELECT id, name, role, status FROM merchants
+     WHERE id=:id AND deleted_at IS NULL`,
+    { id: mid }
+  )
+  if (!merchants.length) throw new HttpError(404, '摊位不存在')
+  const m = merchants[0]
+  if (m.role !== 'stall') throw new HttpError(400, '请扫描地摊收款码')
+  if (Number(m.status) !== 1) throw new HttpError(400, '本店已歇业，暂不能收款')
+
+  await feeService.assertCanTransact(mid, { action: '接单' })
+
+  return withTransaction(async (conn) => {
+    const rate = await getCashRate()
+    const pointsWant = cashToPoints(cash, rate)
+    const ono = orderNo('S')
+    const payMeta = wxService.buildPayResult({
+      orderNo: ono,
+      cashAmount: cash
+    })
+
+    let ins
+    try {
+      ;[ins] = await conn.execute(
+        `INSERT INTO consumer_orders
+          (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
+           points_spend, cash_paid, pay_channel, pay_status, order_status, paid_at)
+         VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, 'paid', 'completed', NOW())`,
+        [ono, uid, mid, cash, pointsWant, cash, payMeta.payChannel]
+      )
+    } catch (e) {
+      if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('points_spend'))) {
+        ;[ins] = await conn.execute(
+          `INSERT INTO consumer_orders
+            (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
+             pay_status, order_status, paid_at)
+           VALUES (?, ?, ?, ?, ?, 0, 'paid', 'completed', NOW())`,
+          [ono, uid, mid, cash, pointsWant]
+        )
+      } else if (e && String(e.message || '').includes("Invalid data for column 'order_status'")) {
+        ;[ins] = await conn.execute(
+          `INSERT INTO consumer_orders
+            (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
+             pay_status, order_status, paid_at)
+           VALUES (?, ?, ?, ?, ?, 0, 'paid', 'pending', NOW())`,
+          [ono, uid, mid, cash, pointsWant]
+        )
+        await conn.execute(`UPDATE consumer_orders SET order_status='completed' WHERE id=?`, [ins.insertId])
+      } else {
+        throw e
+      }
+    }
+    const orderId = ins.insertId
+    try {
+      await conn.execute(
+        `INSERT INTO consumer_order_items
+          (order_id, goods_id, goods_name, price, points_grant, qty)
+         VALUES (?, 0, '到店消费', ?, ?, 1)`,
+        [orderId, cash, pointsWant]
+      )
+    } catch (e) {
+      if (!(e && (e.code === 'ER_NO_REFERENCED_ROW_2' || e.code === 'ER_NO_REFERENCED_ROW'))) throw e
+      const [grows] = await conn.execute(
+        `SELECT id FROM stall_goods WHERE merchant_id=? AND deleted_at IS NULL LIMIT 1`,
+        [mid]
+      )
+      const gid = grows.length ? grows[0].id : 0
+      if (!gid) throw new HttpError(400, '该摊位暂未上架商品，无法完成收款')
+      await conn.execute(
+        `INSERT INTO consumer_order_items
+          (order_id, goods_id, goods_name, price, points_grant, qty)
+         VALUES (?, ?, '到店消费', ?, ?, 1)`,
+        [orderId, gid, cash, pointsWant]
+      )
+    }
+
+    const alloc = await pointsService.allocateToConsumer(conn, {
+      merchantId: mid,
+      userId: uid,
+      wantPoints: pointsWant,
+      shopName: m.name,
+      orderNo: ono
+    })
+    try {
+      await conn.execute(
+        'UPDATE consumer_orders SET points_allocated=?, points_allocated_at=NOW() WHERE id=?',
+        [alloc.allocated, orderId]
+      )
+    } catch (e) {
+      if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('points_allocated_at'))) {
+        await conn.execute('UPDATE consumer_orders SET points_allocated=? WHERE id=?', [
+          alloc.allocated,
+          orderId
+        ])
+      } else {
+        throw e
+      }
+    }
+
+    const commission = await recordCommission(conn, {
+      bizType: 'stall',
+      bizId: ono,
+      payerMerchantId: mid,
+      amountGross: cash
+    })
+    const net = Math.round((cash - commission) * 100) / 100
+    await accountService.creditAccount(conn, {
+      merchantId: mid,
+      accountType: 'cash_settlement',
+      amount: net,
+      bizType: 'stall_settle',
+      bizId: ono,
+      title: `到店消费入账 · ${ono}`
+    })
+    await referralService.onConsumerOrderDone(conn, {
+      inviteeUserId: uid,
+      orderNo: ono,
+      kind: 'stall'
+    })
+
+    const [urows] = await conn.execute('SELECT points_balance FROM users WHERE id=?', [uid])
+    return {
+      orderId,
+      orderNo: ono,
+      totalAmount: cash,
+      cashPaid: cash,
+      pointsSpend: 0,
+      pointsWant,
+      pointsAllocated: alloc.allocated,
+      pointsBalance: urows.length ? Number(urows[0].points_balance) : alloc.allocated,
+      shortage: alloc.shortage,
+      shopName: m.name,
+      status: 'completed',
+      commission,
+      merchantNet: net,
+      ...payMeta
     }
   })
 }
@@ -242,16 +457,31 @@ async function completeStallOrder({ merchantId, orderId }) {
   })
 }
 
-async function redeemCross({ userId, merchantId, goodsId, payMode }) {
+async function redeemCross({ userId, merchantId, goodsId, payMode, pointsUse = 0 }) {
   await feeService.assertCanTransact(merchantId, { action: '核销' })
   return withTransaction(async (conn) => {
-    const [grows] = await conn.execute(
-      `SELECT id, name, points_need, cash_price FROM cross_goods
-       WHERE id=? AND merchant_id=? AND on_sale=1`,
-      [goodsId, merchantId]
-    )
+    let grows
+    try {
+      ;[grows] = await conn.execute(
+        `SELECT id, name, points_need, cash_price, IFNULL(allow_mix,1) AS allow_mix, IFNULL(stock,9999) AS stock
+         FROM cross_goods
+         WHERE id=? AND merchant_id=? AND on_sale=1 AND deleted_at IS NULL`,
+        [goodsId, merchantId]
+      )
+    } catch (e) {
+      if (e && e.code === 'ER_BAD_FIELD_ERROR') {
+        ;[grows] = await conn.execute(
+          `SELECT id, name, points_need, cash_price, 1 AS allow_mix, 9999 AS stock FROM cross_goods
+           WHERE id=? AND merchant_id=? AND on_sale=1`,
+          [goodsId, merchantId]
+        )
+      } else {
+        throw e
+      }
+    }
     if (!grows.length) throw new HttpError(404, '商品不存在')
     const g = grows[0]
+    if (Number(g.stock) <= 0) throw new HttpError(400, '库存不足')
     const ono = orderNo('C')
     const rate = await getCashRate()
     const [urows] = await conn.execute(
@@ -260,15 +490,34 @@ async function redeemCross({ userId, merchantId, goodsId, payMode }) {
     )
     if (!urows.length) throw new HttpError(404, '用户不存在')
     let mode = payMode || 'points'
+    const ptsNeed = Number(g.points_need) || 0
+    const cashPrice = round2(g.cash_price)
+    const balance = Number(urows[0].points_balance) || 0
     // 积分不足时自动全额现金兜底
-    if (mode === 'points' && Number(urows[0].points_balance) < Number(g.points_need)) {
+    if (mode === 'points' && balance < ptsNeed) {
       mode = 'cash'
+    }
+    if (mode === 'mix') {
+      if (Number(g.allow_mix) === 0) throw new HttpError(400, '该商品未开放组合支付')
+      let spend = Math.max(0, Math.floor(Number(pointsUse) || 0))
+      spend = Math.min(spend, balance, ptsNeed)
+      const cashDue =
+        ptsNeed > 0 ? round2(cashPrice * (1 - spend / ptsNeed)) : cashPrice
+      if (spend <= 0 && cashDue > 0) mode = 'cash'
+      else if (cashDue <= 0 && spend > 0) {
+        mode = 'points'
+        g._mixSpend = spend
+      } else {
+        g._mixSpend = spend
+        g._mixCash = cashDue
+      }
     }
 
     if (mode === 'points') {
+      const ptsSpend = Number(g._mixSpend || g.points_need)
       await pointsService.spendConsumerPoints(conn, {
         userId,
-        points: g.points_need,
+        points: ptsSpend,
         title: `${g.name} · 兑换扣减`,
         bizId: ono
       })
@@ -276,10 +525,16 @@ async function redeemCross({ userId, merchantId, goodsId, payMode }) {
         `INSERT INTO cross_orders
           (order_no, user_id, merchant_id, goods_id, goods_name, pay_mode, points_spend, cash_amount, status)
          VALUES (?, ?, ?, ?, ?, 'points', ?, 0, 'completed')`,
-        [ono, userId, merchantId, g.id, g.name, g.points_need]
+        [ono, userId, merchantId, g.id, g.name, ptsSpend]
       )
       await conn.execute(`UPDATE cross_goods SET sales_count = IFNULL(sales_count,0) + 1 WHERE id=?`, [g.id])
-      const cashValue = pointsToCash(g.points_need, rate)
+      try {
+        await conn.execute(
+          `UPDATE cross_goods SET stock = GREATEST(IFNULL(stock,1)-1,0) WHERE id=?`,
+          [g.id]
+        )
+      } catch (_) {}
+      const cashValue = pointsToCash(ptsSpend, rate)
       const commission = await recordCommission(conn, {
         bizType: 'cross',
         bizId: ono,
@@ -303,10 +558,78 @@ async function redeemCross({ userId, merchantId, goodsId, payMode }) {
       return {
         orderNo: ono,
         payMode: 'points',
-        pointsSpend: g.points_need,
+        pointsSpend: ptsSpend,
         cashValue,
         commission,
-        merchantNet: net
+        merchantNet: net,
+        simulated: true,
+        payChannel: 'points'
+      }
+    }
+
+    if (mode === 'mix') {
+      const spend = Number(g._mixSpend) || 0
+      const cashDue = round2(g._mixCash)
+      if (spend > 0) {
+        await pointsService.spendConsumerPoints(conn, {
+          userId,
+          points: spend,
+          title: `${g.name} · 组合支付扣积分`,
+          bizId: ono
+        })
+      }
+      const payMeta = wxService.buildPayResult({ orderNo: ono, cashAmount: cashDue })
+      try {
+        await conn.execute(
+          `INSERT INTO cross_orders
+            (order_no, user_id, merchant_id, goods_id, goods_name, pay_mode, points_spend, cash_amount, status)
+           VALUES (?, ?, ?, ?, ?, 'mix', ?, ?, 'completed')`,
+          [ono, userId, merchantId, g.id, g.name, spend, cashDue]
+        )
+      } catch (e) {
+        await conn.execute(
+          `INSERT INTO cross_orders
+            (order_no, user_id, merchant_id, goods_id, goods_name, pay_mode, points_spend, cash_amount, status)
+           VALUES (?, ?, ?, ?, ?, 'cash', ?, ?, 'completed')`,
+          [ono, userId, merchantId, g.id, g.name, spend, cashDue]
+        )
+      }
+      await conn.execute(`UPDATE cross_goods SET sales_count = IFNULL(sales_count,0) + 1 WHERE id=?`, [g.id])
+      try {
+        await conn.execute(
+          `UPDATE cross_goods SET stock = GREATEST(IFNULL(stock,1)-1,0) WHERE id=?`,
+          [g.id]
+        )
+      } catch (_) {}
+      const amountGross = cashPrice
+      const commission = await recordCommission(conn, {
+        bizType: 'cross',
+        bizId: ono,
+        payerMerchantId: merchantId,
+        amountGross
+      })
+      const net = Math.round((amountGross - commission) * 100) / 100
+      await accountService.creditAccount(conn, {
+        merchantId,
+        accountType: 'cash_settlement',
+        amount: net,
+        bizType: 'cross_mix_settle',
+        bizId: ono,
+        title: `组合支付结算 · ${ono}`
+      })
+      await referralService.onConsumerOrderDone(conn, {
+        inviteeUserId: userId,
+        orderNo: ono,
+        kind: 'cross'
+      })
+      return {
+        orderNo: ono,
+        payMode: 'mix',
+        pointsSpend: spend,
+        cashAmount: cashDue,
+        commission,
+        merchantNet: net,
+        ...payMeta
       }
     }
 
@@ -344,7 +667,8 @@ async function redeemCross({ userId, merchantId, goodsId, payMode }) {
       cashAmount,
       autoFallback: payMode === 'points',
       commission,
-      merchantNet: net
+      merchantNet: net,
+      ...wxService.buildPayResult({ orderNo: ono, cashAmount })
     }
   })
 }
@@ -661,6 +985,7 @@ module.exports = {
   listCrossStores,
   getStallMenu,
   createAndPayStallOrder,
+  createScanPayOrder,
   completeStallOrder,
   redeemCross,
   createPurchaseOrder,

@@ -4,6 +4,7 @@ const adminService = require('./adminService')
 const orderService = require('./orderService')
 const stallOptionsService = require('./stallOptionsService')
 const feeService = require('./feeService')
+const { applyGeo } = require('../utils/geo')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链' }
 
@@ -227,27 +228,60 @@ async function saveMerchantGoodsOptions(merchantId, goodsId, groups) {
 async function listGoods(merchantId, role) {
   const mid = Number(merchantId)
   if (role === 'stall') {
-    return query(
-      `SELECT id, name, price, points_grant AS pointsGrant, category, stock, on_sale AS onSale,
-              image_url AS imageUrl, sku_code AS sku, sales_count AS sales, desc_text AS description
-       FROM stall_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
-      { id: mid }
-    )
+    try {
+      return await query(
+        `SELECT id, name, price, points_grant AS pointsGrant, category, unit, stock, on_sale AS onSale,
+                mix_enabled AS mixEnabled, image_url AS imageUrl, sku_code AS sku, sales_count AS sales,
+                desc_text AS description
+         FROM stall_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
+        { id: mid }
+      )
+    } catch (e) {
+      if (e && e.code !== 'ER_BAD_FIELD_ERROR') throw e
+      return query(
+        `SELECT id, name, price, points_grant AS pointsGrant, category, stock, on_sale AS onSale,
+                image_url AS imageUrl, sku_code AS sku, sales_count AS sales, desc_text AS description
+         FROM stall_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
+        { id: mid }
+      )
+    }
   }
   if (role === 'cross') {
+    try {
+      return await query(
+        `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice, on_sale AS onSale,
+                allow_mix AS allowMix, category, stock, image_url AS imageUrl, sku_code AS sku,
+                sales_count AS sales, desc_text AS description
+         FROM cross_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
+        { id: mid }
+      )
+    } catch (e) {
+      if (e && e.code !== 'ER_BAD_FIELD_ERROR') throw e
+      return query(
+        `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice, on_sale AS onSale,
+                image_url AS imageUrl, sku_code AS sku, sales_count AS sales, desc_text AS description
+         FROM cross_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
+        { id: mid }
+      )
+    }
+  }
+  try {
+    return await query(
+      `SELECT id, name, price, stock, points_grant AS pointsGrant, points_ratio_text AS pointsRatio,
+              category, desc_text AS description, status AS onSale, image_url AS imageUrl,
+              sku_code AS sku, sales_count AS sales
+       FROM supply_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
+      { id: mid }
+    )
+  } catch (e) {
+    if (e && e.code !== 'ER_BAD_FIELD_ERROR') throw e
     return query(
-      `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice, on_sale AS onSale,
-              image_url AS imageUrl, sku_code AS sku, sales_count AS sales, desc_text AS description
-       FROM cross_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
+      `SELECT id, name, price, stock, points_grant AS pointsGrant, points_ratio_text AS pointsRatio,
+              status AS onSale, image_url AS imageUrl, sku_code AS sku, sales_count AS sales
+       FROM supply_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
       { id: mid }
     )
   }
-  return query(
-    `SELECT id, name, price, stock, points_grant AS pointsGrant, points_ratio_text AS pointsRatio,
-            status AS onSale, image_url AS imageUrl, sku_code AS sku, sales_count AS sales
-     FROM supply_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
-    { id: mid }
-  )
 }
 
 async function saveGoods(merchantId, role, body) {
@@ -258,6 +292,13 @@ async function saveGoods(merchantId, role, body) {
     ...payload,
     status: body.onSale === 0 ? 0 : body.status === 0 ? 0 : 1
   })
+}
+
+async function getGoods(merchantId, role, id) {
+  const list = await listGoods(merchantId, role)
+  const item = (list || []).find((g) => String(g.id) === String(id))
+  if (!item) throw new HttpError(404, '商品不存在')
+  return item
 }
 
 async function listCustomers(merchantId, role, { limit = 50 } = {}) {
@@ -327,16 +368,17 @@ async function listFlow(merchantId, { limit = 50 } = {}) {
     .slice(0, lim)
 }
 
-async function listSupplyMerchants() {
-  return query(
+async function listSupplyMerchants(opts = {}) {
+  const rows = await query(
     `SELECT m.id, m.name, m.city, m.cover_url AS coverImage, m.cover_hue AS coverHue,
-            m.address, LEFT(m.name,1) AS initial,
+            m.address, m.latitude, m.longitude, LEFT(m.name,1) AS initial,
             (SELECT COUNT(*) FROM supply_goods g WHERE g.merchant_id=m.id AND g.status=1 AND g.deleted_at IS NULL) AS goodsCount,
             (SELECT IFNULL(SUM(g.sales_count),0) FROM supply_goods g WHERE g.merchant_id=m.id) AS monthSales
      FROM merchants m
      WHERE m.role='supply' AND m.status=1 AND m.deleted_at IS NULL
      ORDER BY m.id`
   )
+  return applyGeo(rows, opts)
 }
 
 async function getCrossStoreDetail(id) {
@@ -348,12 +390,22 @@ async function getCrossStoreDetail(id) {
   )
   if (!stores.length) throw new HttpError(404, '异业门店不存在')
   const s = stores[0]
-  s.items = await query(
-    `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice,
-            desc_text AS \`desc\`, image_url AS coverImage, sku_code AS sku
-     FROM cross_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
-    { id }
-  )
+  try {
+    s.items = await query(
+      `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice,
+              desc_text AS \`desc\`, image_url AS coverImage, sku_code AS sku,
+              IFNULL(allow_mix,1) AS allowMix, IFNULL(stock,9999) AS stock, category
+       FROM cross_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
+      { id }
+    )
+  } catch (e) {
+    s.items = await query(
+      `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice,
+              desc_text AS \`desc\`, image_url AS coverImage, sku_code AS sku, 1 AS allowMix
+       FROM cross_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
+      { id }
+    )
+  }
   return s
 }
 
@@ -366,6 +418,7 @@ module.exports = {
   getMerchantGoodsOptions,
   saveMerchantGoodsOptions,
   listGoods,
+  getGoods,
   saveGoods,
   listCustomers,
   listFlow,

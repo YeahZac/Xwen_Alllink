@@ -95,8 +95,38 @@ router.post('/auth/admin-login', async (req, res, next) => {
 
 router.post('/auth/wx-login', async (req, res, next) => {
   try {
-    const data = await authService.loginAsConsumer({ nickname: req.body.nickname })
+    const data = await authService.loginWithWeChat({
+      jsCode: req.body.jsCode || req.body.code,
+      nickname: req.body.nickname,
+      avatarUrl: req.body.avatarUrl,
+      openid: req.headers['x-wx-openid'] || req.headers['x-wx-from-openid'] || req.body.openid,
+      unionid: req.headers['x-wx-unionid'] || req.body.unionid
+    })
     res.json(ok(data))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/auth/bind-phone', authRequired, requireRoles('consumer'), async (req, res, next) => {
+  try {
+    res.json(ok(await authService.bindPhone(req.auth.userId, req.body.code || req.body.phoneCode)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/auth/profile', authRequired, requireRoles('consumer'), async (req, res, next) => {
+  try {
+    res.json(
+      ok(
+        await authService.updateConsumerProfile(req.auth.userId, {
+          nickname: req.body.nickname,
+          avatarUrl: req.body.avatarUrl,
+          gender: req.body.gender
+        })
+      )
+    )
   } catch (e) {
     next(e)
   }
@@ -762,9 +792,9 @@ router.get('/banners', async (req, res, next) => {
 })
 
 // ---------- Catalog (C端) ----------
-router.get('/stalls', async (_req, res, next) => {
+router.get('/stalls', async (req, res, next) => {
   try {
-    res.json(ok(await orderService.listNearbyStalls()))
+    res.json(ok(await orderService.listNearbyStalls(req.query)))
   } catch (e) {
     next(e)
   }
@@ -778,9 +808,9 @@ router.get('/stalls/:id/menu', async (req, res, next) => {
   }
 })
 
-router.get('/cross-stores', async (_req, res, next) => {
+router.get('/cross-stores', async (req, res, next) => {
   try {
-    res.json(ok(await orderService.listCrossStores()))
+    res.json(ok(await orderService.listCrossStores(req.query)))
   } catch (e) {
     next(e)
   }
@@ -794,9 +824,9 @@ router.get('/cross-stores/:id', async (req, res, next) => {
   }
 })
 
-router.get('/supply/merchants', async (_req, res, next) => {
+router.get('/supply/merchants', async (req, res, next) => {
   try {
-    res.json(ok(await merchantPortalService.listSupplyMerchants()))
+    res.json(ok(await merchantPortalService.listSupplyMerchants(req.query)))
   } catch (e) {
     next(e)
   }
@@ -858,6 +888,14 @@ router.get('/config/cash-rate', async (_req, res, next) => {
   }
 })
 
+router.get('/cities/resolve', async (req, res, next) => {
+  try {
+    res.json(ok(await cityService.resolveCity(req.query.lat, req.query.lng)))
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.get('/cities', async (_req, res, next) => {
   try {
     res.json(ok(await cityService.listOpenCities()))
@@ -868,6 +906,24 @@ router.get('/cities', async (_req, res, next) => {
 
 // ---------- Consumer orders / points ----------
 router.post(
+  '/orders/stall/scan-pay',
+  authRequired,
+  requireRoles('consumer'),
+  async (req, res, next) => {
+    try {
+      const data = await orderService.createScanPayOrder({
+        userId: req.auth.userId,
+        merchantId: Number(req.body.merchantId),
+        amount: req.body.amount
+      })
+      res.json(ok(data))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
   '/orders/stall/pay',
   authRequired,
   requireRoles('consumer'),
@@ -876,7 +932,8 @@ router.post(
       const data = await orderService.createAndPayStallOrder({
         userId: req.auth.userId,
         merchantId: Number(req.body.merchantId),
-        items: req.body.items || []
+        items: req.body.items || [],
+        pointsUse: Number(req.body.pointsUse) || 0
       })
       res.json(ok(data))
     } catch (e) {
@@ -895,7 +952,8 @@ router.post(
         userId: req.auth.userId,
         merchantId: Number(req.body.merchantId),
         goodsId: Number(req.body.goodsId),
-        payMode: req.body.payMode || 'points'
+        payMode: req.body.payMode || 'points',
+        pointsUse: Number(req.body.pointsUse) || 0
       })
       res.json(ok(data))
     } catch (e) {
@@ -1056,6 +1114,19 @@ router.post(
   async (req, res, next) => {
     try {
       res.json(ok(await merchantPortalService.saveGoods(req.auth.merchantId, req.auth.role, req.body)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get(
+  '/merchant/goods/:id',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await merchantPortalService.getGoods(req.auth.merchantId, req.auth.role, req.params.id)))
     } catch (e) {
       next(e)
     }
