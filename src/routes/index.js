@@ -1,5 +1,8 @@
 const express = require('express')
 const multer = require('multer')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
 const { ok, HttpError } = require('../utils/response')
 const { authRequired, requireRoles } = require('../middleware/auth')
 const { query } = require('../utils/db')
@@ -948,6 +951,83 @@ router.post('/media/upload-base64', async (req, res, next) => {
       bizType: bizType || 'license',
       adminId: null
     })
+    res.json(ok(data))
+  } catch (e) {
+    next(e)
+  }
+})
+
+const CHUNK_ROOT = path.join(os.tmpdir(), 'xwen-upload-chunks')
+
+function chunkDir(uploadId) {
+  const id = String(uploadId || '').replace(/[^a-zA-Z0-9_-]/g, '')
+  if (!id || id.length < 8 || id.length > 80) throw new HttpError(400, 'uploadId 无效')
+  return path.join(CHUNK_ROOT, id)
+}
+
+router.post('/media/upload-base64-chunk', async (req, res, next) => {
+  try {
+    const { uploadId, index, total, content } = req.body || {}
+    const i = Number(index)
+    const n = Number(total)
+    if (!Number.isInteger(i) || i < 0 || !Number.isInteger(n) || n < 1 || n > 200) {
+      throw new HttpError(400, '分片参数无效')
+    }
+    if (i >= n) throw new HttpError(400, '分片序号越界')
+    const piece = String(content || '')
+    if (!piece) throw new HttpError(400, '分片内容为空')
+    if (piece.length > 90 * 1024) throw new HttpError(400, '单片过大')
+    const dir = chunkDir(uploadId)
+    fs.mkdirSync(dir, { recursive: true })
+    // 元信息写在 meta.json（首次带上）
+    const metaPath = path.join(dir, 'meta.json')
+    if (!fs.existsSync(metaPath)) {
+      fs.writeFileSync(
+        metaPath,
+        JSON.stringify({
+          total: n,
+          fileName: req.body.fileName || 'upload.bin',
+          mime: req.body.mime || 'application/octet-stream',
+          bizType: req.body.bizType || 'license',
+          createdAt: Date.now()
+        })
+      )
+    }
+    fs.writeFileSync(path.join(dir, `part-${i}`), piece, 'utf8')
+    res.json(ok({ uploadId, index: i, total: n }))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/media/upload-base64-finish', async (req, res, next) => {
+  try {
+    const { uploadId } = req.body || {}
+    const dir = chunkDir(uploadId)
+    const metaPath = path.join(dir, 'meta.json')
+    if (!fs.existsSync(metaPath)) throw new HttpError(400, '上传会话不存在或已过期')
+    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'))
+    const total = Number(meta.total) || 0
+    const parts = []
+    for (let i = 0; i < total; i++) {
+      const p = path.join(dir, `part-${i}`)
+      if (!fs.existsSync(p)) throw new HttpError(400, `缺少分片 ${i + 1}/${total}`)
+      parts.push(fs.readFileSync(p, 'utf8'))
+    }
+    const raw = parts.join('').replace(/^data:[^;]+;base64,/, '')
+    const buffer = Buffer.from(raw, 'base64')
+    if (!buffer.length) throw new HttpError(400, '文件内容无效')
+    if (buffer.length > 12 * 1024 * 1024) throw new HttpError(400, '文件过大')
+    const data = await storageService.uploadBuffer({
+      buffer,
+      originalName: meta.fileName || 'upload.bin',
+      mime: meta.mime || 'application/octet-stream',
+      bizType: meta.bizType || 'license',
+      adminId: null
+    })
+    try {
+      fs.rmSync(dir, { recursive: true, force: true })
+    } catch (_) {}
     res.json(ok(data))
   } catch (e) {
     next(e)
