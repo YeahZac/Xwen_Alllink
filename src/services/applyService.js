@@ -21,7 +21,6 @@ function assertApplyPayload(body) {
     'legalPerson',
     'contactName',
     'contactPhone',
-    'city',
     'address'
   ]
   for (const k of required) {
@@ -30,15 +29,15 @@ function assertApplyPayload(body) {
   if (!/^1\d{10}$/.test(String(body.contactPhone))) {
     throw new HttpError(400, '联系电话格式不正确')
   }
-  if (String(body.creditCode).length !== 18) {
-    throw new HttpError(400, '统一社会信用代码应为18位')
+  if (!String(body.creditCode || '').trim()) {
+    throw new HttpError(400, '请填写统一社会信用代码')
   }
   if (!body.agreed) throw new HttpError(400, '请同意入驻协议')
   const licenses = body.licenses || {}
   for (const key of ROLE_LICENSE_RULES[role]) {
     if (!licenses[key]) throw new HttpError(400, `请上传必填证照：${key}`)
   }
-  // 全部入驻类型均需地图定位（便于查询与导航）
+  // 全部入驻类型均需地图定位（便于查询与导航）；经营城市由坐标自动识别
   const lat = Number(body.latitude)
   const lng = Number(body.longitude)
   if (!(lat >= -90 && lat <= 90) || !(lng >= -180 && lng <= 180)) {
