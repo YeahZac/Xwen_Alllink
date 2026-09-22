@@ -90,7 +90,8 @@ async function listCrossStores(opts = {}) {
 
 async function getStallMenu(merchantId) {
   const merchants = await query(
-    `SELECT id, name, address, city, cover_hue AS coverHue, cover_url AS coverImage,
+    `SELECT id, name, address, city, latitude, longitude,
+            cover_hue AS coverHue, cover_url AS coverImage,
             LEFT(name,1) AS initial, status
      FROM merchants
      WHERE id=:id AND role='stall' AND deleted_at IS NULL`,
