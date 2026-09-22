@@ -66,7 +66,12 @@ async function resolveReferrer(code) {
 
 async function submitApply(body) {
   assertApplyPayload(body)
-  await cityService.ensureOpen(body.city)
+  let city = String(body.city || '').trim()
+  if (!city) {
+    const resolved = await cityService.resolveCity(body.latitude, body.longitude)
+    city = resolved.city
+  }
+  await cityService.ensureOpen(city)
   const referrer = await resolveReferrer(body.referrerCode)
   const pending = await query(
     `SELECT id FROM merchant_applications
@@ -92,7 +97,7 @@ async function submitApply(body) {
       legalPerson: body.legalPerson,
       contactName: body.contactName,
       contactPhone: body.contactPhone,
-      city: body.city,
+      city,
       address: body.address,
       licenseJson: JSON.stringify(body.licenses || {}),
       referrerCode: referrer.code,
