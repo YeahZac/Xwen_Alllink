@@ -4,7 +4,7 @@
  */
 const { query } = require('../utils/db')
 const { HttpError } = require('../utils/response')
-const { haversineKm } = require('../utils/geo')
+const { haversineKm, CITY_CENTERS } = require('../utils/geo')
 
 async function listOpenCities() {
   const rows = await query(
@@ -15,11 +15,18 @@ async function listOpenCities() {
               WHERE m.city = c.name AND m.deleted_at IS NULL AND m.longitude IS NOT NULL) AS centerLng
      FROM operating_cities c WHERE c.status = 1 ORDER BY c.name`
   )
-  return rows.map((r) => ({
-    ...r,
-    centerLat: r.centerLat == null ? null : Number(r.centerLat),
-    centerLng: r.centerLng == null ? null : Number(r.centerLng)
-  }))
+  return rows.map((r) => {
+    const fallback = CITY_CENTERS[r.name] || null
+    const centerLat =
+      r.centerLat == null ? (fallback ? fallback.lat : null) : Number(r.centerLat)
+    const centerLng =
+      r.centerLng == null ? (fallback ? fallback.lng : null) : Number(r.centerLng)
+    return {
+      ...r,
+      centerLat,
+      centerLng
+    }
+  })
 }
 
 async function resolveCity(lat, lng) {

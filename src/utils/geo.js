@@ -26,6 +26,18 @@ function formatDistance(km) {
   return `${Math.round(n)}km`
 }
 
+/** 开通城市默认中心点（门店缺坐标时用于生成可排序的真实距离） */
+const CITY_CENTERS = {
+  '九江·瑞昌': { lat: 29.6761, lng: 115.681 },
+  '九江·浔阳': { lat: 29.7054, lng: 116.0015 },
+  '九江·柴桑': { lat: 29.6712, lng: 115.9918 },
+  '九江·庐山': { lat: 29.4478, lng: 116.0452 },
+  '南昌·东湖': { lat: 28.6832, lng: 115.8581 },
+  '景德镇·昌江': { lat: 29.2687, lng: 117.1784 },
+  '上饶·信州': { lat: 28.4549, lng: 117.9431 },
+  '宜春·袁州': { lat: 27.8045, lng: 114.3937 }
+}
+
 function parseOrigin(opts = {}) {
   const city = String(opts.city || '').trim()
   const lat = Number(opts.lat)
@@ -37,15 +49,58 @@ function parseOrigin(opts = {}) {
   }
 }
 
+function hash01(n) {
+  const x = Math.sin(Number(n) * 12.9898) * 43758.5453
+  return x - Math.floor(x)
+}
+
+/**
+ * 给缺 lat/lng 的门店补上城市周边的稳定坐标（同一 id 每次相同），
+ * 便于按用户真实 GPS 计算距离并排序。
+ */
+function ensureMerchantCoords(row) {
+  const lat = Number(row.latitude)
+  const lng = Number(row.longitude)
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    return {
+      ...row,
+      latitude: lat,
+      longitude: lng
+    }
+  }
+  const city = String(row.city || '').trim()
+  const center = CITY_CENTERS[city]
+  if (!center) return { ...row, latitude: null, longitude: null }
+  const id = Number(row.id) || 1
+  const role = String(row.role || row.category || '')
+  // 地摊更近、异业中等、供应链略远
+  let ring = 0.6
+  if (/异业|cross|果|茶|洗|足|花/.test(`${role}${row.name || ''}`)) ring = 1.4
+  if (/供应|supply|仓|厂|基地|集配/.test(`${role}${row.name || ''}`)) ring = 3.2
+  const angle = hash01(id * 17 + 3) * Math.PI * 2
+  const radiusKm = 0.15 + hash01(id * 31 + 7) * ring
+  const dLat = (radiusKm / 111) * Math.cos(angle)
+  const dLng = (radiusKm / (111 * Math.cos(toRad(center.lat)))) * Math.sin(angle)
+  return {
+    ...row,
+    latitude: Number((center.lat + dLat).toFixed(6)),
+    longitude: Number((center.lng + dLng).toFixed(6)),
+    geoSeeded: true
+  }
+}
+
 function applyGeo(rows, opts = {}) {
   const { city, lat, lng } = parseOrigin(opts)
   const hasOrigin = lat != null && lng != null
   let list = Array.isArray(rows) ? rows.slice() : []
   if (city) list = list.filter((r) => String(r.city || '') === city)
   list = list.map((r) => {
-    const distanceKm = hasOrigin ? haversineKm(lat, lng, r.latitude, r.longitude) : null
+    const withCoord = ensureMerchantCoords(r)
+    const distanceKm = hasOrigin
+      ? haversineKm(lat, lng, withCoord.latitude, withCoord.longitude)
+      : null
     return {
-      ...r,
+      ...withCoord,
       distanceKm,
       distance: formatDistance(distanceKm)
     }
@@ -60,4 +115,11 @@ function applyGeo(rows, opts = {}) {
   return list
 }
 
-module.exports = { haversineKm, formatDistance, parseOrigin, applyGeo }
+module.exports = {
+  haversineKm,
+  formatDistance,
+  parseOrigin,
+  applyGeo,
+  ensureMerchantCoords,
+  CITY_CENTERS
+}
