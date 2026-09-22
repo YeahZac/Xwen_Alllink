@@ -42,6 +42,7 @@ const NAV_GROUPS = [
     items: [
       { id: 'goods_sku', label: '商品SKU' },
       { id: 'goods', label: '商品目录' },
+      { id: 'goods_categories', label: '商品类目' },
       { id: 'banners', label: 'Banner' },
       { id: 'needs', label: '供应需求' },
       { id: 'complaints', label: '投诉工单' },
@@ -190,6 +191,7 @@ function go(page) {
     users: () => renderIdentities('consumer'),
     goods_sku: renderGoodsSku,
     goods: renderGoods,
+    goods_categories: renderGoodsCategories,
     orders: renderOrders,
     points: renderPoints,
     settlements: renderSettlements,
@@ -1087,12 +1089,13 @@ async function renderGoods() {
       )
     } else if (type === 'cross') {
       $('list').innerHTML = table(
-        ['预览', 'ID', '店名', '品名', '积分', '现金价', '上架', '操作'],
+        ['预览', 'ID', '店名', '品名', '类目', '积分', '现金价', '上架', '操作'],
         rows
           .map(
             (g) => `<tr>
           <td>${thumb(g.imageUrl)}</td>
           <td>${g.id}</td><td>${esc(g.shopName)}</td><td>${esc(g.name)}</td>
+          <td>${esc(g.category || '')}</td>
           <td>${g.pointsNeed}</td><td>${g.cashPrice}</td><td>${g.onSale}</td>
           <td><button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button></td></tr>`
           )
@@ -1100,12 +1103,13 @@ async function renderGoods() {
       )
     } else {
       $('list').innerHTML = table(
-        ['预览', 'ID', '供应方', '品名', '价', '库存', '积分', '状态', '操作'],
+        ['预览', 'ID', '供应方', '品名', '类目', '价', '库存', '积分', '状态', '操作'],
         rows
           .map(
             (g) => `<tr>
           <td>${thumb(g.imageUrl)}</td>
           <td>${g.id}</td><td>${esc(g.vendor)}</td><td>${esc(g.name)}</td>
+          <td>${esc(g.category || '')}</td>
           <td>${g.price}</td><td>${g.stock}</td><td>${g.pointsGrant}</td><td>${g.status}</td>
           <td><button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button></td></tr>`
           )
@@ -1124,6 +1128,156 @@ async function renderGoods() {
   $('btnReload').onclick = load
   $('gType').onchange = load
   await load()
+}
+
+async function renderGoodsCategories() {
+  const editable = canEdit('goods_categories')
+  content().innerHTML = `
+    <div class="toolbar">
+      <select id="catRole">
+        <option value="">全部角色</option>
+        <option value="stall">地摊</option>
+        <option value="cross">异业门店</option>
+        <option value="supply">供应链</option>
+      </select>
+      <button class="btn" id="btnReload">刷新</button>
+      ${editable ? '<button class="btn primary" id="btnAdd">新建类目</button>' : ''}
+    </div>
+    <div class="muted" style="margin:8px 0 12px">类目必须绑定地摊 / 异业门店 / 供应链之一，商品编辑时按角色下拉选择。</div>
+    <div id="list"></div>`
+  const load = async () => {
+    const role = $('catRole').value
+    const rows = await api(`/admin/goods-categories${role ? `?role=${encodeURIComponent(role)}` : ''}`)
+    $('list').innerHTML = table(
+      ['ID', '关联角色', '类目名称', '排序', '状态', '操作'],
+      rows
+        .map(
+          (r) => `<tr>
+        <td>${r.id}</td>
+        <td>${esc(r.roleLabel || r.role)}</td>
+        <td>${esc(r.name)}</td>
+        <td>${r.sortOrder}</td>
+        <td>${r.status}</td>
+        <td class="actions">
+          ${
+            editable
+              ? `<button class="btn sm" data-edit='${encodeURIComponent(JSON.stringify(r))}'>编辑</button>
+                 <button class="btn sm danger" data-del="${r.id}">删除</button>`
+              : '-'
+          }
+        </td></tr>`
+        )
+        .join('')
+    )
+    $('list').querySelectorAll('[data-edit]').forEach((b) => {
+      b.onclick = () => {
+        const r = JSON.parse(decodeURIComponent(b.getAttribute('data-edit')))
+        openCategoryModal(r, load)
+      }
+    })
+    $('list').querySelectorAll('[data-del]').forEach((b) => {
+      b.onclick = async () => {
+        if (!confirm('确认删除该类目？')) return
+        await api(`/admin/goods-categories/${b.dataset.del}`, { method: 'DELETE' })
+        load()
+      }
+    })
+  }
+  if ($('btnAdd')) $('btnAdd').onclick = () => openCategoryModal(null, load)
+  $('btnReload').onclick = load
+  $('catRole').onchange = load
+  await load()
+}
+
+function openCategoryModal(row, reload) {
+  const r = row || { role: 'stall', name: '', sortOrder: 10, status: 1 }
+  openModal(
+    row ? '编辑类目' : '新建类目',
+    `<label>关联角色<select id="f_role">
+      <option value="stall" ${r.role === 'stall' ? 'selected' : ''}>地摊</option>
+      <option value="cross" ${r.role === 'cross' ? 'selected' : ''}>异业门店</option>
+      <option value="supply" ${r.role === 'supply' ? 'selected' : ''}>供应链</option>
+    </select></label>` +
+      field('name', '类目名称', r.name || '') +
+      field('sortOrder', '排序', r.sortOrder ?? 10, 'number') +
+      field('status', '状态(1/0)', r.status ?? 1, 'number'),
+    async () => {
+      await api('/admin/goods-categories', {
+        method: 'POST',
+        body: JSON.stringify({
+          id: r.id,
+          role: $('f_role').value,
+          name: formVal('name'),
+          sortOrder: Number(formVal('sortOrder') || 0),
+          status: Number(formVal('status') || 0)
+        })
+      })
+      reload()
+    }
+  )
+}
+
+async function editGoods(type, g, reload) {
+  const isNew = !g
+  g = g || { merchantId: '', name: '', onSale: 1, status: 1, imageUrl: '', category: '' }
+  const cats = await api(`/admin/goods-categories?role=${encodeURIComponent(type)}`).catch(() => [])
+  const enabled = (cats || []).filter((c) => Number(c.status) === 1)
+  const catOptions =
+    enabled.length > 0
+      ? enabled
+          .map(
+            (c) =>
+              `<option value="${esc(c.name)}" ${String(g.category || '') === String(c.name) ? 'selected' : ''}>${esc(c.name)}</option>`
+          )
+          .join('')
+      : `<option value="${esc(g.category || '')}">${esc(g.category || '（请先在商品类目中添加）')}</option>`
+  const catField = `<label>类目（关联${type === 'stall' ? '地摊' : type === 'cross' ? '异业门店' : '供应链'}）<select id="f_category">${catOptions}</select></label>`
+
+  let fields = field('merchantId', '商户 ID', g.merchantId, 'number') + field('name', '品名', g.name) + catField
+  if (type === 'stall') {
+    fields +=
+      field('price', '价格', g.price || '', 'number') +
+      field('pointsGrant', '划拨积分', g.pointsGrant || 0, 'number') +
+      field('stock', '库存', g.stock || 9999, 'number') +
+      field('onSale', '上架(1/0)', g.onSale ?? 1, 'number') +
+      field('description', '描述', g.description || '') +
+      mediaField('imageUrl', '商品图片', g.imageUrl || '', 'goods')
+  } else if (type === 'cross') {
+    fields +=
+      field('pointsNeed', '所需积分', g.pointsNeed || 0, 'number') +
+      field('cashPrice', '现金价', g.cashPrice || 0, 'number') +
+      field('onSale', '上架(1/0)', g.onSale ?? 1, 'number') +
+      field('description', '描述', g.description || '') +
+      mediaField('imageUrl', '商品图片', g.imageUrl || '', 'goods')
+  } else {
+    fields +=
+      field('price', '采购价', g.price || '', 'number') +
+      field('stock', '库存', g.stock || 0, 'number') +
+      field('pointsGrant', '买方获积分', g.pointsGrant || 0, 'number') +
+      field('pointsRatio', '积分说明', g.pointsRatio || '') +
+      field('status', '状态(1/0)', g.status ?? 1, 'number') +
+      mediaField('imageUrl', '商品图片', g.imageUrl || '', 'goods')
+  }
+  openModal(isNew ? '新建商品' : '编辑商品', fields, async () => {
+    const body = {
+      id: g.id,
+      merchantId: Number(formVal('merchantId')),
+      name: formVal('name'),
+      price: Number(formVal('price') || 0),
+      pointsGrant: Number(formVal('pointsGrant') || 0),
+      category: $('f_category') ? $('f_category').value : formVal('category'),
+      stock: Number(formVal('stock') || 0),
+      onSale: Number(formVal('onSale') || 0),
+      description: formVal('description'),
+      pointsNeed: Number(formVal('pointsNeed') || 0),
+      cashPrice: Number(formVal('cashPrice') || 0),
+      pointsRatio: formVal('pointsRatio'),
+      status: Number(formVal('status') || 0),
+      imageUrl: formVal('imageUrl')
+    }
+    await api(`/admin/goods/${type}`, { method: 'POST', body: JSON.stringify(body) })
+    reload()
+  })
 }
 
 async function editStallOptions(goodsId, goodsName, reload) {
@@ -1295,57 +1449,6 @@ async function editStallOptions(goodsId, goodsName, reload) {
     true
   )
   bindEditor()
-}
-
-function editGoods(type, g, reload) {
-  const isNew = !g
-  g = g || { merchantId: '', name: '', onSale: 1, status: 1, imageUrl: '' }
-  let fields = field('merchantId', '商户 ID', g.merchantId, 'number') + field('name', '品名', g.name)
-  if (type === 'stall') {
-    fields +=
-      field('price', '价格', g.price || '', 'number') +
-      field('pointsGrant', '划拨积分', g.pointsGrant || 0, 'number') +
-      field('category', '分类', g.category || '主食') +
-      field('stock', '库存', g.stock || 9999, 'number') +
-      field('onSale', '上架(1/0)', g.onSale ?? 1, 'number') +
-      field('description', '描述', g.description || '') +
-      mediaField('imageUrl', '商品图片', g.imageUrl || '', 'goods')
-  } else if (type === 'cross') {
-    fields +=
-      field('pointsNeed', '所需积分', g.pointsNeed || 0, 'number') +
-      field('cashPrice', '现金价', g.cashPrice || 0, 'number') +
-      field('onSale', '上架(1/0)', g.onSale ?? 1, 'number') +
-      field('description', '描述', g.description || '') +
-      mediaField('imageUrl', '商品图片', g.imageUrl || '', 'goods')
-  } else {
-    fields +=
-      field('price', '采购价', g.price || '', 'number') +
-      field('stock', '库存', g.stock || 0, 'number') +
-      field('pointsGrant', '买方获积分', g.pointsGrant || 0, 'number') +
-      field('pointsRatio', '积分说明', g.pointsRatio || '') +
-      field('status', '状态(1/0)', g.status ?? 1, 'number') +
-      mediaField('imageUrl', '商品图片', g.imageUrl || '', 'goods')
-  }
-  openModal(isNew ? '新建商品' : '编辑商品', fields, async () => {
-    const body = {
-      id: g.id,
-      merchantId: Number(formVal('merchantId')),
-      name: formVal('name'),
-      price: Number(formVal('price') || 0),
-      pointsGrant: Number(formVal('pointsGrant') || 0),
-      category: formVal('category'),
-      stock: Number(formVal('stock') || 0),
-      onSale: Number(formVal('onSale') || 0),
-      description: formVal('description'),
-      pointsNeed: Number(formVal('pointsNeed') || 0),
-      cashPrice: Number(formVal('cashPrice') || 0),
-      pointsRatio: formVal('pointsRatio'),
-      status: Number(formVal('status') || 0),
-      imageUrl: formVal('imageUrl')
-    }
-    await api(`/admin/goods/${type}`, { method: 'POST', body: JSON.stringify(body) })
-    reload()
-  })
 }
 
 async function renderOrders() {

@@ -111,13 +111,27 @@ async function ensureSchema() {
   } catch (e) {
     console.warn('[schema] shenzhen malls', e.message)
   }
+  try {
+    await runSqlStatements('20_goods_categories.sql', 'goods categories')
+  } catch (e) {
+    console.warn('[schema] goods categories', e.message)
+  }
+  try {
+    await runSqlStatements('21_admin_rbac_expand.sql', 'admin rbac expand')
+  } catch (e) {
+    console.warn('[schema] admin rbac expand', e.message)
+  }
 }
 
 /** 开通深圳，并把门店迁到真实商场坐标 */
 async function seedShenzhenMalls() {
+  await runSqlStatements('19_shenzhen_mall_geo.sql', 'shenzhen malls')
+}
+
+async function runSqlStatements(relative, label) {
   const fs = require('fs')
   const path = require('path')
-  const file = path.join(__dirname, '../../sql/19_shenzhen_mall_geo.sql')
+  const file = path.join(__dirname, '../../sql', relative)
   if (!fs.existsSync(file)) return
   const sql = fs.readFileSync(file, 'utf8')
   const parts = sql
@@ -128,7 +142,7 @@ async function seedShenzhenMalls() {
     try {
       await pool.query(stmt)
     } catch (e) {
-      console.warn('[schema] shenzhen stmt', e.message)
+      console.warn(`[schema] ${label} stmt`, e.message)
     }
   }
 }
