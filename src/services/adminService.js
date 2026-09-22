@@ -69,12 +69,14 @@ async function updateMerchant(id, body) {
     contactPhone: 'contact_phone',
     status: 'status',
     coverHue: 'cover_hue',
-    coverUrl: 'cover_url'
+    coverUrl: 'cover_url',
+    latitude: 'latitude',
+    longitude: 'longitude'
   }
   for (const [k, col] of Object.entries(map)) {
     if (body[k] !== undefined && body[k] !== null && body[k] !== '') {
       fields.push(`${col} = :${k}`)
-      params[k] = body[k]
+      params[k] = k === 'latitude' || k === 'longitude' ? Number(body[k]) : body[k]
     }
   }
   if (!fields.length) throw new HttpError(400, '没有可更新字段')

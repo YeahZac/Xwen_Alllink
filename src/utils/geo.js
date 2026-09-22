@@ -28,14 +28,19 @@ function formatDistance(km) {
 
 /** 开通城市默认中心点（门店缺坐标时用于生成可排序的真实距离） */
 const CITY_CENTERS = {
+  '深圳·罗湖': { lat: 22.5480, lng: 114.1180 },
+  '深圳·福田': { lat: 22.5400, lng: 114.0550 },
+  '深圳·南山': { lat: 22.5300, lng: 113.9400 },
+  '深圳·宝安': { lat: 22.5550, lng: 113.8900 },
+  '深圳·龙华': { lat: 22.6500, lng: 114.0300 },
+  '深圳·龙岗': { lat: 22.7200, lng: 114.2500 },
+  '深圳·盐田': { lat: 22.5570, lng: 114.2370 },
+  '深圳·光明': { lat: 22.7480, lng: 113.9450 },
+  '深圳·坪山': { lat: 22.6900, lng: 114.3460 },
   '九江·瑞昌': { lat: 29.6761, lng: 115.681 },
   '九江·浔阳': { lat: 29.7054, lng: 116.0015 },
   '九江·柴桑': { lat: 29.6712, lng: 115.9918 },
-  '九江·庐山': { lat: 29.4478, lng: 116.0452 },
-  '南昌·东湖': { lat: 28.6832, lng: 115.8581 },
-  '景德镇·昌江': { lat: 29.2687, lng: 117.1784 },
-  '上饶·信州': { lat: 28.4549, lng: 117.9431 },
-  '宜春·袁州': { lat: 27.8045, lng: 114.3937 }
+  '九江·庐山': { lat: 29.4478, lng: 116.0452 }
 }
 
 function parseOrigin(opts = {}) {
@@ -93,7 +98,13 @@ function applyGeo(rows, opts = {}) {
   const { city, lat, lng } = parseOrigin(opts)
   const hasOrigin = lat != null && lng != null
   let list = Array.isArray(rows) ? rows.slice() : []
-  if (city) list = list.filter((r) => String(r.city || '') === city)
+  if (city) {
+    if (city.indexOf('深圳') === 0) {
+      list = list.filter((r) => String(r.city || '').indexOf('深圳') === 0)
+    } else {
+      list = list.filter((r) => String(r.city || '') === city)
+    }
+  }
   list = list.map((r) => {
     const withCoord = ensureMerchantCoords(r)
     const distanceKm = hasOrigin
