@@ -414,6 +414,233 @@ async function getProfile(auth) {
   }
 }
 
+const IDENTITY_ROLES = [
+  {
+    role: 'consumer',
+    label: 'C端用户',
+    seal: 'C',
+    desc: '逛市集、点餐、积分兑换',
+    applyTitle: '',
+    applyPath: ''
+  },
+  {
+    role: 'stall',
+    label: '地摊商户',
+    seal: '摊',
+    desc: '摆摊点餐与收款经营',
+    applyTitle: '立即申请入驻地摊',
+    applyPath: '/pages/apply/apply?role=stall'
+  },
+  {
+    role: 'cross',
+    label: '异业门店',
+    seal: '店',
+    desc: '异业核销与积分收银',
+    applyTitle: '立即申请入驻异业门店',
+    applyPath: '/pages/apply/apply?role=cross'
+  },
+  {
+    role: 'supply',
+    label: '供应链',
+    seal: '供',
+    desc: '供货、报价与货款结算',
+    applyTitle: '立即申请入驻供应链',
+    applyPath: '/pages/apply/apply?role=supply'
+  }
+]
+
+async function resolveAccountUserId(auth) {
+  if (!auth) return 0
+  if (auth.role === 'admin') return 0
+  if (auth.userId) return Number(auth.userId) || 0
+  if (auth.merchantId) {
+    const rows = await query(
+      'SELECT owner_user_id AS uid FROM merchants WHERE id = :id LIMIT 1',
+      { id: auth.merchantId }
+    )
+    return rows.length && rows[0].uid ? Number(rows[0].uid) : 0
+  }
+  return 0
+}
+
+async function loadAccountUser(userId) {
+  if (!userId) throw new HttpError(401, '无法识别微信账号，请重新登录')
+  let rows
+  try {
+    rows = await query(
+      `SELECT id, nickname, avatar_url, phone, gender, points_balance, invite_code, openid
+       FROM users WHERE id = :id AND status = 1 LIMIT 1`,
+      { id: userId }
+    )
+  } catch (e) {
+    rows = await query(
+      `SELECT id, nickname, avatar_url, phone, points_balance, invite_code, openid
+       FROM users WHERE id = :id AND status = 1 LIMIT 1`,
+      { id: userId }
+    )
+  }
+  if (!rows.length) throw new HttpError(404, '用户不存在')
+  return pickUserRow(rows[0])
+}
+
+async function findOwnedMerchants(userId, phone) {
+  const byOwner = await query(
+    `SELECT id, role, name, status, invite_code, contact_phone, cover_url
+     FROM merchants
+     WHERE owner_user_id = :uid
+     ORDER BY id ASC`,
+    { uid: userId }
+  )
+  if (byOwner.length) return byOwner
+  const p = String(phone || '').trim()
+  if (!/^1\d{10}$/.test(p)) return []
+  return query(
+    `SELECT id, role, name, status, invite_code, contact_phone, cover_url
+     FROM merchants
+     WHERE contact_phone = :phone
+     ORDER BY id ASC`,
+    { phone: p }
+  )
+}
+
+async function findPendingApplies(phone) {
+  const p = String(phone || '').trim()
+  if (!/^1\d{10}$/.test(p)) return []
+  return query(
+    `SELECT id, role, shop_name AS shopName, status, apply_no AS applyNo
+     FROM merchant_applications
+     WHERE contact_phone = :phone AND status = 'pending'
+     ORDER BY id DESC`,
+    { phone: p }
+  )
+}
+
+async function merchantSessionFromRow(m, userId) {
+  const token = signToken({
+    role: m.role,
+    merchantId: m.id,
+    userId: userId || 0,
+    shopName: m.name
+  })
+  return {
+    token,
+    role: m.role,
+    merchantId: m.id,
+    userId: userId || 0,
+    shopName: m.name,
+    name: m.name,
+    inviteCode: m.invite_code,
+    coverUrl: m.cover_url || ''
+  }
+}
+
+/**
+ * 同一微信 openid / 手机号账号下的身份清单：
+ * C 端恒在；地摊 / 异业 / 供应链最多各一张开通卡（业务上通常只开其一）。
+ */
+async function listIdentities(auth) {
+  const userId = await resolveAccountUserId(auth)
+  const user = await loadAccountUser(userId)
+  const merchants = await findOwnedMerchants(userId, user.phone)
+  const pending = await findPendingApplies(user.phone)
+  const byRole = {}
+  for (const m of merchants) {
+    if (!byRole[m.role]) byRole[m.role] = m
+  }
+  const pendingByRole = {}
+  for (const a of pending) {
+    if (!pendingByRole[a.role]) pendingByRole[a.role] = a
+  }
+
+  const cards = IDENTITY_ROLES.map((meta) => {
+    if (meta.role === 'consumer') {
+      return {
+        role: 'consumer',
+        label: meta.label,
+        seal: meta.seal,
+        desc: meta.desc,
+        opened: true,
+        active: auth.role === 'consumer',
+        pending: false,
+        merchantId: null,
+        shopName: user.nickname || '微信用户',
+        badge: '已开通',
+        applyTitle: '',
+        applyPath: ''
+      }
+    }
+    const m = byRole[meta.role]
+    const app = pendingByRole[meta.role]
+    const opened = !!m
+    const active = opened && auth.role === meta.role && Number(auth.merchantId) === Number(m.id)
+    let badge = '未开通'
+    if (opened) badge = '已开通'
+    else if (app) badge = '审核中'
+    return {
+      role: meta.role,
+      label: meta.label,
+      seal: meta.seal,
+      desc: meta.desc,
+      opened,
+      active,
+      pending: !opened && !!app,
+      merchantId: opened ? Number(m.id) : null,
+      shopName: opened ? m.name : app ? app.shopName : '',
+      badge,
+      applyTitle: meta.applyTitle,
+      applyPath: meta.applyPath,
+      applyNo: app ? app.applyNo : ''
+    }
+  })
+
+  return {
+    userId,
+    phone: user.phone || '',
+    openidBound: true,
+    currentRole: auth.role,
+    currentMerchantId: auth.merchantId || null,
+    cards
+  }
+}
+
+async function switchIdentity(auth, { role, merchantId } = {}) {
+  const targetRole = String(role || '').trim()
+  const userId = await resolveAccountUserId(auth)
+  const user = await loadAccountUser(userId)
+
+  if (targetRole === 'consumer') {
+    return consumerSession(user)
+  }
+  if (!['stall', 'cross', 'supply'].includes(targetRole)) {
+    throw new HttpError(400, '无效的身份类型')
+  }
+
+  const merchants = await findOwnedMerchants(userId, user.phone)
+  let target = null
+  const mid = Number(merchantId) || 0
+  if (mid) {
+    target = merchants.find((m) => Number(m.id) === mid && m.role === targetRole) || null
+  } else {
+    target = merchants.find((m) => m.role === targetRole) || null
+  }
+  if (!target) {
+    const meta = IDENTITY_ROLES.find((x) => x.role === targetRole)
+    throw new HttpError(403, `当前暂未开通${meta ? meta.label : '该身份'}`)
+  }
+  if (Number(target.status) !== 1) {
+    throw new HttpError(403, '该商户已停用，暂不可切换')
+  }
+
+  // 回填 owner_user_id，保证后续始终按同一微信账号识别
+  await query(
+    `UPDATE merchants SET owner_user_id = :uid
+     WHERE id = :id AND (owner_user_id IS NULL OR owner_user_id = 0)`,
+    { uid: userId, id: target.id }
+  )
+
+  return merchantSessionFromRow(target, userId)
+}
+
 module.exports = {
   loginByInviteCode,
   loginAsConsumer,
@@ -421,5 +648,7 @@ module.exports = {
   bindPhone,
   updateConsumerProfile,
   getProfile,
+  listIdentities,
+  switchIdentity,
   loginAdmin: (username, password) => rbacService.loginByPassword(username, password)
 }

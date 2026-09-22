@@ -165,6 +165,29 @@ router.get('/auth/profile', authRequired, async (req, res, next) => {
   }
 })
 
+router.get('/auth/identities', authRequired, async (req, res, next) => {
+  try {
+    res.json(ok(await authService.listIdentities(req.auth)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/auth/switch-identity', authRequired, async (req, res, next) => {
+  try {
+    res.json(
+      ok(
+        await authService.switchIdentity(req.auth, {
+          role: req.body.role,
+          merchantId: req.body.merchantId
+        })
+      )
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
 // ---------- Apply ----------
 router.get('/apply/license-rules', (_req, res) => {
   res.json(ok(applyService.ROLE_LICENSE_RULES))
