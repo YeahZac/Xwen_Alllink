@@ -38,13 +38,11 @@ function assertApplyPayload(body) {
   for (const key of ROLE_LICENSE_RULES[role]) {
     if (!licenses[key]) throw new HttpError(400, `请上传必填证照：${key}`)
   }
-  // 异业门店必须标注地图点位（BRD §4.1 第 3 步）
-  if (role === 'cross') {
-    const lat = Number(body.latitude)
-    const lng = Number(body.longitude)
-    if (!(lat >= -90 && lat <= 90) || !(lng >= -180 && lng <= 180)) {
-      throw new HttpError(400, '异业门店请在地图上标注门店点位')
-    }
+  // 全部入驻类型均需地图定位（便于查询与导航）
+  const lat = Number(body.latitude)
+  const lng = Number(body.longitude)
+  if (!(lat >= -90 && lat <= 90) || !(lng >= -180 && lng <= 180)) {
+    throw new HttpError(400, '请用地图标注经营地址点位')
   }
 }
 
