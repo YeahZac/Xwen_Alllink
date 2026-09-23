@@ -5,7 +5,8 @@ const cityService = require('./cityService')
 const referralService = require('./referralService')
 
 const ROLE_LICENSE_RULES = {
-  stall: ['businessLicense', 'foodLicense', 'idCardFront', 'idCardBack'],
+  // 地摊：无需营业执照；异业 / 供应链照常
+  stall: ['foodLicense', 'idCardFront', 'idCardBack'],
   cross: ['businessLicense', 'idCardFront', 'idCardBack', 'storePhoto'],
   supply: ['businessLicense', 'idCardFront', 'idCardBack']
 }
@@ -15,21 +16,15 @@ function assertApplyPayload(body) {
   if (!['stall', 'cross', 'supply'].includes(role)) {
     throw new HttpError(400, '请选择入驻身份')
   }
-  const required = [
-    'shopName',
-    'creditCode',
-    'legalPerson',
-    'contactName',
-    'contactPhone',
-    'address'
-  ]
+  const required = ['shopName', 'legalPerson', 'contactName', 'contactPhone', 'address']
+  if (role !== 'stall') required.splice(1, 0, 'creditCode')
   for (const k of required) {
     if (!String(body[k] || '').trim()) throw new HttpError(400, `请填写必填字段`)
   }
   if (!/^1\d{10}$/.test(String(body.contactPhone))) {
     throw new HttpError(400, '联系电话格式不正确')
   }
-  if (!String(body.creditCode || '').trim()) {
+  if (role !== 'stall' && !String(body.creditCode || '').trim()) {
     throw new HttpError(400, '请填写统一社会信用代码')
   }
   if (!body.agreed) throw new HttpError(400, '请同意入驻协议')
@@ -95,7 +90,7 @@ async function submitApply(body) {
         applyNo,
         role: body.role,
         shopName: body.shopName,
-        creditCode: body.creditCode,
+        creditCode: body.creditCode || '',
         legalPerson: body.legalPerson,
         contactName: body.contactName,
         contactPhone: body.contactPhone,
@@ -122,7 +117,7 @@ async function submitApply(body) {
         applyNo,
         role: body.role,
         shopName: body.shopName,
-        creditCode: body.creditCode,
+        creditCode: body.creditCode || '',
         legalPerson: body.legalPerson,
         contactName: body.contactName,
         contactPhone: body.contactPhone,
