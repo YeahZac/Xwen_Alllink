@@ -209,6 +209,14 @@ router.get('/apply/status', async (req, res, next) => {
   }
 })
 
+router.get('/apply/status/mine', authRequired, async (req, res, next) => {
+  try {
+    res.json(ok(await applyService.queryByUserId(req.auth.userId)))
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.post(
   '/admin/apply/:id/approve',
   ...adminOnly,

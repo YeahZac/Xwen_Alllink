@@ -121,6 +121,11 @@ async function ensureSchema() {
   } catch (e) {
     console.warn('[schema] admin rbac expand', e.message)
   }
+  try {
+    await runSqlStatements('22_apply_applicant_user.sql', 'apply applicant user')
+  } catch (e) {
+    console.warn('[schema] apply applicant user', e.message)
+  }
 }
 
 /** 开通深圳，并把门店迁到真实商场坐标 */

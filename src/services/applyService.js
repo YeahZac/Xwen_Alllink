@@ -73,6 +73,7 @@ async function submitApply(body) {
   }
   await cityService.ensureOpen(city)
   const referrer = await resolveReferrer(body.referrerCode)
+  const applicantUserId = Number(body.applicantUserId || body.userId) || 0
   const pending = await query(
     `SELECT id FROM merchant_applications
      WHERE contact_phone = :phone AND status = 'pending' LIMIT 1`,
@@ -82,29 +83,58 @@ async function submitApply(body) {
     throw new HttpError(400, '该手机号已有审核中的申请，请勿重复提交')
   }
   const applyNo = orderNo('AP')
-  await query(
-    `INSERT INTO merchant_applications
-      (apply_no, role, shop_name, credit_code, legal_person, contact_name, contact_phone,
-       city, address, license_json, referrer_code, latitude, longitude, status)
-     VALUES
-      (:applyNo, :role, :shopName, :creditCode, :legalPerson, :contactName, :contactPhone,
-       :city, :address, CAST(:licenseJson AS JSON), :referrerCode, :lat, :lng, 'pending')`,
-    {
-      applyNo,
-      role: body.role,
-      shopName: body.shopName,
-      creditCode: body.creditCode,
-      legalPerson: body.legalPerson,
-      contactName: body.contactName,
-      contactPhone: body.contactPhone,
-      city,
-      address: body.address,
-      licenseJson: JSON.stringify(body.licenses || {}),
-      referrerCode: referrer.code,
-      lat: Number(body.latitude) || null,
-      lng: Number(body.longitude) || null
-    }
-  )
+  try {
+    await query(
+      `INSERT INTO merchant_applications
+        (apply_no, role, shop_name, credit_code, legal_person, contact_name, contact_phone,
+         applicant_user_id, city, address, license_json, referrer_code, latitude, longitude, status)
+       VALUES
+        (:applyNo, :role, :shopName, :creditCode, :legalPerson, :contactName, :contactPhone,
+         :applicantUserId, :city, :address, CAST(:licenseJson AS JSON), :referrerCode, :lat, :lng, 'pending')`,
+      {
+        applyNo,
+        role: body.role,
+        shopName: body.shopName,
+        creditCode: body.creditCode,
+        legalPerson: body.legalPerson,
+        contactName: body.contactName,
+        contactPhone: body.contactPhone,
+        applicantUserId: applicantUserId || null,
+        city,
+        address: body.address,
+        licenseJson: JSON.stringify(body.licenses || {}),
+        referrerCode: referrer.code,
+        lat: Number(body.latitude) || null,
+        lng: Number(body.longitude) || null
+      }
+    )
+  } catch (e) {
+    // 兼容尚未跑迁移的库：无 applicant_user_id 列时回退旧插入
+    if (!/applicant_user_id|Unknown column/i.test(String(e.message || ''))) throw e
+    await query(
+      `INSERT INTO merchant_applications
+        (apply_no, role, shop_name, credit_code, legal_person, contact_name, contact_phone,
+         city, address, license_json, referrer_code, latitude, longitude, status)
+       VALUES
+        (:applyNo, :role, :shopName, :creditCode, :legalPerson, :contactName, :contactPhone,
+         :city, :address, CAST(:licenseJson AS JSON), :referrerCode, :lat, :lng, 'pending')`,
+      {
+        applyNo,
+        role: body.role,
+        shopName: body.shopName,
+        creditCode: body.creditCode,
+        legalPerson: body.legalPerson,
+        contactName: body.contactName,
+        contactPhone: body.contactPhone,
+        city,
+        address: body.address,
+        licenseJson: JSON.stringify(body.licenses || {}),
+        referrerCode: referrer.code,
+        lat: Number(body.latitude) || null,
+        lng: Number(body.longitude) || null
+      }
+    )
+  }
   return {
     applyNo,
     status: 'pending',
@@ -123,15 +153,58 @@ async function queryByPhone(phone) {
     { phone }
   )
   if (!rows.length) throw new HttpError(404, '未找到申请记录')
-  const r = rows[0]
+  return mapStatusRow(rows[0])
+}
+
+async function queryByUserId(userId) {
+  const uid = Number(userId) || 0
+  if (!uid) throw new HttpError(401, '请先登录后再查询')
+
+  let rows = []
+  try {
+    rows = await query(
+      `SELECT apply_no, role, shop_name, status, reject_reason, created_at, merchant_id
+       FROM merchant_applications
+       WHERE applicant_user_id = :uid
+       ORDER BY id DESC LIMIT 1`,
+      { uid }
+    )
+  } catch (e) {
+    if (!/applicant_user_id|Unknown column/i.test(String(e.message || ''))) throw e
+  }
+
+  if (!rows.length) {
+    const users = await query(
+      'SELECT phone FROM users WHERE id = :uid AND status = 1 LIMIT 1',
+      { uid }
+    )
+    const phone = users.length ? String(users[0].phone || '').trim() : ''
+    if (phone) {
+      rows = await query(
+        `SELECT apply_no, role, shop_name, status, reject_reason, created_at, merchant_id
+         FROM merchant_applications
+         WHERE contact_phone = :phone
+         ORDER BY id DESC LIMIT 1`,
+        { phone }
+      )
+    }
+  }
+  if (!rows.length) throw new HttpError(404, '未找到申请记录')
+  return mapStatusRow(rows[0])
+}
+
+function mapStatusRow(r) {
   const statusMap = { pending: '审核中', approved: '已通过', rejected: '已驳回' }
+  const roleMap = { stall: '地摊', cross: '异业门店', supply: '供应链' }
   return {
     applyNo: r.apply_no,
     role: r.role,
+    roleLabel: roleMap[r.role] || r.role,
     shopName: r.shop_name,
     status: r.status,
     statusText: statusMap[r.status] || r.status,
     rejectReason: r.reject_reason,
+    remark: r.reject_reason || '',
     merchantId: r.merchant_id,
     createdAt: r.created_at
   }
@@ -392,6 +465,7 @@ module.exports = {
   ROLE_LICENSE_RULES,
   submitApply,
   queryByPhone,
+  queryByUserId,
   approveApply,
   listApplies,
   getApplyDetail,
