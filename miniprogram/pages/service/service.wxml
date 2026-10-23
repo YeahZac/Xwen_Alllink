@@ -1,0 +1,53 @@
+<view class="page service">
+  <view class="hero">
+    <text class="hero__t">客服中心</text>
+    <text class="hero__s">{{workTime}} · 热线 {{hotline}}</text>
+    <text class="hero__tip">{{tip}}</text>
+  </view>
+
+  <view class="m-list channel-list">
+    <view
+      wx:for="{{channels}}"
+      wx:key="id"
+      class="m-row"
+      bindtap="onChannel"
+      data-id="{{item.id}}"
+    >
+      <view class="m-row__seal {{item.sealClass}}">{{item.seal}}</view>
+      <view class="m-row__main">
+        <text class="m-row__title">{{item.title}}</text>
+        <text class="m-row__sub">{{item.sub}}</text>
+      </view>
+      <text class="m-row__arrow">›</text>
+      <button
+        wx:if="{{item.action === 'contact'}}"
+        class="m-row__hit"
+        open-type="contact"
+        session-from="service-center"
+        hover-class="none"
+      ></button>
+    </view>
+  </view>
+
+  <view class="quick row-between">
+    <button class="btn-ghost quick__btn" bindtap="goConfirm">去确认收货</button>
+    <button class="btn-primary quick__btn" bindtap="onFeedback">留言反馈</button>
+  </view>
+
+  <text class="sheet-label">常见问题</text>
+  <view class="faq surface">
+    <view
+      wx:for="{{faqs}}"
+      wx:key="q"
+      class="faq__item"
+      bindtap="toggleFaq"
+      data-idx="{{index}}"
+    >
+      <view class="row-between">
+        <text class="faq__q">{{item.q}}</text>
+        <text class="faq__ico">{{openFaq === index ? '−' : '+'}}</text>
+      </view>
+      <text wx:if="{{openFaq === index}}" class="faq__a">{{item.a}}</text>
+    </view>
+  </view>
+</view>

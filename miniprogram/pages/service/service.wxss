@@ -1,0 +1,92 @@
+.service {
+  padding-bottom: calc(var(--space-xl) + env(safe-area-inset-bottom));
+}
+
+.hero {
+  margin: calc(-1 * var(--space-page)) calc(-1 * var(--space-page)) var(--space-md);
+  padding: var(--space-lg) var(--space-page) var(--space-xl);
+  background: var(--color-primary);
+  color: #fff;
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
+}
+
+.hero__t {
+  display: block;
+  font-size: 40rpx;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.hero__s {
+  display: block;
+  margin-top: 8rpx;
+  font-size: var(--font-caption);
+  opacity: 0.92;
+}
+
+.hero__tip {
+  display: block;
+  margin-top: var(--space-sm);
+  font-size: var(--font-tiny);
+  line-height: var(--lh-body);
+  opacity: 0.85;
+}
+
+.channel-list {
+  margin-bottom: var(--space-md);
+}
+
+.quick {
+  gap: var(--space-sm);
+  margin-bottom: var(--space-lg);
+}
+
+.quick__btn {
+  flex: 1;
+}
+
+.sheet-label {
+  display: block;
+  font-size: var(--font-tiny);
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-text-muted);
+  margin: 0 0 var(--space-sm) var(--space-2);
+}
+
+.faq {
+  padding: 0 var(--space-md);
+  overflow: hidden;
+}
+
+.faq__item {
+  padding: var(--space-md) 0;
+  border-bottom: 1rpx solid var(--color-border);
+}
+
+.faq__item:last-child {
+  border-bottom: none;
+}
+
+.faq__q {
+  flex: 1;
+  font-size: var(--font-body);
+  font-weight: 700;
+  color: var(--color-ink);
+  margin-right: var(--space-sm);
+}
+
+.faq__ico {
+  color: var(--color-primary);
+  font-weight: 800;
+  font-size: var(--font-lead);
+  line-height: 1;
+}
+
+.faq__a {
+  display: block;
+  margin-top: var(--space-sm);
+  font-size: var(--font-caption);
+  color: var(--color-text-secondary);
+  line-height: var(--lh-body);
+}

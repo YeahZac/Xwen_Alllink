@@ -1,0 +1,61 @@
+<view class="page confirm" wx:if="{{shipment}}">
+  <view class="hero {{done ? 'hero--done' : ''}}">
+    <text class="hero__t">{{done ? '已确认收货' : '请核对货物后确认'}}</text>
+    <text class="hero__s">{{shipment.title}} · {{shipment.orderNo}}</text>
+  </view>
+
+  <view class="surface block">
+    <view class="row-between">
+      <text class="block__h">收货地址</text>
+      <text class="link" bindtap="goLogistics">看物流</text>
+    </view>
+    <text class="addr">{{shipment.toAddress}}</text>
+    <text class="muted">{{shipment.receiver}} {{shipment.receiverPhone}}</text>
+  </view>
+
+  <view class="surface block">
+    <view class="row-between head-check" bindtap="toggleAll">
+      <text class="block__h">货物清单</text>
+      <text class="check {{allChecked ? 'check--on' : ''}}">{{allChecked ? '✓ 全选' : '全选核对'}}</text>
+    </view>
+    <view
+      wx:for="{{shipment.goods}}"
+      wx:key="sku"
+      class="goods-row"
+      bindtap="toggleItem"
+      data-key="{{item.sku}}"
+    >
+      <view class="check {{checked[item.sku] ? 'check--on' : ''}}">{{checked[item.sku] ? '✓' : ''}}</view>
+      <view class="goods-row__main">
+        <text class="goods-row__n">{{item.name}}</text>
+        <text class="muted">{{item.sku}} · {{item.qty}}</text>
+      </view>
+    </view>
+    <view class="row-between sum">
+      <text class="muted">应付货款（演示）</text>
+      <text class="price"><text class="price__yen">¥</text>{{shipment.amount}}</text>
+    </view>
+  </view>
+
+  <view class="tip surface">
+    <text class="tip__t">确认说明</text>
+    <text class="tip__d">请当面清点数量与规格。若破损或缺件，请先联系客服，勿直接确认。本页为演示流程，确认结果保存在本机。</text>
+  </view>
+
+  <view class="footer safe-bottom">
+    <button class="btn-ghost footer__ghost" bindtap="goService">联系客服</button>
+    <button
+      class="btn-primary footer__primary"
+      disabled="{{done || submitting}}"
+      bindtap="onConfirm"
+    >{{done ? '已完成' : (submitting ? '提交中…' : '确认收货')}}</button>
+  </view>
+</view>
+
+<view class="page confirm" wx:else>
+  <view class="empty surface">
+    <text class="empty__title">暂无待确认收货单</text>
+    <text class="muted">可从物流中心进入演示单</text>
+    <button class="btn-primary empty__btn" bindtap="goLogistics">去物流中心</button>
+  </view>
+</view>
