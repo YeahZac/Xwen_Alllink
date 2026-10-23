@@ -1,0 +1,82 @@
+<view class="page">
+  <view class="m-page-head">
+    <text class="m-page-head__title">订单中心</text>
+    <text class="m-page-head__desc">{{desc}}</text>
+  </view>
+
+  <view class="tabs" wx:if="{{tabs.length > 1}}">
+    <text
+      wx:for="{{tabs}}"
+      wx:key="*this"
+      class="tab {{tab === item ? 'tab--on' : ''}}"
+      bindtap="switchTab"
+      data-t="{{item}}"
+    >{{item}}</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty-state">
+    <text class="empty-state__title">正在加载订单</text>
+    <text class="empty-state__desc">请稍候</text>
+  </view>
+
+  <view wx:elif="{{!list.length}}" class="empty-state surface">
+    <text class="empty-state__title">暂无订单</text>
+    <text class="empty-state__desc">切换上方分类或稍后再看</text>
+  </view>
+
+  <view class="m-list">
+    <view
+      wx:for="{{list}}"
+      wx:key="id"
+      class="m-row m-row--stack"
+      bindtap="onOpen"
+      data-id="{{item.id}}"
+    >
+      <view class="m-row__seal m-row__seal--red">单</view>
+      <view class="m-row__main">
+        <text class="m-row__title ellipsis-1">{{item.title}}</text>
+        <text class="m-row__sub ellipsis-1">{{item.sub}} · {{item.time}}</text>
+      </view>
+      <view class="m-row__side">
+        <text class="chip chip--soft">{{item.statusText}}</text>
+        <text class="price" wx:if="{{item.amount}}">{{item.amount}}</text>
+        <button
+          wx:if="{{item.canShip}}"
+          class="btn-primary"
+          size="mini"
+          data-id="{{item.id}}"
+          catchtap="onShip"
+          loading="{{busyId === item.id}}"
+          disabled="{{busyId !== ''}}"
+        >发货</button>
+        <button
+          wx:if="{{item.canConfirm}}"
+          class="btn-ghost"
+          size="mini"
+          data-id="{{item.id}}"
+          catchtap="onConfirm"
+          loading="{{busyId === item.id}}"
+          disabled="{{busyId !== ''}}"
+        >确认收货</button>
+        <button
+          wx:if="{{item.canComplete}}"
+          class="btn-primary"
+          size="mini"
+          data-id="{{item.id}}"
+          catchtap="onComplete"
+          loading="{{busyId === item.id}}"
+          disabled="{{busyId !== ''}}"
+        >完成出餐</button>
+        <button
+          wx:if="{{item.canCancel}}"
+          class="btn-ghost"
+          size="mini"
+          data-id="{{item.id}}"
+          catchtap="onCancel"
+          loading="{{busyId === item.id}}"
+          disabled="{{busyId !== ''}}"
+        >取消</button>
+      </view>
+    </view>
+  </view>
+</view>

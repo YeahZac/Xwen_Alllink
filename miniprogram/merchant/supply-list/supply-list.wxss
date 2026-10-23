@@ -1,0 +1,9 @@
+/* 本页用 96rpx 缩略图代替 64rpx 字印，堆叠行按钮需对齐缩略图右缘 */
+.m-row--stack .m-row__side {
+  padding-left: calc(96rpx + var(--space-md));
+}
+
+.m-row--stack .m-row__side .btn-primary {
+  width: 100%;
+  margin: 0;
+}

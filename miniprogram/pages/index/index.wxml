@@ -1,0 +1,169 @@
+<!--
+  THESIS: 商场枢纽本地生活首页 — 拒绝旧暖橙卡片堆与朱印装饰。
+  OWN-WORLD: 白顶栏 + 浅灰胶囊搜索 + 五金刚 + Banner + 积分条 + 点评式单列店卡；主色克制红 #FF4D4F。
+  STORY: 定位搜店 → 入口与营销 → 附近好店评分/优惠/距离 → 去点餐或兑换。
+  FIRST VIEWPORT: 品牌/扫码/定位 → 搜索 → 五入口 → 广告 → 积分福利 → 附近好店店卡。
+  FORM: 品类标准 mall-hub · seed canon · craft bar 点评+美团+京东 · key c37bde05.
+  FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+<view class="mall-page page--flush">
+  <view class="counter-head" style="padding-top: {{headerTop}}px;">
+    <view class="counter-head__top">
+      <view class="loc-chip loc-chip--lead" bindtap="onRelocate">
+        <view class="loc-chip__pin"></view>
+        <text class="loc-chip__t ellipsis-1">{{locationText}}</text>
+        <text class="loc-chip__gps">{{locating ? '定位中' : '定位'}}</text>
+      </view>
+      <view class="counter-brand counter-brand--center">
+        <view class="counter-brand__text">
+          <text class="counter-brand__name">万业互联云</text>
+          <text class="counter-brand__line">附近好店 · 积分可兑</text>
+        </view>
+      </view>
+      <view class="counter-brand__scan" bindtap="onScan" hover-class="counter-brand__scan--active">
+        <view class="scan-ico">
+          <view class="scan-ico__corner scan-ico__corner--tl"></view>
+          <view class="scan-ico__corner scan-ico__corner--tr"></view>
+          <view class="scan-ico__corner scan-ico__corner--bl"></view>
+          <view class="scan-ico__corner scan-ico__corner--br"></view>
+          <view class="scan-ico__beam"></view>
+        </view>
+      </view>
+    </view>
+
+    <view class="search-bar search-bar--dark">
+      <view class="search-bar__ico"></view>
+      <input
+        class="search-bar__input search-bar__input--dark"
+        placeholder="搜索附近美食、店铺"
+        placeholder-class="search-ph"
+        value="{{keyword}}"
+        confirm-type="search"
+        bindinput="onSearchInput"
+        bindconfirm="onSearchConfirm"
+      />
+      <view class="search-bar__btn search-bar__btn--red" bindtap="onSearchConfirm">搜索</view>
+    </view>
+  </view>
+
+  <view class="mall-body mall-body--counter">
+    <view class="entry-rail">
+      <view class="entry" bindtap="goOrders">
+        <view class="entry__bubble entry__bubble--order">
+          <view class="entry__ico entry__ico--order"></view>
+        </view>
+        <text class="entry__t">订单</text>
+      </view>
+      <view class="entry" bindtap="goPoints">
+        <view class="entry__bubble entry__bubble--points">
+          <view class="entry__ico entry__ico--points"></view>
+        </view>
+        <text class="entry__t">积分</text>
+      </view>
+      <view class="entry" bindtap="goRecommend">
+        <view class="entry__bubble entry__bubble--invite">
+          <view class="entry__ico entry__ico--invite"></view>
+        </view>
+        <text class="entry__t">邀请</text>
+      </view>
+      <view class="entry" bindtap="goApply">
+        <view class="entry__bubble entry__bubble--shop">
+          <view class="entry__ico entry__ico--shop"></view>
+        </view>
+        <text class="entry__t">开店</text>
+      </view>
+      <view class="entry" bindtap="goSupplyNeed">
+        <view class="entry__bubble entry__bubble--need">
+          <view class="entry__ico entry__ico--need"></view>
+        </view>
+        <text class="entry__t">需求</text>
+      </view>
+    </view>
+
+    <ad-banner role="consumer" page-key="index" height="240" />
+
+    <view class="promo-card" bindtap="goPoints">
+      <view class="promo-card__ico">积</view>
+      <view class="promo-card__main">
+        <text class="promo-card__title">{{points}} 积分可抵 ¥{{cashValue}}</text>
+        <text class="promo-card__sub">附近异业可兑 · 不够可补现金</text>
+      </view>
+      <text class="promo-card__go">去兑换</text>
+    </view>
+
+    <view class="feed">
+      <view class="feed__top">
+        <text class="feed__title">{{tab === 'stall' ? '附近好店' : tab === 'cross' ? '附近可兑门店' : '附近供货商'}}</text>
+        <view class="sort-row">
+          <text class="sort {{sort === 'distance' ? 'sort--on' : ''}}" bindtap="onSort" data-sort="distance">距离</text>
+          <text class="sort {{sort === 'rating' ? 'sort--on' : ''}}" bindtap="onSort" data-sort="rating">好评</text>
+          <text class="sort {{sort === 'sales' ? 'sort--on' : ''}}" bindtap="onSort" data-sort="sales">月售</text>
+        </view>
+      </view>
+      <view class="sec-tabs">
+        <view class="sec-tab {{tab === 'stall' ? 'sec-tab--on' : ''}}" bindtap="onTab" data-tab="stall">点餐</view>
+        <view class="sec-tab {{tab === 'cross' ? 'sec-tab--on' : ''}}" bindtap="onTab" data-tab="cross">兑换</view>
+        <view class="sec-tab {{tab === 'supply' ? 'sec-tab--on' : ''}}" bindtap="onTab" data-tab="supply">供货</view>
+      </view>
+      <scroll-view class="cat-rail" scroll-x show-scrollbar="{{false}}">
+        <view
+          wx:for="{{categories}}"
+          wx:key="id"
+          class="cat-chip {{category === item.id ? 'cat-chip--on' : ''}}"
+          bindtap="onCategory"
+          data-id="{{item.id}}"
+        >{{item.label}}</view>
+      </scroll-view>
+
+    <view wx:if="{{loading}}" class="empty-state empty-state--feed">
+      <text class="empty-state__title">正在加载附近门店</text>
+      <text class="empty-state__desc">请稍候</text>
+    </view>
+
+    <view wx:elif="{{!displayList.length}}" class="empty-state empty-state--feed">
+      <text class="empty-state__title">{{loadHint ? '暂时加载不到门店' : (category === 'all' ? '当前城市暂无门店' : '该分类暂无门店')}}</text>
+      <text class="empty-state__desc">{{loadHint || '试试切换分类，点右上角「定位」，或清空搜索后再试'}}</text>
+    </view>
+
+    <block wx:else>
+      <view
+        wx:for="{{displayList}}"
+        wx:key="id"
+        class="shop-card"
+        bindtap="openItem"
+        data-id="{{item.id}}"
+        data-type="{{item.itemType}}"
+      >
+        <view class="shop-card__cover">
+          <image wx:if="{{item.coverImage}}" class="cover-img" src="{{item.coverImage}}" mode="aspectFill" />
+          <view wx:else class="cover-fallback cover-fallback--shop">{{item.initial}}</view>
+        </view>
+        <view class="shop-card__body">
+          <view class="shop-card__title-row">
+            <text class="shop-card__name ellipsis-1">{{item.name}}</text>
+            <text class="shop-card__tag" wx:if="{{item.badge}}">{{item.badge}}</text>
+          </view>
+          <view class="shop-card__stats">
+            <text class="shop-card__star" wx:if="{{item.rating}}">★ {{item.rating}}</text>
+            <text class="shop-card__meta" wx:if="{{item.priceText}}">{{item.priceText}}</text>
+            <text class="shop-card__meta" wx:if="{{item.distanceText}}">{{item.distanceText}}</text>
+          </view>
+          <text class="shop-card__desc ellipsis-1">{{item.descLine}}</text>
+          <view class="shop-card__vouchers" wx:if="{{item.dealLine}}">
+            <text class="shop-card__voucher">{{item.dealLine}}</text>
+          </view>
+          <view class="shop-card__foot">
+            <text class="shop-card__hint">{{item.hint}}</text>
+            <view
+              class="shop-card__cta"
+              catchtap="openItem"
+              data-id="{{item.id}}"
+              data-type="{{item.itemType}}"
+            >{{item.cta}}</view>
+          </view>
+        </view>
+      </view>
+    </block>
+    </view>
+  </view>
+</view>

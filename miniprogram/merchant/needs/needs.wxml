@@ -1,0 +1,38 @@
+<view class="page">
+  <view class="m-page-head">
+    <text class="m-page-head__title">采购需求大厅</text>
+    <text class="m-page-head__desc">消费者与商户发布的待报价原料需求</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty-state">
+    <text class="empty-state__title">正在加载需求</text>
+    <text class="empty-state__desc">请稍候</text>
+  </view>
+
+  <view wx:elif="{{!list.length}}" class="empty-state surface">
+    <text class="empty-state__title">暂无待报价需求</text>
+    <text class="empty-state__desc">新需求发布后会显示在这里</text>
+  </view>
+
+  <view class="needs-list">
+    <view
+      wx:for="{{list}}"
+      wx:key="id"
+      class="need-card"
+      bindtap="onOpen"
+      data-id="{{item.id}}"
+    >
+      <view class="need-card__seal">{{item.initial}}</view>
+      <view class="need-card__main">
+        <view class="row-between">
+          <text class="need-card__title ellipsis-1">{{item.goodsName}}</text>
+          <text class="chip chip--soft">{{item.statusText || '待报价'}}</text>
+        </view>
+        <text class="need-card__meta">{{item.qtyText}} · {{item.expectTime}}</text>
+        <text class="need-card__note ellipsis-1">{{item.note || '暂无补充说明'}}</text>
+        <text class="need-card__time">{{item.createdText}}</text>
+      </view>
+      <view class="need-card__chev"></view>
+    </view>
+  </view>
+</view>

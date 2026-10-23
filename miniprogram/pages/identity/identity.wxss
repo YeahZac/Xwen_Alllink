@@ -1,0 +1,113 @@
+.identity {
+  padding: var(--space-md) 0 calc(var(--space-lg) + env(safe-area-inset-bottom));
+}
+
+.identity__lead {
+  display: block;
+  margin: 0 var(--space-page) 20rpx;
+  font-size: 24rpx;
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.id-cards {
+  margin: 0 var(--space-page);
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.id-card {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 24rpx 22rpx;
+  background: #fff;
+  border-radius: 20rpx;
+  box-shadow: 0 8rpx 28rpx rgba(18, 20, 26, 0.06);
+  border: 2rpx solid transparent;
+}
+
+.id-card--active {
+  border-color: rgba(255, 106, 42, 0.45);
+  background: linear-gradient(90deg, #fff8f3 0%, #fff 70%);
+}
+
+.id-card--locked {
+  opacity: 0.88;
+}
+
+.id-card:active {
+  background: var(--color-surface-soft);
+}
+
+.id-card__seal {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 16rpx;
+  background: var(--color-ink);
+  color: #fff;
+  font-size: 28rpx;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.id-card--active .id-card__seal {
+  background: var(--color-primary);
+}
+
+.id-card__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.id-card__top {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 4rpx;
+}
+
+.id-card__title {
+  font-size: 28rpx;
+  font-weight: 800;
+  color: var(--color-ink);
+}
+
+.id-card__badge {
+  font-size: var(--font-tiny);
+  font-weight: 700;
+  padding: 2rpx 10rpx;
+  border-radius: 8rpx;
+  letter-spacing: 0.02em;
+}
+
+.id-card__badge--ok {
+  color: #1a7f37;
+  background: rgba(26, 127, 55, 0.1);
+}
+
+.id-card__badge--pending {
+  color: #b86e00;
+  background: rgba(184, 110, 0, 0.12);
+}
+
+.id-card__badge--off {
+  color: var(--color-text-muted);
+  background: var(--color-surface-soft);
+}
+
+.id-card__desc {
+  display: block;
+  font-size: var(--font-small);
+  color: var(--color-text-muted);
+}
+
+.id-card__arrow {
+  color: var(--color-text-muted);
+  font-size: 32rpx;
+  flex-shrink: 0;
+}

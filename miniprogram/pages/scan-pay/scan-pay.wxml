@@ -1,0 +1,87 @@
+<!--
+  THESIS: 夜市收银台 — 扫码先输入金额，登录与支付拆开，禁止一登录就扣款。
+  OWN-WORLD: 墨顶柜台 + 朱红方印 + 收据式金额 + 实体键盘；无电商价签墙。
+  STORY: 看店名 → 拨金额 → 已登录直接支付 / 未登录去登录再回来点支付。
+  FIRST VIEWPORT: 墨顶(返回+到店支付) → 摊位印 → 大号金额 → 键盘 → 双按钮。
+  FORM: 夜市点餐柜 · stall-counter 的收银延伸。
+  FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+<view class="pay-page">
+  <view class="pay-head" style="padding-top: {{headerTop}}px;">
+    <view class="pay-head__row">
+      <view class="pay-back" bindtap="onBack">返回</view>
+      <text class="pay-head__title">到店支付</text>
+      <view class="pay-back pay-back--ghost"></view>
+    </view>
+  </view>
+
+  <view class="pay-body" wx:if="{{phase !== 'success'}}">
+    <view wx:if="{{loading}}" class="empty-state">
+      <text class="empty-state__title">正在打开收款页</text>
+      <text class="empty-state__desc">请稍候</text>
+    </view>
+
+    <view wx:elif="{{loadError}}" class="empty-state">
+      <text class="empty-state__title">{{loadError}}</text>
+      <text class="empty-state__desc">请重新扫码，或让摊主出示最新收款码</text>
+      <button class="btn-primary pay-cta" bindtap="goHome">回首页</button>
+    </view>
+
+    <block wx:else>
+      <view class="pay-shop">
+        <view class="pay-shop__seal">{{stall.initial || '摊'}}</view>
+        <view class="pay-shop__main">
+          <text class="pay-shop__name ellipsis-1">{{stall.name || '地摊收款'}}</text>
+          <text class="pay-shop__sub ellipsis-1">{{stall.address || stall.city || '到店消费 · 输入金额'}}</text>
+        </view>
+      </view>
+
+      <view class="pay-receipt">
+        <text class="pay-receipt__label">消费金额</text>
+        <view class="pay-amount">
+          <text class="pay-amount__yen">¥</text>
+          <text class="pay-amount__n {{amountText ? '' : 'pay-amount__n--ph'}}">{{displayAmount}}</text>
+        </view>
+        <text class="pay-hint">{{pointsHint}}</text>
+        <text class="pay-session" wx:if="{{isConsumer}}">已登录 · {{userName}}</text>
+        <text class="pay-warn" wx:if="{{authWarn}}">{{authWarn}}</text>
+      </view>
+
+      <view class="pad">
+        <view
+          wx:for="{{keys}}"
+          wx:key="k"
+          class="pad__key {{item.k === 'del' ? 'pad__key--del' : ''}}"
+          hover-class="pad__key--on"
+          hover-stay-time="80"
+          bindtap="onKey"
+          data-k="{{item.k}}"
+        >{{item.label}}</view>
+      </view>
+
+      <view class="pay-actions">
+        <button
+          class="{{payPrimary ? 'btn-primary' : 'btn-ghost'}} pay-cta"
+          bindtap="onPay"
+          loading="{{paying}}"
+          disabled="{{paying || payDisabled}}"
+        >{{payText}}</button>
+        <button
+          class="{{payPrimary ? 'btn-ghost' : 'btn-primary'}} pay-cta"
+          bindtap="onLoginPay"
+          disabled="{{paying}}"
+        >登录并支付</button>
+      </view>
+      <text class="pay-foot">登录成功回到本页，再点一次「支付」才会扣款。积分完成后立即到账。</text>
+    </block>
+  </view>
+
+  <view class="pay-body pay-body--ok" wx:else>
+    <view class="ok-seal">成</view>
+    <text class="ok-title">支付成功</text>
+    <text class="ok-copy">你已经成功消费 {{paidCash}} 元，累计 {{paidPoints}} 积分，使用积分可以前往附近商家兑换商品。</text>
+    <text class="ok-sub" wx:if="{{shortageText}}">{{shortageText}}</text>
+    <button class="btn-primary pay-cta" bindtap="goRedeem">去附近兑换</button>
+    <button class="btn-ghost pay-cta" bindtap="goHome">完成</button>
+  </view>
+</view>

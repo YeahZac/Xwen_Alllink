@@ -1,0 +1,77 @@
+.form {
+  padding: var(--space-xs) 0 var(--space-sm);
+  margin: 0 0 var(--space-md);
+}
+
+.field {
+  padding: var(--space-md) 0;
+  border-bottom: 1rpx solid var(--color-border);
+}
+
+.field:last-child {
+  border-bottom: none;
+}
+
+.field__label {
+  display: block;
+  font-size: var(--font-tiny);
+  font-weight: 700;
+  letter-spacing: var(--tracking-label);
+  margin-bottom: var(--space-sm);
+  color: var(--color-text-secondary);
+}
+
+.req {
+  color: var(--color-primary);
+}
+
+.field__input {
+  height: 72rpx;
+  padding: 0 var(--space-md);
+  background: var(--color-surface-soft);
+  border-radius: var(--radius-md);
+  font-size: var(--font-body);
+  border: 1rpx solid transparent;
+}
+
+.field__pick {
+  min-height: 72rpx;
+  padding: 18rpx var(--space-md);
+  background: var(--color-surface-soft);
+  border-radius: var(--radius-md);
+  font-size: var(--font-body);
+  line-height: 1.4;
+}
+
+.upload {
+  padding: var(--space-md) 0;
+}
+
+.upload__box {
+  height: 220rpx;
+  border-radius: var(--radius-md);
+  border: 2rpx dashed var(--color-border-strong);
+  overflow: hidden;
+  background: var(--color-surface-soft);
+}
+
+.upload__preview {
+  width: 100%;
+  height: 100%;
+}
+
+.upload__placeholder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+}
+
+.upload__plus {
+  font-size: var(--font-metric);
+  color: var(--color-primary);
+  line-height: 1;
+  font-weight: 300;
+}

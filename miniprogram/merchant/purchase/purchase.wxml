@@ -1,0 +1,66 @@
+<view class="page">
+  <view class="m-page-head">
+    <text class="m-page-head__title">{{title}}</text>
+    <text class="m-page-head__desc">{{desc}}</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty-state">
+    <text class="empty-state__title">正在加载供货商品</text>
+    <text class="empty-state__desc">请稍候</text>
+  </view>
+
+  <view wx:elif="{{!goods.length}}" class="empty-state surface">
+    <text class="empty-state__title">暂无可采购商品</text>
+    <text class="empty-state__desc">供应链上架商品后会显示在这里</text>
+  </view>
+
+  <view class="fulfill-picker" wx:if="{{role === 'stall' || role === 'cross'}}">
+    <text class="fulfill-picker__title">履约方式</text>
+    <view class="fulfill-picker__options">
+      <view
+        class="fulfill-option {{fulfillType === 'online' ? 'fulfill-option--on' : ''}}"
+        data-type="online"
+        bindtap="selectFulfill"
+      >
+        <text class="fulfill-option__name">线上物流</text>
+        <text class="fulfill-option__desc">收货确认后额度入账</text>
+      </view>
+      <view
+        class="fulfill-option {{fulfillType === 'offline' ? 'fulfill-option--on' : ''}}"
+        data-type="offline"
+        bindtap="selectFulfill"
+      >
+        <text class="fulfill-option__name">线下拿货</text>
+        <text class="fulfill-option__desc">成交后立即确认入账</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="m-list">
+    <view wx:for="{{goods}}" wx:key="id" class="m-row m-row--stack">
+      <view class="m-row__seal m-row__seal--red">采</view>
+      <view class="m-row__main">
+        <view class="row-between">
+          <text class="m-row__title ellipsis-1">{{item.name}}</text>
+          <text class="price"><text class="price__yen">¥</text>{{item.price}}</text>
+        </view>
+        <text class="m-row__sub">{{item.vendor}} · 库存 {{item.stock}}</text>
+        <view class="purchase-qty" wx:if="{{role !== 'supply'}}">
+          <text class="purchase-qty__label">采购数量</text>
+          <view class="purchase-qty__stepper">
+            <view class="purchase-qty__btn" data-id="{{item.id}}" data-delta="-1" bindtap="changeQty">−</view>
+            <text class="purchase-qty__value">{{qtyMap[item.id] || 1}}</text>
+            <view class="purchase-qty__btn purchase-qty__btn--plus" data-id="{{item.id}}" data-delta="1" bindtap="changeQty">+</view>
+          </view>
+        </view>
+        <view class="buy-foot">
+          <text class="chip chip--accent">额度 +{{item.pointsGrant * (qtyMap[item.id] || 1)}}</text>
+          <button class="btn-primary" bindtap="onAction" data-id="{{item.id}}" loading="{{busy}}" disabled="{{busy}}">
+            {{role === 'supply' ? '查看' : '确认采购'}}
+          </button>
+        </view>
+      </view>
+    </view>
+  </view>
+
+</view>

@@ -1,0 +1,165 @@
+/* 商品名与价签分列，长名不把价签挤出可视区 */
+.row-between .m-row__title {
+  flex: 1;
+  min-width: 0;
+}
+
+.row-between .price {
+  margin-left: var(--space-sm);
+}
+
+.buy-foot {
+  margin-top: var(--space-sm);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+/* 可缩不可拉：chip 是标签，拉满会被误认成输入框 */
+.buy-foot .chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fulfill-picker {
+  margin-bottom: var(--space-md);
+}
+
+.fulfill-picker__title {
+  display: block;
+  margin-bottom: var(--space-sm);
+  color: var(--color-ink);
+  font-size: var(--font-caption);
+  font-weight: 800;
+}
+
+.fulfill-picker__options {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.fulfill-option {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-md);
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-soft);
+}
+
+.fulfill-option--on {
+  background: var(--color-primary-soft);
+}
+
+.fulfill-option__name,
+.fulfill-option__desc {
+  display: block;
+}
+
+.fulfill-option__name {
+  color: var(--color-ink);
+  font-size: var(--font-body);
+  font-weight: 800;
+}
+
+.fulfill-option--on .fulfill-option__name {
+  color: var(--color-primary);
+}
+
+.fulfill-option__desc {
+  margin-top: var(--space-xs);
+  color: var(--color-text-muted);
+  font-size: var(--font-tiny);
+  line-height: var(--lh-snug);
+}
+
+.purchase-qty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1rpx solid var(--color-border);
+}
+
+.purchase-qty__label {
+  font-size: var(--font-caption);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.purchase-qty__stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex-shrink: 0;
+}
+
+/* 用 view 而非 button：小程序 button 忽略窄 width，会撑成长条并挤垮同行元素 */
+.purchase-qty__btn {
+  width: 56rpx;
+  height: 56rpx;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-soft);
+  color: var(--color-ink);
+  font-size: var(--font-subtitle);
+  font-weight: 700;
+}
+
+.purchase-qty__btn:active {
+  opacity: 0.85;
+}
+
+.purchase-qty__btn--plus {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.purchase-qty__value {
+  min-width: 48rpx;
+  text-align: center;
+  font-size: var(--font-body);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.buy-foot .btn-primary {
+  margin: 0;
+  width: 220rpx;
+  max-width: 42%;
+  min-width: 176rpx;
+  flex-shrink: 0;
+}
+
+.mode {
+  margin-top: var(--space-lg);
+  padding: var(--space-md);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+}
+
+.mode__t {
+  display: block;
+  font-size: var(--font-caption);
+  font-weight: 800;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-ink);
+  margin-bottom: var(--space-sm);
+}
+
+.mode__line {
+  display: block;
+  font-size: var(--font-small);
+  color: var(--color-text-muted);
+  line-height: var(--lh-body);
+  margin-bottom: var(--space-2);
+}

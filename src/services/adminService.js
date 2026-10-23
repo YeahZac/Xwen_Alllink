@@ -94,6 +94,8 @@ async function getMerchantDetail(id) {
   )
   if (!rows.length) throw new HttpError(404, '商户不存在')
   const m = rows[0]
+  const { pickCoverFromLicenses } = require('../utils/mediaPick')
+  const coverUrl = m.cover_url || pickCoverFromLicenses(m.materials_json) || ''
   const accounts = await query(
     `SELECT account_type AS type, balance, frozen FROM merchant_accounts WHERE merchant_id=:id`,
     { id }
@@ -116,7 +118,7 @@ async function getMerchantDetail(id) {
     contactPhone: m.contact_phone,
     inviteCode: m.invite_code,
     status: m.status,
-    coverUrl: m.cover_url || '',
+    coverUrl,
     coverHue: m.cover_hue,
     poolBalance: m.pool_balance,
     accounts,

@@ -109,11 +109,16 @@ async function dashboard(merchantId, role) {
   }
 
   const merchant = await query(
-    `SELECT id, name, role, cover_url AS coverUrl, city, invite_code AS inviteCode, status,
+    `SELECT id, name, role, cover_url AS coverUrl, materials_json AS materialsJson,
+            city, invite_code AS inviteCode, status,
             service_status AS serviceStatus, trial_end_at AS trialEndAt
      FROM merchants WHERE id=:id`,
     { id: mid }
   )
+  if (merchant[0]) {
+    const { enrichCoverRow } = require('../utils/mediaPick')
+    enrichCoverRow(merchant[0], 'coverUrl', 'materialsJson')
+  }
 
   let fee = null
   try {
@@ -369,27 +374,34 @@ async function listFlow(merchantId, { limit = 50 } = {}) {
 }
 
 async function listSupplyMerchants(opts = {}) {
+  const { enrichCoverRow } = require('../utils/mediaPick')
   const rows = await query(
     `SELECT m.id, m.name, m.city, m.cover_url AS coverImage, m.cover_hue AS coverHue,
+            m.materials_json AS materialsJson,
             m.address, m.latitude, m.longitude, LEFT(m.name,1) AS initial,
+            IFNULL(NULLIF(m.biz_type,''), '百货商店') AS category,
+            IFNULL(NULLIF(m.biz_type,''), '百货商店') AS tag,
             (SELECT COUNT(*) FROM supply_goods g WHERE g.merchant_id=m.id AND g.status=1 AND g.deleted_at IS NULL) AS goodsCount,
             (SELECT IFNULL(SUM(g.sales_count),0) FROM supply_goods g WHERE g.merchant_id=m.id) AS monthSales
      FROM merchants m
      WHERE m.role='supply' AND m.status=1 AND m.deleted_at IS NULL
-     ORDER BY m.id`
+     ORDER BY m.id DESC`
   )
-  return applyGeo(rows, opts)
+  return applyGeo(rows.map((r) => enrichCoverRow(r)), opts)
 }
 
 async function getCrossStoreDetail(id) {
+  const { enrichCoverRow } = require('../utils/mediaPick')
   const stores = await query(
     `SELECT id, name, city, address, latitude, longitude, cover_url AS coverImage,
-            cover_hue AS coverHue, LEFT(name,1) AS initial, '异业' AS category
+            materials_json AS materialsJson,
+            cover_hue AS coverHue, LEFT(name,1) AS initial,
+            IFNULL(NULLIF(biz_type,''), '百货商店') AS category
      FROM merchants WHERE id=:id AND role='cross' AND status=1 AND deleted_at IS NULL`,
     { id }
   )
   if (!stores.length) throw new HttpError(404, '异业门店不存在')
-  const s = stores[0]
+  const s = enrichCoverRow(stores[0])
   try {
     s.items = await query(
       `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice,

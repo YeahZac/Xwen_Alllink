@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "积分",
+  "usingComponents": {
+    "ad-banner": "/components/ad-banner/ad-banner"
+  }
+}

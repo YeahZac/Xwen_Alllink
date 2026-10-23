@@ -3,12 +3,13 @@ const { HttpError } = require('../utils/response')
 const { orderNo, shortCode } = require('../utils/id')
 const cityService = require('./cityService')
 const referralService = require('./referralService')
+const { parseMaybeJson, pickCoverFromLicenses } = require('../utils/mediaPick')
 
 const ROLE_LICENSE_RULES = {
-  // 地摊：无需营业执照；异业 / 供应链照常
-  stall: ['foodLicense', 'idCardFront', 'idCardBack'],
+  // 地摊：无需营业执照；三类均需门店/摊位封面图，审核通过后写入 merchants.cover_url
+  stall: ['foodLicense', 'idCardFront', 'idCardBack', 'storePhoto'],
   cross: ['businessLicense', 'idCardFront', 'idCardBack', 'storePhoto'],
-  supply: ['businessLicense', 'idCardFront', 'idCardBack']
+  supply: ['businessLicense', 'idCardFront', 'idCardBack', 'storePhoto']
 }
 
 function assertApplyPayload(body) {
@@ -250,13 +251,18 @@ async function approveApply(applyId, { reviewerId } = {}) {
 
     const inviteCode = shortCode(a.role === 'stall' ? 'D' : a.role === 'cross' ? 'Y' : 'G')
     const merchantNo = orderNo('M')
+    const licenses = parseMaybeJson(a.license_json) || {}
+    const coverUrl = pickCoverFromLicenses(licenses) || null
+    const materialsJson = JSON.stringify(licenses)
     const [ins] = await conn.execute(
       `INSERT INTO merchants
         (merchant_no, role, name, credit_code, legal_person, contact_name, contact_phone,
          city, address, latitude, longitude, status, invite_code,
-         referrer_user_id, level_code, trial_end_at, service_status)
+         referrer_user_id, level_code, trial_end_at, service_status,
+         cover_url, materials_json)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 'normal',
-               DATE_ADD(CURDATE(), INTERVAL ? MONTH), 'trial')`,
+               DATE_ADD(CURDATE(), INTERVAL ? MONTH), 'trial',
+               ?, CAST(? AS JSON))`,
       [
         merchantNo,
         a.role,
@@ -271,7 +277,9 @@ async function approveApply(applyId, { reviewerId } = {}) {
         a.longitude,
         inviteCode,
         referrerUserId,
-        trialMonths
+        trialMonths,
+        coverUrl,
+        materialsJson
       ]
     )
     const merchantId = ins.insertId
@@ -428,32 +436,40 @@ async function rejectApply(applyId, { reason, reviewerId } = {}) {
   return { id: applyId, status: 'rejected' }
 }
 
-async function listMerchants({ role, limit = 100 } = {}) {
-  const lim = Math.min(Number(limit) || 100, 200)
+async function listMerchants({ role, limit = 200 } = {}) {
+  const lim = Math.min(Number(limit) || 200, 500)
   let sql = `SELECT m.id, m.merchant_no, m.role, m.name, m.city, m.invite_code, m.status,
-                    m.contact_phone, IFNULL(p.balance, 0) AS pool_balance
+                    m.contact_phone, m.cover_url, m.materials_json,
+                    IFNULL(p.balance, 0) AS pool_balance
              FROM merchants m
-             LEFT JOIN merchant_points_pool p ON p.merchant_id = m.id`
+             LEFT JOIN merchant_points_pool p ON p.merchant_id = m.id
+             WHERE m.deleted_at IS NULL`
   const params = {}
   if (role && ['stall', 'cross', 'supply'].includes(role)) {
-    sql += ` WHERE m.role = :role`
+    sql += ` AND m.role = :role`
     params.role = role
   }
-  sql += ` ORDER BY m.id ASC LIMIT ${lim}`
+  // 新审核通过的门店优先展示，避免 ASC+limit 把新店挤出列表
+  sql += ` ORDER BY m.id DESC LIMIT ${lim}`
   const rows = await query(sql, params)
   const roleMap = { stall: '地摊', cross: '异业', supply: '供应链' }
-  return rows.map((r) => ({
-    id: r.id,
-    merchantNo: r.merchant_no,
-    role: r.role,
-    roleLabel: roleMap[r.role] || r.role,
-    name: r.name,
-    city: r.city,
-    inviteCode: r.invite_code,
-    status: r.status,
-    contactPhone: r.contact_phone,
-    poolBalance: r.pool_balance
-  }))
+  return rows.map((r) => {
+    const coverUrl = r.cover_url || pickCoverFromLicenses(r.materials_json) || ''
+    return {
+      id: r.id,
+      merchantNo: r.merchant_no,
+      role: r.role,
+      roleLabel: roleMap[r.role] || r.role,
+      name: r.name,
+      city: r.city,
+      inviteCode: r.invite_code,
+      status: r.status,
+      contactPhone: r.contact_phone,
+      poolBalance: r.pool_balance,
+      coverUrl,
+      coverImage: coverUrl
+    }
+  })
 }
 
 module.exports = {

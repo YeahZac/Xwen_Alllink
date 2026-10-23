@@ -1,0 +1,81 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/login/login",
+    "pages/scan-pay/scan-pay",
+    "pages/stall-menu/stall-menu",
+    "pages/goods-detail/goods-detail",
+    "pages/order-confirm/order-confirm",
+    "pages/orders/orders",
+    "pages/logistics/logistics",
+    "pages/confirm-receipt/confirm-receipt",
+    "pages/service/service",
+    "pages/points/points",
+    "pages/cross/cross",
+    "pages/cross-detail/cross-detail",
+    "pages/recommend/recommend",
+    "pages/apply/apply",
+    "pages/supply-need/supply-need",
+    "pages/mine/mine",
+    "pages/identity/identity",
+    "merchant/home/home",
+    "merchant/purchase/purchase",
+    "merchant/orders/orders",
+    "merchant/assets/assets",
+    "merchant/goods/goods",
+    "merchant/goods-edit/goods-edit",
+    "merchant/customers/customers",
+    "merchant/flow/flow",
+    "merchant/needs/needs",
+    "merchant/points-pool/points-pool",
+    "merchant/supply-list/supply-list"
+  ],
+  "window": {
+    "navigationBarTitleText": "万业互联云",
+    "navigationBarBackgroundColor": "#FFFFFF",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#F5F6F8",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "color": "#8F959E",
+    "selectedColor": "#FF4D4F",
+    "backgroundColor": "#FFFFFF",
+    "borderStyle": "white",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页",
+        "iconPath": "assets/icons/tab-home.png",
+        "selectedIconPath": "assets/icons/tab-home-active.png"
+      },
+      {
+        "pagePath": "pages/cross/cross",
+        "text": "兑换",
+        "iconPath": "assets/icons/tab-cross.png",
+        "selectedIconPath": "assets/icons/tab-cross-active.png"
+      },
+      {
+        "pagePath": "pages/points/points",
+        "text": "积分",
+        "iconPath": "assets/icons/tab-points.png",
+        "selectedIconPath": "assets/icons/tab-points-active.png"
+      },
+      {
+        "pagePath": "pages/mine/mine",
+        "text": "我的",
+        "iconPath": "assets/icons/tab-mine.png",
+        "selectedIconPath": "assets/icons/tab-mine-active.png"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents",
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于获取当前位置并按距离展示附近门店"
+    }
+  },
+  "requiredPrivateInfos": ["chooseLocation", "getLocation"]
+}

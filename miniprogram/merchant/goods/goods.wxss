@@ -1,0 +1,34 @@
+/* goods list uses shared m-row + token buttons */
+.m-row--stack .m-row__side .btn-ghost {
+  width: 148rpx;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.add-btn {
+  width: auto;
+  margin: 0 0 var(--space-md);
+}
+
+/* 状态与商品名同行：单独占一行会在按钮上方留出大片空白 */
+.goods-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.goods-title .m-row__title {
+  flex: 1;
+  min-width: 0;
+}
+
+.goods-title .chip {
+  flex-shrink: 0;
+}
+
+.goods-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  width: 100%;
+}

@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "商户工作台",
+  "usingComponents": {
+    "ad-banner": "/components/ad-banner/ad-banner"
+  }
+}

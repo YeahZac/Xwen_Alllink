@@ -1,0 +1,7 @@
+/* 右侧「最近成交 + 箭头」横排，避免竖排把主标题挤窄 */
+.m-row__side {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 42%;
+}

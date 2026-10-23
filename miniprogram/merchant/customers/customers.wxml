@@ -1,0 +1,31 @@
+<view class="page">
+  <view class="m-page-head">
+    <text class="m-page-head__title">{{title}}</text>
+    <text class="m-page-head__desc">客户与成交概况</text>
+  </view>
+
+  <view wx:if="{{!list.length}}" class="empty-state surface">
+    <text class="empty-state__title">暂无客户</text>
+    <text class="empty-state__desc">成交后会出现在这里</text>
+  </view>
+
+  <view class="m-list">
+    <view
+      wx:for="{{list}}"
+      wx:key="id"
+      class="m-row"
+      bindtap="onOpen"
+      data-id="{{item.id}}"
+    >
+      <view class="m-row__seal m-row__seal--gold">{{item.name[0] || '客'}}</view>
+      <view class="m-row__main">
+        <text class="m-row__title ellipsis-1">{{item.name}}</text>
+        <text class="m-row__sub ellipsis-1">{{item.sub}}</text>
+      </view>
+      <view class="m-row__side">
+        <text class="muted">{{item.lastText}}</text>
+        <text class="m-row__arrow">›</text>
+      </view>
+    </view>
+  </view>
+</view>

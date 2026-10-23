@@ -1,0 +1,108 @@
+<view class="page apply">
+  <ad-banner role="login" height="240" />
+
+  <view class="steps surface">
+    <view class="step {{step >= 1 ? 'step--on' : ''}}"><text>1</text><text class="step__l">身份</text></view>
+    <view class="step-line {{step >= 2 ? 'step-line--on' : ''}}"></view>
+    <view class="step {{step >= 2 ? 'step--on' : ''}}"><text>2</text><text class="step__l">资料</text></view>
+    <view class="step-line {{step >= 3 ? 'step-line--on' : ''}}"></view>
+    <view class="step {{step >= 3 ? 'step--on' : ''}}"><text>3</text><text class="step__l">证照</text></view>
+  </view>
+
+  <!-- Step 1 身份 -->
+  <block wx:if="{{step === 1}}">
+    <text class="section-title">选择入驻身份</text>
+    <text class="section-desc">不同身份审核材料不同，请如实选择</text>
+    <view
+      wx:for="{{types}}"
+      wx:key="id"
+      class="type surface {{selected === item.id ? 'type--on' : ''}}"
+      bindtap="selectRole"
+      data-id="{{item.id}}"
+    >
+      <text class="type__name">{{item.name}}</text>
+      <text class="muted">{{item.desc}}</text>
+      <view class="type__tags">
+        <text class="chip chip--soft" wx:for="{{item.tags}}" wx:for-item="tag" wx:key="*this">{{tag}}</text>
+      </view>
+    </view>
+    <button class="btn-primary" bindtap="nextStep">下一步 · 填写资料</button>
+  </block>
+
+  <!-- Step 2 基本资料 -->
+  <block wx:if="{{step === 2}}">
+    <text class="section-title">主体资料</text>
+    <text class="section-desc">{{roleLabel}} · 信息与证照保持一致</text>
+    <view class="form surface">
+      <view class="field" wx:for="{{baseFields}}" wx:key="key">
+        <text class="field__label">{{item.label}}<text class="req" wx:if="{{item.required}}">*</text></text>
+        <input
+          class="field__input"
+          placeholder="{{item.placeholder || ('请输入' + item.label)}}"
+          value="{{form[item.key]}}"
+          data-key="{{item.key}}"
+          bindinput="onField"
+          type="{{item.type || 'text'}}"
+          maxlength="{{item.maxLength || 140}}"
+        />
+      </view>
+      <view class="field">
+        <text class="field__label">地图定位<text class="req">*</text></text>
+        <view class="field__pick" bindtap="chooseLocation">
+          <text class="{{locationText ? '' : 'muted'}}">{{locationText || '点击打开地图选点'}}</text>
+        </view>
+        <text class="field__tip" wx:if="{{locationName}}">地点名：{{locationName}}</text>
+      </view>
+      <view class="field">
+        <text class="field__label">详细地址<text class="req">*</text></text>
+        <textarea
+          class="field__area"
+          placeholder="地图识别的地址，可修改以便查询"
+          value="{{form.address}}"
+          bindinput="onAddressInput"
+          maxlength="200"
+          auto-height
+        />
+        <text class="field__tip">可改识别文字，不影响已标注的经纬度</text>
+      </view>
+    </view>
+    <view class="btns">
+      <button class="btn-ghost half" bindtap="prevStep">上一步</button>
+      <button class="btn-primary half" bindtap="nextStep">下一步 · 上传证照</button>
+    </view>
+  </block>
+
+  <!-- Step 3 证照 -->
+  <block wx:if="{{step === 3}}">
+    <text class="section-title">证照上传</text>
+    <text class="section-desc">照片清晰完整 · 审核通过后方可经营</text>
+    <view class="upload-list">
+      <view class="upload surface" wx:for="{{licenseFields}}" wx:key="key">
+        <view class="upload__head">
+          <text class="upload__label">{{item.label}}<text class="req" wx:if="{{item.required}}">*</text></text>
+          <text class="muted" wx:if="{{item.tip}}">{{item.tip}}</text>
+        </view>
+        <view class="upload__box" bindtap="chooseImage" data-key="{{item.key}}">
+          <image wx:if="{{files[item.key]}}" class="upload__preview" src="{{files[item.key]}}" mode="aspectFill" />
+          <view wx:else class="upload__placeholder">
+            <text class="upload__plus">+</text>
+            <text class="muted">点击上传</text>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view class="agree surface" bindtap="toggleAgree">
+      <text class="agree__check {{form.agreed ? 'agree__check--on' : ''}}">✓</text>
+      <text class="agree__text">我已阅读并同意《万业互联云商户入驻协议》及平台经营规范</text>
+    </view>
+    <view class="btns">
+      <button class="btn-ghost half" bindtap="prevStep">上一步</button>
+      <button class="btn-primary half" bindtap="submit" loading="{{submitting}}">提交入驻申请</button>
+    </view>
+  </block>
+
+  <view class="query surface" bindtap="queryStatus">
+    <text>已有申请？查询审核进度</text>
+    <text class="muted">›</text>
+  </view>
+</view>

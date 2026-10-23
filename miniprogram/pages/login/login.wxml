@@ -1,0 +1,105 @@
+<!--
+  THESIS: 夜市入场条 — 先同意再一键拿手机号，资料去「我的」，禁止登录页填头像昵称。
+  OWN-WORLD: 墨顶朱印 + 白底入场单 + 方钮协议勾；不抄绿胶囊餐饮会籍。
+  STORY: 读协议 → 手机号一键登录 → 去点餐或回到待付金额。
+  FIRST VIEWPORT: 墨顶(印+品牌) → 欢迎句 → 协议勾 → 朱红「手机号一键登录」→ 暂不登录。
+  FORM: 夜市点餐柜 · stall-counter 的入场延伸。
+  FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+-->
+<view class="login-page">
+  <view class="login-head" style="padding-top: {{headerTop}}px;">
+    <view class="login-head__row">
+      <view class="login-head__brand">
+        <view class="login-head__seal">万</view>
+        <view class="login-head__copy">
+          <text class="login-head__name">万业互联云</text>
+          <text class="login-head__line">点餐 · 积分 · 异业 · 供应链</text>
+        </view>
+      </view>
+      <view wx:if="{{canSkip}}" class="login-close" bindtap="skipLogin">关闭</view>
+    </view>
+  </view>
+
+  <view class="login-sheet">
+    <text class="login-title">欢迎加入万业互联云</text>
+    <text class="login-lead">手机号一键登录。头像、昵称和性别请到「我的」里设置。</text>
+    <view class="login-pending" wx:if="{{pendingHint}}">{{pendingHint}}</view>
+    <button wx:if="{{canReturnPay}}" class="btn-primary login-btn" bindtap="returnPay">返回支付</button>
+
+    <view class="agree-wrap">
+      <view class="agree-tip" wx:if="{{showAgreeTip}}">请阅读并同意</view>
+      <view class="agree-row" bindtap="toggleAgree">
+        <view class="agree-box {{agreed ? 'agree-box--on' : ''}}">
+          <view wx:if="{{agreed}}" class="agree-box__tick"></view>
+        </view>
+        <view class="agree-copy">
+          <text>我已阅读并同意</text>
+          <text class="agree-link" catchtap="openLegal" data-key="privacy">《平台隐私政策》</text>
+          <text>、</text>
+          <text class="agree-link" catchtap="openLegal" data-key="minor">《未成年人保护须知》</text>
+          <text>、</text>
+          <text class="agree-link" catchtap="openLegal" data-key="member">《用户服务协议》</text>
+        </view>
+      </view>
+    </view>
+
+    <button
+      wx:if="{{agreed}}"
+      class="btn-primary login-btn"
+      open-type="getPhoneNumber"
+      bindgetphonenumber="onPhoneLogin"
+      loading="{{loading}}"
+      disabled="{{loading}}"
+    >手机号一键登录</button>
+    <button
+      wx:else
+      class="btn-primary login-btn"
+      bindtap="onNeedAgree"
+      disabled="{{loading}}"
+    >手机号一键登录</button>
+
+    <button wx:if="{{canSkip}}" class="login-skip" bindtap="skipLogin" disabled="{{loading}}">暂不登录</button>
+
+    <view class="login-extra">
+      <text class="login-extra__a" bindtap="goApply">商户入驻</text>
+      <text class="login-extra__dot">·</text>
+      <text class="login-extra__a" bindtap="queryApply">查询进度</text>
+    </view>
+
+    <view class="login-test">
+      <view class="login-test__head" bindtap="toggleTest">
+        <text class="login-test__title">演示入口</text>
+        <text class="login-test__toggle">{{showTest ? '收起' : '展开'}}</text>
+      </view>
+      <block wx:if="{{showTest}}">
+        <view class="id-grid">
+          <view class="id-tile" bindtap="onLoginCode" data-code="C001">
+            <text class="id-tile__code">C001</text>
+            <text class="id-tile__role">消费者</text>
+          </view>
+          <view class="id-tile" bindtap="onLoginCode" data-code="D001">
+            <text class="id-tile__code">D001</text>
+            <text class="id-tile__role">地摊商户</text>
+          </view>
+          <view class="id-tile" bindtap="onLoginCode" data-code="Y001">
+            <text class="id-tile__code">Y001</text>
+            <text class="id-tile__role">异业门店</text>
+          </view>
+          <view class="id-tile" bindtap="onLoginCode" data-code="G001">
+            <text class="id-tile__code">G001</text>
+            <text class="id-tile__role">供应链</text>
+          </view>
+        </view>
+        <input
+          class="login-code"
+          placeholder="其它邀请码"
+          value="{{code}}"
+          bindinput="onInput"
+          confirm-type="done"
+          bindconfirm="onLoginCode"
+        />
+        <button class="login-skip" bindtap="onLoginCode" loading="{{loading}}" disabled="{{loading}}">用邀请码进入</button>
+      </block>
+    </view>
+  </view>
+</view>

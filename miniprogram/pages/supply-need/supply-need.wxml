@@ -1,0 +1,36 @@
+<view class="page">
+  <text class="section-title">原材料供应需求</text>
+  <text class="section-desc">提交后由平台匹配已入驻供应链商家</text>
+
+  <view class="form surface">
+    <input class="input" placeholder="需求品类，如宽面/菜籽油" value="{{goods}}" bindinput="onGoods" />
+    <input class="input" placeholder="预估数量" value="{{qty}}" bindinput="onQty" />
+    <input class="input" placeholder="期望到货时间" value="{{when}}" bindinput="onWhen" />
+    <textarea class="area" placeholder="补充说明" value="{{note}}" bindinput="onNote" />
+  </view>
+
+  <button class="btn-primary" bindtap="submit" loading="{{submitting}}" disabled="{{submitting}}">发布需求</button>
+
+  <text class="section-title history-title">我的需求</text>
+  <text class="section-desc">跟踪平台匹配与报价进度</text>
+
+  <view wx:if="{{loading}}" class="empty-state">
+    <text class="empty-state__title">正在加载需求</text>
+    <text class="empty-state__desc">请稍候</text>
+  </view>
+
+  <view wx:elif="{{!records.length}}" class="empty-state surface">
+    <text class="empty-state__title">还没有发布记录</text>
+    <text class="empty-state__desc">填写上方表单发布第一条需求</text>
+  </view>
+
+  <view wx:for="{{records}}" wx:key="id" class="need-record surface">
+    <view class="row-between">
+      <text class="need-record__name">{{item.goodsName}}</text>
+      <text class="chip chip--soft">{{item.statusText}}</text>
+    </view>
+    <text class="need-record__meta">{{item.qtyText || '数量待沟通'}} · {{item.expectTime || '时间待沟通'}}</text>
+    <text class="need-record__note" wx:if="{{item.note}}">{{item.note}}</text>
+    <text class="need-record__time">{{item.createdText}}</text>
+  </view>
+</view>

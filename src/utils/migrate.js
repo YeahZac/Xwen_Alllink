@@ -92,6 +92,31 @@ async function ensureSchema() {
       'banners',
       'page_key',
       "`page_key` VARCHAR(32) DEFAULT NULL COMMENT 'C端页面 index/cross/points/mine' AFTER `role_scope`"
+    ),
+    addColumn(
+      'merchants',
+      'biz_type',
+      "`biz_type` VARCHAR(32) DEFAULT NULL COMMENT '餐饮/鲜花/蛋糕/百货商店' AFTER `role`"
+    ),
+    addColumn(
+      'merchants',
+      'cover_url',
+      "`cover_url` VARCHAR(1024) DEFAULT NULL COMMENT '门店封面图' AFTER `cover_hue`"
+    ),
+    addColumn(
+      'merchants',
+      'materials_json',
+      "`materials_json` JSON DEFAULT NULL COMMENT '门店资料文件' AFTER `cover_url`"
+    ),
+    addColumn(
+      'merchants',
+      'deleted_at',
+      "`deleted_at` DATETIME DEFAULT NULL COMMENT '软删除' AFTER `status`"
+    ),
+    addColumn(
+      'users',
+      'deleted_at',
+      "`deleted_at` DATETIME DEFAULT NULL COMMENT '软删除' AFTER `status`"
     )
   ]
   for (const job of jobs) {
@@ -125,6 +150,16 @@ async function ensureSchema() {
     await runSqlStatements('22_apply_applicant_user.sql', 'apply applicant user')
   } catch (e) {
     console.warn('[schema] apply applicant user', e.message)
+  }
+  try {
+    await runSqlStatements('23_retail_biz_types.sql', 'retail biz types')
+  } catch (e) {
+    console.warn('[schema] retail biz types', e.message)
+  }
+  try {
+    await runSqlStatements('24_backfill_merchant_cover.sql', 'merchant cover backfill')
+  } catch (e) {
+    console.warn('[schema] merchant cover backfill', e.message)
   }
 }
 

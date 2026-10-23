@@ -1,0 +1,108 @@
+<view class="page">
+  <view class="m-page-head">
+    <text class="m-page-head__title">{{goodsId ? '编辑商品' : '添加商品'}}</text>
+    <text class="m-page-head__desc">完善资料后上架，消费者即可看到</text>
+  </view>
+
+  <view class="form surface">
+    <view class="upload" bindtap="onPickImage">
+      <text class="field__label">商品图片</text>
+      <view class="upload__box">
+        <image wx:if="{{form.imageUrl}}" class="upload__preview" src="{{form.imageUrl}}" mode="aspectFill" />
+        <view wx:else class="upload__placeholder">
+          <text class="upload__plus">+</text>
+          <text class="muted">上传主图</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="field">
+      <text class="field__label">商品名称 <text class="req">*</text></text>
+      <input class="field__input" data-key="name" value="{{form.name}}" bindinput="onField" placeholder="如 招牌牛肉面" />
+    </view>
+    <view class="field">
+      <text class="field__label">SKU / 编码</text>
+      <input class="field__input" data-key="sku" value="{{form.sku}}" bindinput="onField" placeholder="留空自动生成" />
+    </view>
+    <view class="field">
+      <text class="field__label">分类</text>
+      <picker range="{{catOptions}}" bindchange="onCat">
+        <view class="field__pick">{{form.category}}</view>
+      </picker>
+    </view>
+    <view class="field" wx:if="{{role === 'stall'}}">
+      <text class="field__label">单位</text>
+      <picker range="{{unitOptions}}" bindchange="onUnit">
+        <view class="field__pick">{{form.unit}}</view>
+      </picker>
+    </view>
+    <view class="field">
+      <text class="field__label">商品说明</text>
+      <input class="field__input" data-key="description" value="{{form.description}}" bindinput="onField" placeholder="卖点、规格或食用说明" />
+    </view>
+
+    <block wx:if="{{role === 'stall'}}">
+      <view class="field">
+        <text class="field__label">售价（元） <text class="req">*</text></text>
+        <input class="field__input" type="digit" data-key="price" value="{{form.price}}" bindinput="onField" placeholder="如 18.00" />
+      </view>
+      <view class="field">
+        <text class="field__label">消费获积分</text>
+        <input class="field__input" type="number" data-key="pointsGrant" value="{{form.pointsGrant}}" bindinput="onField" placeholder="出餐后从额度池划拨" />
+      </view>
+      <view class="field">
+        <text class="field__label">库存</text>
+        <input class="field__input" type="number" data-key="stock" value="{{form.stock}}" bindinput="onField" />
+      </view>
+      <view class="field row-between" bindtap="toggle" data-key="mixEnabled">
+        <text class="field__label">允许积分抵现 + 微信支付</text>
+        <text class="chip {{form.mixEnabled ? 'chip--soft' : 'chip--off'}}">{{form.mixEnabled ? '已开启' : '关闭'}}</text>
+      </view>
+    </block>
+
+    <block wx:if="{{role === 'cross'}}">
+      <view class="field">
+        <text class="field__label">所需积分</text>
+        <input class="field__input" type="number" data-key="pointsNeed" value="{{form.pointsNeed}}" bindinput="onField" placeholder="全积分兑换价" />
+      </view>
+      <view class="field">
+        <text class="field__label">现金价（元） <text class="req">*</text></text>
+        <input class="field__input" type="digit" data-key="cashPrice" value="{{form.cashPrice}}" bindinput="onField" placeholder="全额微信支付价" />
+      </view>
+      <view class="field">
+        <text class="field__label">库存</text>
+        <input class="field__input" type="number" data-key="stock" value="{{form.stock}}" bindinput="onField" />
+      </view>
+      <view class="field row-between" bindtap="toggle" data-key="allowMix">
+        <text class="field__label">允许积分 + 微信组合支付</text>
+        <text class="chip {{form.allowMix ? 'chip--soft' : 'chip--off'}}">{{form.allowMix ? '已开启' : '关闭'}}</text>
+      </view>
+    </block>
+
+    <block wx:if="{{role === 'supply'}}">
+      <view class="field">
+        <text class="field__label">供货价（元） <text class="req">*</text></text>
+        <input class="field__input" type="digit" data-key="price" value="{{form.price}}" bindinput="onField" />
+      </view>
+      <view class="field">
+        <text class="field__label">库存</text>
+        <input class="field__input" type="number" data-key="stock" value="{{form.stock}}" bindinput="onField" />
+      </view>
+      <view class="field">
+        <text class="field__label">买方获额度</text>
+        <input class="field__input" type="number" data-key="pointsGrant" value="{{form.pointsGrant}}" bindinput="onField" placeholder="采购成交划入买方额度池" />
+      </view>
+      <view class="field">
+        <text class="field__label">积分比例说明</text>
+        <input class="field__input" data-key="pointsRatio" value="{{form.pointsRatio}}" bindinput="onField" placeholder="如 采购额 10% 入池" />
+      </view>
+    </block>
+
+    <view class="field row-between" bindtap="toggle" data-key="onSale">
+      <text class="field__label">上架售卖</text>
+      <text class="chip {{form.onSale ? 'chip--soft' : 'chip--off'}}">{{form.onSale ? '在售' : '下架'}}</text>
+    </view>
+  </view>
+
+  <button class="btn-primary" bindtap="onSave" loading="{{saving}}" disabled="{{saving}}">保存商品</button>
+</view>

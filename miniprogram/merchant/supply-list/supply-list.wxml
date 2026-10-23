@@ -1,0 +1,32 @@
+<view class="page">
+  <view class="m-page-head">
+    <text class="m-page-head__title">已入驻供应链</text>
+    <text class="m-page-head__desc">地摊 / 异业可查看供应链门店与商品，采购成交后获得积分额度</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty-state">
+    <text class="empty-state__title">正在加载供应链</text>
+    <text class="empty-state__desc">请稍候</text>
+  </view>
+
+  <view wx:elif="{{!list.length}}" class="empty-state surface">
+    <text class="empty-state__title">暂无已入驻供应链</text>
+    <text class="empty-state__desc">平台审核通过后会显示在这里</text>
+  </view>
+
+  <view class="m-list">
+    <view wx:for="{{list}}" wx:key="id" class="m-row m-row--stack">
+      <view class="m-row__thumb">
+        <image wx:if="{{item.coverImage}}" class="cover-img" src="{{item.coverImage}}" mode="aspectFill" />
+        <view wx:else class="cover-fallback" style="font-size: 28rpx;">{{item.initial}}</view>
+      </view>
+      <view class="m-row__main">
+        <text class="m-row__title ellipsis-1">{{item.name}}</text>
+        <text class="m-row__sub ellipsis-1">{{item.tag}} · 在售 {{item.goodsCount}} SKU · 累计销量 {{item.monthSales}}</text>
+      </view>
+      <view class="m-row__side">
+        <button class="btn-primary" bindtap="goPurchase">去采购</button>
+      </view>
+    </view>
+  </view>
+</view>

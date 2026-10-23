@@ -1,0 +1,15 @@
+.amt {
+  font-size: var(--font-subtitle);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.amt--up {
+  color: var(--color-primary);
+}
+
+.amt--down {
+  color: var(--color-ink);
+}

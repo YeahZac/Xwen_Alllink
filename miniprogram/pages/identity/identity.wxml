@@ -1,0 +1,30 @@
+<view class="page identity">
+  <text class="identity__lead">同一微信账号可在 C 端与已开通的经营身份之间切换</text>
+
+  <view class="id-cards">
+    <view
+      wx:for="{{identityCards}}"
+      wx:key="role"
+      class="id-card {{item.active ? 'id-card--active' : ''}} {{item.opened ? '' : 'id-card--locked'}}"
+      bindtap="onIdentityTap"
+      data-role="{{item.role}}"
+      data-opened="{{item.opened}}"
+      data-pending="{{item.pending}}"
+      data-active="{{item.active}}"
+      data-merchant-id="{{item.merchantId}}"
+      data-apply-path="{{item.applyPath}}"
+      data-apply-title="{{item.applyTitle}}"
+      data-label="{{item.label}}"
+    >
+      <view class="id-card__seal">{{item.seal}}</view>
+      <view class="id-card__main">
+        <view class="id-card__top">
+          <text class="id-card__title">{{item.label}}</text>
+          <text class="id-card__badge {{item.opened ? 'id-card__badge--ok' : (item.pending ? 'id-card__badge--pending' : 'id-card__badge--off')}}">{{item.badge}}</text>
+        </view>
+        <text class="id-card__desc ellipsis-1">{{item.shopName || item.desc}}</text>
+      </view>
+      <text class="id-card__arrow">›</text>
+    </view>
+  </view>
+</view>

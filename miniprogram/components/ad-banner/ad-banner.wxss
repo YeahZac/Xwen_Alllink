@@ -1,0 +1,54 @@
+.ad-banner {
+  position: relative;
+  margin-bottom: var(--space-md);
+}
+
+.ad-banner__swiper {
+  border-radius: 20rpx;
+  overflow: hidden;
+  background: #1C1F26;
+}
+
+.ad-banner__slide {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.ad-banner__img,
+.ad-banner__fallback {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.ad-banner__fallback {
+  background: linear-gradient(145deg, #9B1530 0%, #C41E3A 100%);
+}
+
+.ad-banner__mask {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: var(--space-section) var(--space-md) var(--space-md);
+  background: linear-gradient(transparent, rgba(18, 20, 26, 0.76));
+  color: #fff;
+  pointer-events: none;
+}
+
+.ad-banner__title {
+  font-size: var(--font-subtitle);
+  font-weight: 800;
+  line-height: var(--lh-snug);
+  letter-spacing: var(--tracking-display);
+}
+
+.ad-banner__sub {
+  display: block;
+  margin-top: var(--space-2);
+  font-size: var(--font-small);
+  color: rgba(255, 255, 255, 0.88);
+  line-height: var(--lh-snug);
+}

@@ -11,6 +11,7 @@ const feeService = require('./feeService')
 const { getCashRate, pointsToCash } = require('./configService')
 const wxService = require('./wxService')
 const { applyGeo } = require('../utils/geo')
+const { enrichCoverRow } = require('../utils/mediaPick')
 
 function round2(n) {
   return Math.round(Number(n || 0) * 100) / 100
@@ -42,31 +43,33 @@ async function recordCommission(conn, { bizType, bizId, payerMerchantId, amountG
 async function listNearbyStalls(opts = {}) {
   const rows = await query(
     `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude,
-            m.cover_hue AS coverHue, m.cover_url AS coverImage, m.status,
+            m.cover_hue AS coverHue, m.cover_url AS coverImage, m.materials_json AS materialsJson,
+            m.status,
             LEFT(m.name,1) AS initial,
             IFNULL((SELECT SUM(sales_count) FROM stall_goods g WHERE g.merchant_id=m.id AND g.deleted_at IS NULL),0) AS sales,
             CASE WHEN m.status=1 THEN 1 ELSE 0 END AS open,
-            '夜市' AS tag,
+            IFNULL(NULLIF(m.biz_type,''), '餐饮') AS tag,
             4.8 AS rating,
             m.address AS \`desc\`,
-            '美食' AS category
+            IFNULL(NULLIF(m.biz_type,''), '餐饮') AS category
      FROM merchants m
      WHERE m.role='stall' AND m.status=1 AND m.deleted_at IS NULL
-     ORDER BY m.id`
+     ORDER BY m.id DESC`
   )
-  return applyGeo(rows, opts)
+  return applyGeo(rows.map((r) => enrichCoverRow(r)), opts)
 }
 
 async function listCrossStores(opts = {}) {
   const stores = await query(
     `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude,
-            m.cover_hue AS coverHue, m.cover_url AS coverImage,
-            LEFT(m.name,1) AS initial, '异业' AS category
+            m.cover_hue AS coverHue, m.cover_url AS coverImage, m.materials_json AS materialsJson,
+            LEFT(m.name,1) AS initial,
+            IFNULL(NULLIF(m.biz_type,''), '百货商店') AS category
      FROM merchants m
      WHERE m.role='cross' AND m.status=1 AND m.deleted_at IS NULL
-     ORDER BY m.id`
+     ORDER BY m.id DESC`
   )
-  const located = applyGeo(stores, opts)
+  const located = applyGeo(stores.map((r) => enrichCoverRow(r)), opts)
   for (const s of located) {
     try {
       s.items = await query(
@@ -91,13 +94,14 @@ async function listCrossStores(opts = {}) {
 async function getStallMenu(merchantId) {
   const merchants = await query(
     `SELECT id, name, address, city, latitude, longitude,
-            cover_hue AS coverHue, cover_url AS coverImage,
+            cover_hue AS coverHue, cover_url AS coverImage, materials_json AS materialsJson,
             LEFT(name,1) AS initial, status
      FROM merchants
      WHERE id=:id AND role='stall' AND deleted_at IS NULL`,
     { id: merchantId }
   )
   if (!merchants.length) throw new HttpError(404, '摊位不存在')
+  enrichCoverRow(merchants[0])
   if (Number(merchants[0].status) !== 1) throw new HttpError(400, '本店已歇业，暂不能收款')
   const goods = await query(
     `SELECT id, name, price, points_grant AS pointsGrant, category, desc_text AS \`desc\`,
@@ -424,6 +428,13 @@ async function completeStallOrder({ merchantId, orderId }) {
       allocated = alloc.allocated
       shortage = alloc.shortage
       poolLeft = alloc.poolLeft
+      // 本单承诺划拨但额度池为 0：禁止「空完成」，避免消费者无积分却触发推荐奖
+      if (allocated === 0) {
+        throw new HttpError(
+          400,
+          '积分额度池不足，无法划拨给消费者。请先向供应链采购或后台发放额度后再出餐'
+        )
+      }
       try {
         await conn.execute(
           'UPDATE consumer_orders SET points_allocated=?, points_allocated_at=NOW() WHERE id=?',
@@ -641,6 +652,12 @@ async function redeemCross({ userId, merchantId, goodsId, payMode, pointsUse = 0
       [ono, userId, merchantId, g.id, g.name, g.cash_price]
     )
     await conn.execute(`UPDATE cross_goods SET sales_count = IFNULL(sales_count,0) + 1 WHERE id=?`, [g.id])
+    try {
+      await conn.execute(
+        `UPDATE cross_goods SET stock = GREATEST(IFNULL(stock,1)-1,0) WHERE id=?`,
+        [g.id]
+      )
+    } catch (_) {}
     const cashAmount = Number(g.cash_price)
     const commission = await recordCommission(conn, {
       bizType: 'cross',
@@ -806,7 +823,14 @@ async function confirmPurchaseOrder({ buyerMerchantId, orderId }) {
     if (!rows.length) throw new HttpError(404, '采购单不存在')
     const o = rows[0]
     if (o.buyer_merchant_id !== buyerMerchantId) throw new HttpError(403, '无权操作')
-    if (!['pending', 'shipped'].includes(o.status)) throw new HttpError(400, '当前状态不可确认')
+    // 线上采购必须先发货再确认；线下单创建时已 confirmed，不应再走此接口
+    if (String(o.fulfill_type || 'online') === 'online') {
+      if (o.status !== 'shipped') {
+        throw new HttpError(400, '请等待供应链发货后再确认收货')
+      }
+    } else if (o.status !== 'pending' && o.status !== 'shipped') {
+      throw new HttpError(400, '当前状态不可确认')
+    }
     const [items] = await conn.execute(
       `SELECT goods_name FROM purchase_order_items WHERE order_id=? LIMIT 1`,
       [orderId]

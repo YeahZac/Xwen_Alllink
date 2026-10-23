@@ -1,0 +1,8 @@
+{
+  "description": "本地私有配置",
+  "projectname": "tanli-stall-supply",
+  "setting": {
+    "urlCheck": false,
+    "compileHotReLoad": true
+  }
+}

@@ -143,9 +143,10 @@ async function trackVisit(body = {}) {
 }
 
 /** 用户总览：C端 + 商户身份 */
-async function listAllIdentities({ role, q, limit = 100 } = {}) {
-  const lim = Math.min(Number(limit) || 100, 300)
+async function listAllIdentities({ role, q, limit = 200 } = {}) {
+  const lim = Math.min(Number(limit) || 200, 500)
   const rows = []
+  const { pickCoverFromLicenses, parseMaybeJson } = require('../utils/mediaPick')
 
   if (!role || role === 'consumer' || role === 'all') {
     let sql = `SELECT u.id, 'consumer' AS identity, 'C端用户' AS identityLabel,
@@ -183,11 +184,8 @@ async function listAllIdentities({ role, q, limit = 100 } = {}) {
     sql += ` ORDER BY m.id DESC LIMIT ${lim}`
     const merchants = await query(sql, params)
     for (const m of merchants) {
-      if (m.materials && typeof m.materials === 'string') {
-        try {
-          m.materials = JSON.parse(m.materials)
-        } catch (_) {}
-      }
+      const materials = parseMaybeJson(m.materials) || m.materials || {}
+      const coverUrl = m.coverUrl || pickCoverFromLicenses(materials) || ''
       rows.push({
         id: m.merchantId,
         identity: m.identity,
@@ -201,9 +199,9 @@ async function listAllIdentities({ role, q, limit = 100 } = {}) {
         createdAt: m.createdAt,
         merchantId: m.merchantId,
         city: m.city,
-        materials: m.materials,
-        coverUrl: m.coverUrl,
-        avatarUrl: m.coverUrl,
+        materials,
+        coverUrl,
+        avatarUrl: coverUrl,
         address: m.address,
         contactName: m.contactName
       })
@@ -254,6 +252,8 @@ async function getStoreDetail(merchantId) {
     { id: merchantId }
   )
 
+  const { pickCoverFromLicenses } = require('../utils/mediaPick')
+  const coverUrl = m.cover_url || pickCoverFromLicenses(materials) || ''
   return {
     id: m.id,
     role: m.role,
@@ -267,7 +267,7 @@ async function getStoreDetail(merchantId) {
     address: m.address,
     latitude: m.latitude,
     longitude: m.longitude,
-    coverUrl: m.cover_url,
+    coverUrl,
     status: m.status,
     poolBalance: m.pool_balance,
     materials: materials || {},

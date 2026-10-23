@@ -1,0 +1,280 @@
+.pay-page {
+  min-height: 100vh;
+  background: var(--color-bg);
+}
+
+.pay-head {
+  background: #0E1014;
+  padding-left: 24rpx;
+  padding-right: 24rpx;
+  padding-bottom: 28rpx;
+  position: relative;
+  overflow: hidden;
+}
+
+.pay-head::after {
+  content: "";
+  position: absolute;
+  right: -48rpx;
+  top: -40rpx;
+  width: 200rpx;
+  height: 200rpx;
+  border: 12rpx solid rgba(196, 30, 58, 0.38);
+  border-radius: var(--radius-md);
+  transform: rotate(18deg);
+  pointer-events: none;
+}
+
+.pay-head__row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 64rpx;
+}
+
+.pay-back {
+  min-width: 88rpx;
+  color: #fff;
+  font-size: var(--font-caption);
+  font-weight: 700;
+  line-height: 64rpx;
+}
+
+.pay-back--ghost {
+  visibility: hidden;
+}
+
+.pay-head__title {
+  color: #fff;
+  font-size: 34rpx;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.pay-body {
+  padding: 24rpx 24rpx calc(48rpx + env(safe-area-inset-bottom));
+}
+
+.pay-body--ok {
+  background: var(--color-surface);
+  min-height: calc(100vh - 160rpx);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding-top: 64rpx;
+}
+
+.pay-shop {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 24rpx 20rpx;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  margin-bottom: 20rpx;
+}
+
+.pay-shop__seal {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 12rpx;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 32rpx;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 3rpx rgba(255, 255, 255, 0.32);
+}
+
+.pay-shop__main {
+  min-width: 0;
+  flex: 1;
+}
+
+.pay-shop__name {
+  display: block;
+  font-size: var(--font-title);
+  font-weight: 800;
+  line-height: var(--lh-tight);
+  color: var(--color-ink);
+}
+
+.pay-shop__sub {
+  display: block;
+  margin-top: 6rpx;
+  font-size: var(--font-small);
+  color: var(--color-text-secondary);
+}
+
+.pay-receipt {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: 28rpx 24rpx 24rpx;
+  margin-bottom: 20rpx;
+}
+
+.pay-receipt__label {
+  display: block;
+  text-align: center;
+  font-size: var(--font-small);
+  color: var(--color-text-secondary);
+  font-weight: 700;
+}
+
+.pay-amount {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8rpx;
+  min-height: 112rpx;
+  padding: 8rpx 0 4rpx;
+}
+
+.pay-amount__yen {
+  font-size: 40rpx;
+  font-weight: 800;
+  color: var(--color-ink);
+}
+
+.pay-amount__n {
+  font-size: 88rpx;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: var(--color-ink);
+}
+
+.pay-amount__n--ph {
+  color: var(--color-text-muted);
+  font-weight: 700;
+}
+
+.pay-hint,
+.pay-session,
+.pay-warn,
+.pay-foot {
+  display: block;
+  text-align: center;
+  line-height: var(--lh-snug);
+}
+
+.pay-hint {
+  font-size: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+.pay-session {
+  margin-top: 10rpx;
+  font-size: var(--font-small);
+  color: var(--color-success);
+  font-weight: 700;
+}
+
+.pay-warn {
+  margin-top: 10rpx;
+  font-size: var(--font-small);
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.pad {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 -8rpx 28rpx;
+}
+
+.pad__key {
+  width: calc(33.33% - 16rpx);
+  margin: 8rpx;
+  height: 96rpx;
+  line-height: 96rpx;
+  text-align: center;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  font-size: 36rpx;
+  font-weight: 800;
+  color: var(--color-ink);
+}
+
+.pad__key--on {
+  background: var(--color-primary-soft);
+}
+
+.pad__key--del {
+  font-size: 28rpx;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+}
+
+.pay-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.pay-cta {
+  width: 100% !important;
+  margin: 0;
+}
+
+.pay-body--ok .pay-cta + .pay-cta {
+  margin-top: 16rpx;
+}
+
+.pay-cta[disabled] {
+  opacity: 0.45;
+}
+
+.pay-foot {
+  margin-top: 20rpx;
+  font-size: var(--font-small);
+  color: var(--color-text-muted);
+}
+
+.ok-seal {
+  width: 112rpx;
+  height: 112rpx;
+  margin: 0 auto 28rpx;
+  border-radius: 16rpx;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 52rpx;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 4rpx rgba(255, 255, 255, 0.32), var(--shadow-seal);
+}
+
+.ok-title {
+  display: block;
+  text-align: center;
+  font-size: 40rpx;
+  font-weight: 800;
+  margin-bottom: 20rpx;
+  color: var(--color-ink);
+}
+
+.ok-copy {
+  display: block;
+  text-align: center;
+  font-size: var(--font-body);
+  color: var(--color-text);
+  line-height: var(--lh-body);
+  margin: 0 12rpx 16rpx;
+}
+
+.ok-sub {
+  display: block;
+  text-align: center;
+  font-size: var(--font-caption);
+  color: var(--color-text-secondary);
+  line-height: var(--lh-snug);
+  margin: 0 12rpx 40rpx;
+}

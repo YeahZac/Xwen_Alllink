@@ -1,0 +1,47 @@
+<view class="page cross page--flush">
+  <view class="cross-banner">
+    <text class="cross-banner__title">附近可兑门店</text>
+    <text class="cross-banner__sub">积分 {{points}} · 约 ¥{{cashValue}} 可抵现</text>
+  </view>
+
+  <view class="cross-body">
+    <text class="cross-tip">积分够就兑 · 不够可按门店现金价支付</text>
+
+    <view wx:if="{{loading}}" class="empty-state">
+      <text class="empty-state__title">正在加载兑换门店</text>
+      <text class="empty-state__desc">请稍候</text>
+    </view>
+
+    <view wx:elif="{{!stores.length}}" class="empty-state surface">
+      <text class="empty-state__title">附近暂无可兑门店</text>
+      <text class="empty-state__desc">稍后再来看看</text>
+    </view>
+
+    <view
+      wx:for="{{stores}}"
+      wx:key="id"
+      class="store-card"
+      bindtap="openStore"
+      data-id="{{item.id}}"
+    >
+      <view class="store-card__cover">
+        <image wx:if="{{item.coverImage}}" class="cover-img" src="{{item.coverImage}}" mode="aspectFill" />
+        <view wx:else class="cover-fallback">{{item.initial}}</view>
+        <text class="store-card__badge">异业</text>
+      </view>
+      <view class="store-card__body">
+        <text class="store-card__name ellipsis-1">{{item.name}}</text>
+        <view class="store-card__meta">
+          <text class="store-card__meta-t ellipsis-1">{{item.metaText}}</text>
+        </view>
+        <text class="store-card__addr ellipsis-1">{{item.address}}</text>
+        <view class="store-card__foot">
+          <text class="store-card__sales">积分可兑</text>
+          <text class="store-card__go">去兑换</text>
+        </view>
+      </view>
+    </view>
+
+    <ad-banner role="consumer" height="200" />
+  </view>
+</view>

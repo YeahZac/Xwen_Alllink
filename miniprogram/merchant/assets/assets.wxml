@@ -1,0 +1,54 @@
+<view class="page">
+  <view class="m-page-head">
+    <text class="m-page-head__title">资产账户</text>
+    <text class="m-page-head__desc">{{desc}}</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty-state">
+    <text class="empty-state__title">正在加载账户</text>
+    <text class="empty-state__desc">请稍候</text>
+  </view>
+
+  <view wx:elif="{{!accounts.length}}" class="empty-state surface">
+    <text class="empty-state__title">暂无资产账户</text>
+    <text class="empty-state__desc">产生交易或结算后会显示在这里</text>
+  </view>
+
+  <view class="m-list">
+    <view wx:for="{{accounts}}" wx:key="accountType" class="acc">
+      <view class="acc__top">
+        <view class="m-row__seal m-row__seal--gold">资</view>
+        <view class="acc__info">
+          <text class="acc__name">{{item.label}}</text>
+          <text class="acc__note">{{item.frozenText}}</text>
+        </view>
+      </view>
+      <text class="acc__bal">{{item.balanceText}}</text>
+      <button
+        class="btn-primary acc__btn"
+        bindtap="onWithdraw"
+        data-type="{{item.accountType}}"
+        disabled="{{item.balance <= 0}}"
+      >{{item.balance > 0 ? '申请提现' : '暂无可提余额'}}</button>
+    </view>
+  </view>
+
+  <view class="note">
+    <text class="note__t">规则提示</text>
+    <view wx:for="{{notes}}" wx:key="*this" class="note__line">· {{item}}</view>
+  </view>
+
+  <view class="m-page-head" wx:if="{{withdraws.length}}">
+    <text class="m-page-head__title">提现进度</text>
+    <text class="m-page-head__desc">货款与积分折现分开展示，互不占用</text>
+  </view>
+  <view class="m-list" wx:if="{{withdraws.length}}">
+    <view wx:for="{{withdraws}}" wx:key="id" class="m-row">
+      <view class="m-row__seal m-row__seal--gold">提</view>
+      <view class="m-row__main">
+        <text class="m-row__title ellipsis-1">{{item.requestNo}} · {{item.amountText}}</text>
+        <text class="m-row__sub ellipsis-1">{{item.timeText}} · {{item.statusText}}</text>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,78 @@
+.orders .section-title,
+.confirm .section-title {
+  margin-top: var(--space-md);
+}
+
+.empty {
+  padding: var(--space-xl) var(--space-section);
+  text-align: center;
+}
+
+.empty__title {
+  display: block;
+  font-size: var(--font-subtitle);
+  font-weight: 700;
+  margin-bottom: var(--space-xs);
+  color: var(--color-text);
+  line-height: var(--lh-snug);
+}
+
+.empty__btn {
+  margin-top: var(--space-lg);
+  width: 60%;
+}
+
+.order {
+  padding: var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+
+.order__shop {
+  font-size: var(--font-subtitle);
+  font-weight: 800;
+  flex: 1;
+  min-width: 0;
+  margin-right: var(--space-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: var(--tracking-display);
+  line-height: var(--lh-snug);
+}
+
+.order__items {
+  margin: var(--space-sm) 0;
+  line-height: var(--lh-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-caption);
+  color: var(--color-text-secondary);
+}
+
+.order__foot {
+  margin-top: var(--space-xs);
+  gap: var(--space-sm);
+  align-items: flex-end;
+}
+
+.order__time {
+  flex-shrink: 0;
+}
+
+/* 金额与积分横排换行，不与时间抢同一行 */
+.order__sum {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-sm);
+  min-width: 0;
+}
+
+.pts {
+  color: var(--color-accent-deep);
+  font-weight: 700;
+  font-size: var(--font-caption);
+  font-variant-numeric: tabular-nums;
+}

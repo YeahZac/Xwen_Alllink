@@ -1,0 +1,37 @@
+<view class="page orders">
+  <text class="section-title">我的订单</text>
+  <text class="section-desc">地摊点餐与异业兑换记录</text>
+
+  <view wx:if="{{loading}}" class="empty">
+    <text class="empty__title">正在加载订单</text>
+    <text class="muted">请稍候</text>
+  </view>
+
+  <view wx:elif="{{!orders.length}}" class="empty surface">
+    <text class="empty__title">还没有订单</text>
+    <text class="muted">去首页扫码点一单吧</text>
+    <button class="btn-primary empty__btn" bindtap="goHome">去逛逛</button>
+  </view>
+
+  <view wx:for="{{orders}}" wx:key="id" class="order surface">
+    <view class="row-between">
+      <text class="order__shop">{{item.stallName || item.storeName}}</text>
+      <text class="chip">{{item.statusText}}{{item.payModeText ? ' · ' + item.payModeText : ''}}</text>
+    </view>
+    <view class="order__items muted">
+      <text wx:for="{{item.items}}" wx:for-item="g" wx:key="id">{{g.name}}×{{g.qty}} </text>
+    </view>
+    <view class="row-between order__foot">
+      <text class="muted order__time">{{item.timeText}}</text>
+      <view class="order__sum">
+        <text class="price" wx:if="{{item.totalPrice}}"><text class="price__yen">¥</text>{{item.totalPrice}}</text>
+        <text class="pts" wx:if="{{item.pointsGrant}}">+{{item.pointsGrant}}积分</text>
+        <text class="pts" wx:elif="{{item.pointsWant && item.status !== 'completed' && item.status !== 'cancelled'}}">预计 +{{item.pointsWant}}</text>
+        <text class="pts" wx:if="{{item.pointsSpend}}">−{{item.pointsSpend}}积分</text>
+      </view>
+    </view>
+    <view class="order__act" bindtap="onComplaint" data-id="{{item.id}}">
+      <text class="muted">投诉此单</text>
+    </view>
+  </view>
+</view>

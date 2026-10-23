@@ -1,0 +1,74 @@
+<view class="page detail page--flush" wx:if="{{loading}}">
+  <view class="empty-state">
+    <text class="empty-state__title">正在加载商品</text>
+    <text class="empty-state__desc">请稍候</text>
+  </view>
+</view>
+
+<view class="page detail page--flush" wx:elif="{{!goods}}">
+  <view class="empty-state">
+    <text class="empty-state__title">商品不存在</text>
+    <text class="empty-state__desc">可能已下架，请返回菜单重选</text>
+  </view>
+</view>
+
+<view class="page detail page--flush" wx:else>
+  <view class="cover">
+    <image wx:if="{{goods.imageUrl}}" class="cover__img" src="{{goods.imageUrl}}" mode="aspectFill" />
+    <view wx:else class="cover__img cover-fallback">{{goods.name[0] || '食'}}</view>
+  </view>
+
+  <view class="info surface">
+    <text class="info__name">{{goods.name}}</text>
+    <text class="info__stall muted">{{stall.name}} · {{goods.category || '现做'}}</text>
+    <text class="info__desc">{{goods.desc || '现点现做，规格可按口味调整'}}</text>
+    <view class="info__price-row">
+      <text class="price"><text class="price__yen">¥</text>{{unit.price}}</text>
+      <text class="info__pts">可得 {{unit.pointsGrant}} 积分</text>
+    </view>
+    <text class="info__spec muted" wx:if="{{unit.optionsText}}">已选：{{unit.optionsText}}</text>
+    <text class="chip chip--soft" wx:if="{{demoSpecs}}">演示规格（选配仅展示）· 结算按原价，真实加价请后台配置</text>
+  </view>
+
+  <view class="surface opts" wx:if="{{optionGroups.length}}">
+    <text class="opts__title">选择规格</text>
+    <view wx:for="{{optionGroups}}" wx:for-item="gr" wx:key="id" class="group">
+      <text class="group__name">
+        {{gr.name}}
+        <text class="muted">{{gr.required ? '必选' : '可选'}}{{gr.multiSelect ? ' · 可多选' : ''}}</text>
+      </text>
+      <view class="group__opts">
+        <view
+          wx:for="{{gr.options}}"
+          wx:for-item="op"
+          wx:key="id"
+          class="opt {{flags[op.flagKey] ? 'opt--on' : ''}}"
+          bindtap="onPick"
+          data-gid="{{gr.id}}"
+          data-oid="{{op.id}}"
+          data-multi="{{gr.multiSelect ? 1 : 0}}"
+        >
+          <text class="opt__n">{{op.name}}</text>
+          <text class="opt__d" wx:if="{{op.deltaText}}">{{op.deltaText}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="surface qty-card">
+    <text class="qty-card__l">购买数量</text>
+    <view class="qty">
+      <view class="qty__btn" bindtap="changeQty" data-d="-1">−</view>
+      <text class="qty__n">{{qty}}</text>
+      <view class="qty__btn qty__btn--plus" bindtap="changeQty" data-d="1">+</view>
+    </view>
+  </view>
+
+  <view class="footer safe-bottom">
+    <view class="footer__sum">
+      <text class="price"><text class="price__yen">¥</text>{{unit.price}}</text>
+      <text class="muted">× {{qty}} 件</text>
+    </view>
+    <button class="btn-primary footer__btn" loading="{{adding}}" bindtap="addCart">加入购物车</button>
+  </view>
+</view>

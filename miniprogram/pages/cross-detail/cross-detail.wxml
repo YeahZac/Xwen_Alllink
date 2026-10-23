@@ -1,0 +1,68 @@
+<view class="page detail">
+  <view class="store-head surface">
+    <view class="store-head__cover">
+      <image wx:if="{{store.coverImage}}" class="cover-img" src="{{store.coverImage}}" mode="aspectFill" />
+      <view wx:else class="cover-fallback" style="background: {{store.coverHue}}">{{store.initial}}</view>
+    </view>
+    <view class="store-head__info">
+      <text class="store-head__name ellipsis-1">{{store.name}}</text>
+      <text class="muted">{{store.category}}</text>
+      <text class="muted block ellipsis-1">{{store.address}} · {{store.distance}}</text>
+    </view>
+  </view>
+
+  <view class="balance surface row-between">
+    <text>我的积分</text>
+    <text class="balance__n">{{points}}</text>
+  </view>
+  <text class="muted rate">{{cashRateText}} · 积分不足可全额现金，也可组合支付</text>
+
+  <text class="section-title">可兑换商品</text>
+  <text class="section-desc">门店自定积分与现金价 · 支持积分 + 微信支付</text>
+
+  <view wx:if="{{!items.length}}" class="empty-state surface">
+    <text class="empty-state__title">暂无可兑换商品</text>
+    <text class="empty-state__desc">门店上架后会显示在这里</text>
+  </view>
+
+  <view wx:for="{{items}}" wx:key="id" class="item surface">
+    <view class="item__row">
+      <view class="item__thumb">
+        <image wx:if="{{item.coverImage || store.coverImage}}" class="cover-img" src="{{item.coverImage || store.coverImage}}" mode="aspectFill" />
+        <view wx:else class="cover-fallback" style="background: {{store.coverHue}}; font-size: 28rpx;">兑</view>
+      </view>
+      <view class="item__main">
+        <text class="item__name ellipsis-1">{{item.name}}</text>
+        <text class="muted ellipsis-1">{{item.desc}}</text>
+        <view class="item__price">
+          <text class="chip chip--accent">{{item.pointsNeed}} 积分</text>
+          <text class="muted">或现金 ¥{{item.cashPrice}}</text>
+        </view>
+      </view>
+    </view>
+    <view class="item__actions">
+      <button
+        class="btn-primary"
+        bindtap="redeem"
+        data-id="{{item.id}}"
+      >{{points >= item.pointsNeed ? '积分兑' : '积分不足·转现金'}}</button>
+      <button
+        class="btn-ghost"
+        bindtap="payCash"
+        data-id="{{item.id}}"
+      >微信买</button>
+    </view>
+    <view class="mix-row" wx:if="{{item.allowMix !== 0}}">
+      <input
+        class="mix-row__input"
+        type="number"
+        placeholder="用多少积分"
+        data-id="{{item.id}}"
+        bindinput="onMixInput"
+        value="{{item.mixPoints}}"
+      />
+      <text class="mix-row__cash">微信 ¥{{item.mixCash}}</text>
+      <button class="btn-ghost mix-row__btn" bindtap="payMix" data-id="{{item.id}}">组合付</button>
+    </view>
+  </view>
+</view>

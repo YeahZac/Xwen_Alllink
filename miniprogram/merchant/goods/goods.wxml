@@ -1,0 +1,42 @@
+<view class="page">
+  <view class="m-page-head">
+    <text class="m-page-head__title">{{title}}</text>
+    <text class="m-page-head__desc">上架、调价、规格与组合支付</text>
+  </view>
+
+  <button class="btn-primary add-btn" bindtap="onAdd">添加商品</button>
+
+  <view wx:if="{{loading}}" class="empty-state">
+    <text class="empty-state__title">正在加载商品</text>
+    <text class="empty-state__desc">请稍候</text>
+  </view>
+
+  <view wx:elif="{{!list.length}}" class="empty-state surface">
+    <text class="empty-state__title">暂无商品</text>
+    <text class="empty-state__desc">点上方「添加商品」完善信息后上架</text>
+  </view>
+
+  <view class="m-list">
+    <view wx:for="{{list}}" wx:key="id" class="m-row m-row--stack">
+      <view class="m-row__seal m-row__seal--red">{{item.name[0] || '品'}}</view>
+      <view class="m-row__main">
+        <view class="goods-title">
+          <text class="m-row__title ellipsis-1">{{item.name}}</text>
+          <text class="chip {{role === 'supply' || item.status === '在售' || item.status === '上架' ? 'chip--soft' : 'chip--off'}}">{{item.status}}</text>
+        </view>
+        <text class="m-row__sub ellipsis-1">{{item.line}}</text>
+      </view>
+      <view class="m-row__side">
+        <view class="goods-actions">
+          <button class="btn-ghost" data-id="{{item.id}}" bindtap="onFullEdit">编辑</button>
+          <button class="btn-ghost" data-id="{{item.id}}" bindtap="onPrice">改价格</button>
+          <button class="btn-ghost" wx:if="{{role === 'cross'}}" data-id="{{item.id}}" bindtap="onPoints">改积分</button>
+          <button class="btn-ghost" wx:if="{{role === 'stall'}}" data-id="{{item.id}}" bindtap="onOptions">规格</button>
+          <button class="btn-ghost" data-id="{{item.id}}" bindtap="onEdit">
+            {{item.onSale ? '下架' : '上架'}}
+          </button>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,127 @@
+<view class="page menu page--flush">
+  <view class="menu-hero">
+    <image wx:if="{{stall.coverImage}}" class="menu-hero__img" src="{{stall.coverImage}}" mode="aspectFill" />
+    <view wx:else class="menu-hero__img cover-fallback">{{stall.initial || '摊'}}</view>
+    <view class="menu-hero__mask"></view>
+    <view class="menu-hero__info">
+      <text class="menu-hero__name">{{stall.name}}</text>
+      <text class="menu-hero__sub ellipsis-1">{{stall.tag || stall.city}} · {{stall.address || stall.desc}}</text>
+      <view class="menu-hero__tags">
+        <text class="chip" wx:if="{{fromScan}}">扫码入店</text>
+        <text class="chip chip--accent">消费得积分</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="menu-panel">
+    <view class="menu-panel__head">
+      <text class="menu-panel__title">点餐菜单</text>
+      <text class="menu-panel__hint">可选口味 · 分量 · 配料</text>
+    </view>
+
+    <view wx:if="{{!loading && !categories.length}}" class="empty-state">
+      <text class="empty-state__title">门店暂未上架菜品</text>
+      <text class="empty-state__desc">请稍后再来看看</text>
+    </view>
+
+    <scroll-view scroll-x class="cat-scroll" enable-flex>
+      <view
+        wx:for="{{categories}}"
+        wx:key="name"
+        class="cat-chip {{activeCat === item.name ? 'cat-chip--on' : ''}}"
+        bindtap="onCat"
+        data-name="{{item.name}}"
+        data-anchor="{{item.anchorId}}"
+      >{{item.name}}</view>
+    </scroll-view>
+
+    <view wx:for="{{categories}}" wx:key="name" class="cat-block" id="{{item.anchorId}}">
+      <text class="cat-name">{{item.name}}</text>
+      <view
+        wx:for="{{item.list}}"
+        wx:for-item="g"
+        wx:key="id"
+        class="dish"
+      >
+        <view class="dish__thumb">
+          <image wx:if="{{g.imageUrl}}" class="cover-img" src="{{g.imageUrl}}" mode="aspectFill" />
+          <view wx:else class="cover-fallback" style="font-size: 28rpx;">{{g.name[0] || '食'}}</view>
+        </view>
+        <view class="dish__main">
+          <text class="dish__name ellipsis-1">{{g.name}}</text>
+          <text class="dish__desc muted ellipsis-1">
+            {{g.desc || '现做'}} · 起 ¥{{g.price}} · {{g.hasOptions ? '可选规格' : '可得 ' + g.pointsGrant + ' 积分'}}
+          </text>
+          <view class="dish__foot">
+            <text class="price"><text class="price__yen">¥</text>{{g.price}}{{g.hasOptions ? '起' : ''}}</text>
+            <view class="qty">
+              <view
+                class="qty__btn"
+                wx:if="{{cartMap[g.id]}}"
+                bindtap="dec"
+                data-id="{{g.id}}"
+              >−</view>
+              <text class="qty__n" wx:if="{{cartMap[g.id]}}">{{cartMap[g.id]}}</text>
+              <view class="qty__btn qty__btn--plus" bindtap="inc" data-id="{{g.id}}">+</view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="fixed-bar" wx:if="{{summary.totalQty && !sheetShow}}">
+    <view class="fixed-bar__info">
+      <text class="price cart-bar__total"><text class="price__yen">¥</text>{{summary.totalPrice}}</text>
+      <text class="cart-bar__qty">已选 {{summary.totalQty}} 件 · 预计得 {{summary.totalPoints}} 积分</text>
+    </view>
+    <button class="btn-primary fixed-bar__btn" bindtap="goConfirm">去结算</button>
+  </view>
+  <view class="page-spacer--bar" wx:if="{{summary.totalQty}}"></view>
+
+  <!-- 规格弹层 -->
+  <view class="sheet-mask" wx:if="{{sheetShow}}" bindtap="closeSheet"></view>
+  <view class="sheet" wx:if="{{sheetShow}}">
+    <view class="sheet__head">
+      <text class="sheet__title">{{sheetGoods.name}}</text>
+      <text class="sheet__close" bindtap="closeSheet">关闭</text>
+    </view>
+    <scroll-view scroll-y class="sheet__body">
+      <view wx:for="{{sheetGoods.optionGroups}}" wx:for-item="gr" wx:key="id" class="sheet-group">
+        <text class="sheet-group__name">
+          {{gr.name}}
+          <text class="muted">{{gr.required ? '必选' : '可选'}}{{gr.multiSelect ? ' · 可多选' : ''}}</text>
+        </text>
+        <view class="sheet-opts">
+          <view
+            wx:for="{{gr.options}}"
+            wx:for-item="op"
+            wx:key="id"
+            class="sheet-opt {{sheetFlags[op.flagKey] ? 'sheet-opt--on' : ''}}"
+            bindtap="onPickOpt"
+            data-gid="{{gr.id}}"
+            data-oid="{{op.id}}"
+            data-multi="{{gr.multiSelect ? 1 : 0}}"
+          >
+            <text>{{op.name}}</text>
+            <text class="sheet-opt__delta" wx:if="{{op.priceDelta}}">
+              {{op.priceDelta > 0 ? '+' : ''}}¥{{op.priceDelta}}
+            </text>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+    <view class="sheet__foot">
+      <view class="sheet__price">
+        <text class="price"><text class="price__yen">¥</text>{{sheetUnit.price}}</text>
+        <text class="muted">可得 {{sheetUnit.pointsGrant}} 积分</text>
+      </view>
+      <view class="qty">
+        <view class="qty__btn" bindtap="sheetQtyChange" data-d="-1">−</view>
+        <text class="qty__n">{{sheetQty}}</text>
+        <view class="qty__btn qty__btn--plus" bindtap="sheetQtyChange" data-d="1">+</view>
+      </view>
+      <button class="btn-primary sheet__add" bindtap="confirmSheet">加入购物车</button>
+    </view>
+  </view>
+</view>

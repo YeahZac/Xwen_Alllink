@@ -1,0 +1,32 @@
+<view class="page">
+  <view class="wallet">
+    <text class="wallet__label">{{shopName}} · 积分额度池</text>
+    <text class="wallet__num">{{balance}}</text>
+    <text class="wallet__hint">约对应现金价值 ¥{{cashValue}} · {{cashRateText}}</text>
+  </view>
+
+  <view class="actions">
+    <button class="btn-primary" bindtap="goPurchase">去采购获额度</button>
+  </view>
+
+  <view class="m-page-head">
+    <text class="m-page-head__title m-page-head__title--section">额度流水</text>
+    <text class="m-page-head__desc">采购获额 / 后台发放 / 划拨给 C 端</text>
+  </view>
+
+  <view wx:if="{{!ledger.length}}" class="empty-state surface">
+    <text class="empty-state__title">暂无流水</text>
+    <text class="empty-state__desc">采购订单完成后，额度会进入本店账户</text>
+  </view>
+
+  <view class="m-list">
+    <view wx:for="{{ledger}}" wx:key="id" class="m-row">
+      <view class="m-row__seal {{item.up ? 'm-row__seal--red' : ''}}">额</view>
+      <view class="m-row__main">
+        <text class="m-row__title ellipsis-1">{{item.title}}</text>
+        <text class="m-row__sub">{{item.time}}</text>
+      </view>
+      <text class="chg {{item.up ? 'up' : 'down'}}">{{item.changeText}}</text>
+    </view>
+  </view>
+</view>

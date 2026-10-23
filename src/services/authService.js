@@ -385,13 +385,15 @@ async function getProfile(auth) {
     }
   }
   const rows = await query(
-    `SELECT id, role, name, invite_code, city, address, status, cover_url, contact_name, contact_phone,
-            owner_user_id
+    `SELECT id, role, name, invite_code, city, address, status, cover_url, materials_json,
+            contact_name, contact_phone, owner_user_id
      FROM merchants WHERE id = :id`,
     { id: auth.merchantId }
   )
   if (!rows.length) throw new HttpError(404, '商户不存在')
   const m = rows[0]
+  const { pickCoverFromLicenses } = require('../utils/mediaPick')
+  const coverUrl = m.cover_url || pickCoverFromLicenses(m.materials_json) || ''
   const pools = await query(
     'SELECT balance FROM merchant_points_pool WHERE merchant_id = :id',
     { id: m.id }
@@ -405,7 +407,7 @@ async function getProfile(auth) {
     inviteCode: m.invite_code,
     city: m.city,
     address: m.address,
-    coverUrl: m.cover_url,
+    coverUrl,
     contactPhone: m.contact_phone,
     poolBalance: pools[0] ? pools[0].balance : 0,
     cashRate: rate,

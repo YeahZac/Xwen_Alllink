@@ -1,0 +1,11 @@
+@import "./styles/tokens.wxss";
+@import "./styles/components.wxss";
+
+button {
+  margin: 0;
+  padding: 0;
+}
+
+page {
+  background: var(--color-bg);
+}

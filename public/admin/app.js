@@ -451,7 +451,7 @@ async function renderIdentities(role) {
   const load = async () => {
     const q = $('fq').value.trim()
     const rows = await api(
-      `/admin/ops/identities?role=${encodeURIComponent(role)}${q ? `&q=${encodeURIComponent(q)}` : ''}`
+      `/admin/ops/identities?role=${encodeURIComponent(role)}&limit=300${q ? `&q=${encodeURIComponent(q)}` : ''}`
     )
     $('list').innerHTML = table(
       ['预览', '身份', '名称', '账号/邀请码', '电话', '积分/城市', '状态', '注册', '操作'],
@@ -812,7 +812,8 @@ async function renderApplies() {
     $('list').querySelectorAll('[data-ok]').forEach((b) => {
       b.onclick = async () => {
         if (!confirm('确认通过该入驻申请？')) return
-        await api(`/admin/apply/${b.dataset.ok}/approve`, { method: 'POST', body: '{}' })
+        const res = await api(`/admin/apply/${b.dataset.ok}/approve`, { method: 'POST', body: '{}' })
+        alert(`已通过，商户 ID ${res.merchantId || '-'} 已写入门店列表（按角色查看地摊/异业/供应链）`)
         load()
       }
     })
@@ -873,7 +874,8 @@ async function showApplyDetail(id, reload) {
   if (okBtn) {
     okBtn.onclick = async () => {
       if (!confirm('确认通过？')) return
-      await api(`/admin/apply/${id}/approve`, { method: 'POST', body: '{}' })
+      const res = await api(`/admin/apply/${id}/approve`, { method: 'POST', body: '{}' })
+      alert(`已通过，商户 ID ${res.merchantId || '-'} 已写入门店列表`)
       closeModal()
       if (reload) reload()
     }
