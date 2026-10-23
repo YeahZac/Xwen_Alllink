@@ -246,8 +246,14 @@ async function getStoreDetail(merchantId) {
   const goodsTable =
     m.role === 'stall' ? 'stall_goods' : m.role === 'cross' ? 'cross_goods' : 'supply_goods'
   const goods = await query(
-    `SELECT id, name, sku_code, image_url, sales_count, stock,
-            ${m.role === 'cross' ? 'cash_price AS price, points_need, on_sale' : m.role === 'supply' ? 'price, points_grant, status AS on_sale' : 'price, points_grant, on_sale'}
+    `SELECT id, name, sku_code AS skuCode, image_url AS imageUrl, sales_count AS salesCount, stock,
+            ${
+              m.role === 'cross'
+                ? 'cash_price AS price, points_need AS pointsNeed, on_sale AS onSale'
+                : m.role === 'supply'
+                  ? 'price, points_grant AS pointsGrant, status AS onSale'
+                  : 'price, points_grant AS pointsGrant, on_sale AS onSale'
+            }
      FROM ${goodsTable} WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC LIMIT 100`,
     { id: merchantId }
   )
@@ -261,18 +267,74 @@ async function getStoreDetail(merchantId) {
     name: m.name,
     merchantNo: m.merchant_no,
     inviteCode: m.invite_code,
+    legalPerson: m.legal_person || '',
     contactName: m.contact_name,
     contactPhone: m.contact_phone,
     city: m.city,
     address: m.address,
     latitude: m.latitude,
     longitude: m.longitude,
+    bizType: m.biz_type || '',
     coverUrl,
     status: m.status,
     poolBalance: m.pool_balance,
     materials: materials || {},
-    goods
+    goods: (goods || []).map((g) => ({
+      ...g,
+      goodsType: m.role,
+      merchantId: m.id,
+      sku: g.skuCode,
+      sales: g.salesCount,
+      onSale: g.onSale,
+      imageUrl: g.imageUrl
+    }))
   }
+}
+
+/** 运营台编辑门店基础信息（可含封面、类目） */
+async function updateStore(id, body = {}) {
+  const rows = await query('SELECT id, role FROM merchants WHERE id=:id AND deleted_at IS NULL', { id })
+  if (!rows.length) throw new HttpError(404, '门店不存在')
+  const fields = []
+  const params = { id: Number(id) }
+  const map = {
+    name: 'name',
+    city: 'city',
+    address: 'address',
+    legalPerson: 'legal_person',
+    contactName: 'contact_name',
+    contactPhone: 'contact_phone',
+    status: 'status',
+    coverUrl: 'cover_url',
+    bizType: 'biz_type',
+    latitude: 'latitude',
+    longitude: 'longitude'
+  }
+  for (const [k, col] of Object.entries(map)) {
+    if (body[k] === undefined) continue
+    fields.push(`${col} = :${k}`)
+    params[k] =
+      k === 'latitude' || k === 'longitude' || k === 'status'
+        ? body[k] === '' || body[k] == null
+          ? null
+          : Number(body[k])
+        : body[k]
+  }
+  if (body.materials && typeof body.materials === 'object') {
+    fields.push('materials_json = CAST(:materialsJson AS JSON)')
+    params.materialsJson = JSON.stringify(body.materials)
+    if (body.coverUrl === undefined) {
+      const { pickCoverFromLicenses } = require('../utils/mediaPick')
+      const picked = pickCoverFromLicenses(body.materials)
+      if (picked) {
+        fields.push('cover_url = :autoCover')
+        params.autoCover = picked
+      }
+    }
+  }
+  if (!fields.length) throw new HttpError(400, '没有可更新字段')
+  await query(`UPDATE merchants SET ${fields.join(', ')} WHERE id=:id`, params)
+  return getStoreDetail(Number(id))
 }
 
 async function setMerchantStatus(id, status) {
@@ -290,11 +352,112 @@ async function softDeleteMerchant(id) {
 }
 
 async function updateMerchantMaterials(id, materials) {
-  await query(`UPDATE merchants SET materials_json=CAST(:j AS JSON) WHERE id=:id`, {
-    id,
-    j: JSON.stringify(materials || {})
-  })
-  return { id: Number(id) }
+  const { pickCoverFromLicenses } = require('../utils/mediaPick')
+  const mats = materials || {}
+  const cover = pickCoverFromLicenses(mats)
+  await query(
+    `UPDATE merchants SET materials_json=CAST(:j AS JSON),
+     cover_url = IF(:cover = '', cover_url, :cover)
+     WHERE id=:id`,
+    {
+      id,
+      j: JSON.stringify(mats),
+      cover: cover || ''
+    }
+  )
+  return getStoreDetail(Number(id))
+}
+
+/** 新建门店商品（运营台从门店详情创建） */
+async function createSku(type, body = {}) {
+  const merchantId = Number(body.merchantId)
+  if (!merchantId) throw new HttpError(400, '缺少商户ID')
+  const name = String(body.name || '').trim()
+  if (!name) throw new HttpError(400, '请填写商品名称')
+  const mrows = await query(
+    'SELECT id, role FROM merchants WHERE id=:id AND deleted_at IS NULL',
+    { id: merchantId }
+  )
+  if (!mrows.length) throw new HttpError(404, '门店不存在')
+  if (type && type !== mrows[0].role) {
+    throw new HttpError(400, '商品类型与门店角色不一致')
+  }
+  const role = mrows[0].role
+  const sku = String(body.sku || '').trim() || null
+  const img = body.imageUrl || null
+  const onSale = body.onSale === 0 ? 0 : 1
+  let insertId = 0
+  if (role === 'stall') {
+    const r = await query(
+      `INSERT INTO stall_goods
+        (merchant_id, name, sku_code, price, points_grant, category, desc_text, image_url, stock, on_sale)
+       VALUES (:mid, :name, :sku, :price, :pg, :cat, :desc, :img, :stock, :onSale)`,
+      {
+        mid: merchantId,
+        name,
+        sku,
+        price: Number(body.price) || 0,
+        pg: Number(body.pointsGrant) || 0,
+        cat: body.category || '主食',
+        desc: body.desc || '',
+        img,
+        stock: Number(body.stock) || 9999,
+        onSale
+      }
+    )
+    insertId = r.insertId
+    if (!sku && insertId) {
+      await query(`UPDATE stall_goods SET sku_code=CONCAT('ST', LPAD(id,6,'0')) WHERE id=:id`, {
+        id: insertId
+      })
+    }
+  } else if (role === 'cross') {
+    const r = await query(
+      `INSERT INTO cross_goods
+        (merchant_id, name, sku_code, points_need, cash_price, desc_text, image_url, stock, on_sale)
+       VALUES (:mid, :name, :sku, :pn, :cp, :desc, :img, :stock, :onSale)`,
+      {
+        mid: merchantId,
+        name,
+        sku,
+        pn: Number(body.pointsNeed) || 0,
+        cp: Number(body.price || body.cashPrice) || 0,
+        desc: body.desc || '',
+        img,
+        stock: Number(body.stock) || 9999,
+        onSale
+      }
+    )
+    insertId = r.insertId
+    if (!sku && insertId) {
+      await query(`UPDATE cross_goods SET sku_code=CONCAT('CR', LPAD(id,6,'0')) WHERE id=:id`, {
+        id: insertId
+      })
+    }
+  } else {
+    const r = await query(
+      `INSERT INTO supply_goods
+        (merchant_id, name, sku_code, price, stock, points_grant, image_url, status)
+       VALUES (:mid, :name, :sku, :price, :stock, :pg, :img, :st)`,
+      {
+        mid: merchantId,
+        name,
+        sku,
+        price: Number(body.price) || 0,
+        stock: Number(body.stock) || 0,
+        pg: Number(body.pointsGrant) || 0,
+        img,
+        st: onSale
+      }
+    )
+    insertId = r.insertId
+    if (!sku && insertId) {
+      await query(`UPDATE supply_goods SET sku_code=CONCAT('SP', LPAD(id,6,'0')) WHERE id=:id`, {
+        id: insertId
+      })
+    }
+  }
+  return { id: insertId, merchantId, role }
 }
 
 async function softDeleteUser(id) {
@@ -431,9 +594,11 @@ module.exports = {
   trackVisit,
   listAllIdentities,
   getStoreDetail,
+  updateStore,
   setMerchantStatus,
   softDeleteMerchant,
   updateMerchantMaterials,
+  createSku,
   softDeleteUser,
   setUserStatus,
   listSkus,

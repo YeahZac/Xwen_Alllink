@@ -161,6 +161,17 @@ async function ensureSchema() {
   } catch (e) {
     console.warn('[schema] merchant cover backfill', e.message)
   }
+  try {
+    await runSqlStatements('25_admin_rbac_harden.sql', 'admin rbac harden')
+  } catch (e) {
+    console.warn('[schema] admin rbac harden', e.message)
+  }
+  try {
+    const rbacService = require('../services/rbacService')
+    await rbacService.ensureRbacBootstrap()
+  } catch (e) {
+    console.warn('[schema] rbac bootstrap', e.message)
+  }
 }
 
 /** 开通深圳，并把门店迁到真实商场坐标 */

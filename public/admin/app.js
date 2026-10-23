@@ -103,6 +103,25 @@ async function api(path, options = {}) {
   return json.data
 }
 
+/** 操作按钮统一兜底：避免 async 失败时「点了没反应」 */
+async function runAction(fn, { silent } = {}) {
+  try {
+    return await fn()
+  } catch (e) {
+    if (!silent) alert(e.message || '操作失败')
+    throw e
+  }
+}
+
+function storePageKey(role) {
+  if (role === 'stall' || role === 'cross' || role === 'supply') return `stores_${role}`
+  return 'users_all'
+}
+
+function canEditStore(role) {
+  return canEdit(storePageKey(role)) || canEdit('goods_sku') || canEdit('goods')
+}
+
 function logout(reload = true) {
   state.token = ''
   state.profile = null
@@ -493,7 +512,7 @@ async function renderIdentities(role) {
     )
     bindThumbs($('list'))
     $('list').querySelectorAll('[data-store]').forEach((b) => {
-      b.onclick = () => showStoreDetail(Number(b.dataset.store))
+      b.onclick = () => runAction(() => showStoreDetail(Number(b.dataset.store), load))
     })
     $('list').querySelectorAll('[data-grant]').forEach((b) => {
       b.onclick = () => {
@@ -530,57 +549,63 @@ async function renderIdentities(role) {
       }
     })
     $('list').querySelectorAll('[data-open]').forEach((b) => {
-      b.onclick = async () => {
-        await api(`/admin/ops/stores/${b.dataset.open}/status`, {
-          method: 'POST',
-          body: JSON.stringify({ status: 1 })
+      b.onclick = () =>
+        runAction(async () => {
+          await api(`/admin/ops/stores/${b.dataset.open}/status`, {
+            method: 'POST',
+            body: JSON.stringify({ status: 1 })
+          })
+          load()
         })
-        load()
-      }
     })
     $('list').querySelectorAll('[data-close]').forEach((b) => {
-      b.onclick = async () => {
-        await api(`/admin/ops/stores/${b.dataset.close}/status`, {
-          method: 'POST',
-          body: JSON.stringify({ status: 2 })
+      b.onclick = () =>
+        runAction(async () => {
+          await api(`/admin/ops/stores/${b.dataset.close}/status`, {
+            method: 'POST',
+            body: JSON.stringify({ status: 2 })
+          })
+          load()
         })
-        load()
-      }
     })
     $('list').querySelectorAll('[data-del-store]').forEach((b) => {
-      b.onclick = async () => {
-        if (!confirm('确认删除该门店？')) return
-        await api(`/admin/ops/stores/${b.dataset.delStore}`, { method: 'DELETE' })
-        load()
-      }
+      b.onclick = () =>
+        runAction(async () => {
+          if (!confirm('确认删除该门店？')) return
+          await api(`/admin/ops/stores/${b.dataset.delStore}`, { method: 'DELETE' })
+          load()
+        })
     })
     $('list').querySelectorAll('[data-on]').forEach((b) => {
-      b.onclick = async () => {
-        await api(`/admin/ops/users/${b.dataset.on}/status`, {
-          method: 'POST',
-          body: JSON.stringify({ status: 1 })
+      b.onclick = () =>
+        runAction(async () => {
+          await api(`/admin/ops/users/${b.dataset.on}/status`, {
+            method: 'POST',
+            body: JSON.stringify({ status: 1 })
+          })
+          load()
         })
-        load()
-      }
     })
     $('list').querySelectorAll('[data-off]').forEach((b) => {
-      b.onclick = async () => {
-        await api(`/admin/ops/users/${b.dataset.off}/status`, {
-          method: 'POST',
-          body: JSON.stringify({ status: 0 })
+      b.onclick = () =>
+        runAction(async () => {
+          await api(`/admin/ops/users/${b.dataset.off}/status`, {
+            method: 'POST',
+            body: JSON.stringify({ status: 0 })
+          })
+          load()
         })
-        load()
-      }
     })
     $('list').querySelectorAll('[data-del-user]').forEach((b) => {
-      b.onclick = async () => {
-        if (!confirm('确认删除该用户？')) return
-        await api(`/admin/ops/users/${b.dataset.delUser}`, { method: 'DELETE' })
-        load()
-      }
+      b.onclick = () =>
+        runAction(async () => {
+          if (!confirm('确认删除该用户？')) return
+          await api(`/admin/ops/users/${b.dataset.delUser}`, { method: 'DELETE' })
+          load()
+        })
     })
   }
-  $('btnReload').onclick = load
+  $('btnReload').onclick = () => runAction(load)
   await load()
 }
 
@@ -588,8 +613,9 @@ async function renderStores(role) {
   return renderIdentities(role || 'all')
 }
 
-async function showStoreDetail(id) {
+async function showStoreDetail(id, listReload) {
   const d = await api(`/admin/ops/stores/${id}`)
+  const editable = canEditStore(d.role)
   const mats = d.materials || {}
   const matHtml = Object.keys(mats).length
     ? `<div class="thumb-grid">${Object.entries(mats)
@@ -598,24 +624,256 @@ async function showStoreDetail(id) {
           return `<div class="thumb-card"><div class="muted">${esc(LICENSE_LABELS[k] || k)}</div>${thumb(url, 'thumb lg')}</div>`
         })
         .join('')}</div>`
-    : '<p class="muted">暂无上传资料</p>'
-  const goodsHtml = (d.goods || [])
-    .slice(0, 20)
-    .map(
-      (g) =>
-        `<div class="goods-row">${thumb(g.image_url)} <span>${esc(g.name)} · SKU ${esc(g.sku_code || '-')} · ¥${g.price ?? '-'} · 销量 ${g.sales_count || 0}</span></div>`
-    )
-    .join('')
+    : '<p class="muted">暂无上传证照 / 门店照片</p>'
+  const goods = d.goods || []
+  const goodsHtml = goods.length
+    ? `<div class="table-wrap"><table><thead><tr>
+        <th>图</th><th>品名</th><th>SKU</th><th>价格</th><th>库存</th><th>上架</th><th>操作</th>
+      </tr></thead><tbody>${goods
+        .map(
+          (g) => `<tr>
+        <td>${thumb(g.imageUrl || g.image_url)}</td>
+        <td>${esc(g.name)}</td>
+        <td><code>${esc(g.sku || g.skuCode || '-')}</code></td>
+        <td>${g.price ?? '-'}${g.pointsNeed != null ? ` / ${g.pointsNeed}积分` : ''}</td>
+        <td>${g.stock ?? '-'}</td>
+        <td>${Number(g.onSale) === 1 ? '是' : '否'}</td>
+        <td class="actions">${
+          editable
+            ? `<button type="button" class="btn sm" data-g-edit="${g.id}">编辑</button>
+               <button type="button" class="btn ok sm" data-g-open="${g.id}">上架</button>
+               <button type="button" class="btn warn sm" data-g-close="${g.id}">下架</button>
+               <button type="button" class="btn danger sm" data-g-del="${g.id}">删除</button>`
+            : '-'
+        }</td></tr>`
+        )
+        .join('')}</tbody></table></div>`
+    : '<p class="muted">暂无商品</p>'
+
   openModal(
     `${d.roleLabel} · ${d.name}`,
-    `<p>邀请码 <code>${esc(d.inviteCode)}</code> · 状态 ${d.status} · 额度池 ${d.poolBalance}</p>
+    `<p>邀请码 <code>${esc(d.inviteCode)}</code> · 编号 ${esc(d.merchantNo || '-')} · 状态 ${
+      Number(d.status) === 1 ? '营业中' : '停业'
+    } · 额度池 ${d.poolBalance ?? 0}</p>
      <p class="muted">${esc(d.city)} ${esc(d.address)} · ${esc(d.contactName)} ${esc(d.contactPhone)}</p>
+     ${
+       editable
+         ? `<div class="toolbar" style="margin:12px 0">
+              <button type="button" class="btn primary sm" id="btnEditStore">编辑门店信息</button>
+              <button type="button" class="btn sm" id="btnEditMats">编辑证照/封面</button>
+              <button type="button" class="btn sm" id="btnAddGoods">新增商品</button>
+              <button type="button" class="btn ok sm" id="btnStoreOpen">设为营业</button>
+              <button type="button" class="btn warn sm" id="btnStoreClose">设为停业</button>
+            </div>`
+         : '<p class="muted">当前角色仅可浏览，需门店编辑权限才能改资料与商品</p>'
+     }
      <h4>门店封面</h4>${thumb(d.coverUrl, 'thumb lg')}
-     <h4>门店资料</h4>${matHtml}
-     <h4>在售商品</h4>${goodsHtml || '<p class="muted">暂无商品</p>'}`,
+     <h4>营业证照 / 门店资料</h4>${matHtml}
+     <h4>门店商品（${goods.length}）</h4>${goodsHtml}`,
     null,
     true
   )
+
+  const refresh = async () => {
+    closeModal()
+    await showStoreDetail(id, listReload)
+    if (typeof listReload === 'function') listReload()
+  }
+
+  const editGoods = (g) => {
+    const isCross = d.role === 'cross'
+    openModal(
+      `编辑商品 · ${g.name}`,
+      field('name', '品名', g.name) +
+        field('sku', 'SKU', g.sku || g.skuCode || '') +
+        field('price', isCross ? '现金价' : '价格', g.price, 'number') +
+        (isCross ? field('pointsNeed', '所需积分', g.pointsNeed || 0, 'number') : '') +
+        (d.role !== 'cross' ? field('pointsGrant', '赠送积分额度', g.pointsGrant || 0, 'number') : '') +
+        field('stock', '库存', g.stock || 0, 'number') +
+        field('onSale', '上架(1/0)', Number(g.onSale) === 1 ? 1 : 0, 'number') +
+        mediaField('imageUrl', '商品图', g.imageUrl || '', 'goods'),
+      async () => {
+        await api(`/admin/ops/skus/${d.role}/${g.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            name: formVal('name'),
+            sku: formVal('sku'),
+            price: Number(formVal('price')),
+            pointsNeed: Number(formVal('pointsNeed') || g.pointsNeed || 0),
+            pointsGrant: Number(formVal('pointsGrant') || g.pointsGrant || 0),
+            stock: Number(formVal('stock')),
+            onSale: Number(formVal('onSale')),
+            imageUrl: formVal('imageUrl')
+          })
+        })
+        await refresh()
+      },
+      true
+    )
+  }
+
+  $('modalBody').querySelectorAll('[data-g-edit]').forEach((b) => {
+    b.onclick = () => {
+      const g = goods.find((x) => String(x.id) === String(b.dataset.gEdit))
+      if (g) editGoods(g)
+    }
+  })
+  $('modalBody').querySelectorAll('[data-g-open]').forEach((b) => {
+    b.onclick = () =>
+      runAction(async () => {
+        await api(`/admin/ops/skus/${d.role}/${b.dataset.gOpen}/open`, { method: 'POST', body: '{}' })
+        await refresh()
+      })
+  })
+  $('modalBody').querySelectorAll('[data-g-close]').forEach((b) => {
+    b.onclick = () =>
+      runAction(async () => {
+        await api(`/admin/ops/skus/${d.role}/${b.dataset.gClose}/close`, { method: 'POST', body: '{}' })
+        await refresh()
+      })
+  })
+  $('modalBody').querySelectorAll('[data-g-del]').forEach((b) => {
+    b.onclick = () =>
+      runAction(async () => {
+        if (!confirm('确认删除该商品？')) return
+        await api(`/admin/ops/skus/${d.role}/${b.dataset.gDel}`, { method: 'DELETE' })
+        await refresh()
+      })
+  })
+
+  if (!editable) return
+
+  const btnEdit = document.getElementById('btnEditStore')
+  if (btnEdit) {
+    btnEdit.onclick = () => {
+      openModal(
+        '编辑门店信息',
+        field('name', '店铺名称', d.name) +
+          field('legalPerson', '法人', d.legalPerson || '') +
+          field('contactName', '联系人', d.contactName || '') +
+          field('contactPhone', '联系电话', d.contactPhone || '') +
+          field('city', '城市', d.city || '') +
+          field('address', '地址', d.address || '', 'textarea') +
+          field('bizType', '经营类目(餐饮/鲜花/蛋糕/百货商店)', d.bizType || '') +
+          field('status', '状态(1营业/2停业)', d.status, 'number') +
+          mediaField('coverUrl', '门店封面', d.coverUrl || '', 'merchant'),
+        async () => {
+          await api(`/admin/ops/stores/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              name: formVal('name'),
+              legalPerson: formVal('legalPerson'),
+              contactName: formVal('contactName'),
+              contactPhone: formVal('contactPhone'),
+              city: formVal('city'),
+              address: formVal('address'),
+              bizType: formVal('bizType'),
+              status: Number(formVal('status')),
+              coverUrl: formVal('coverUrl')
+            })
+          })
+          await refresh()
+        },
+        true
+      )
+    }
+  }
+
+  const btnMats = document.getElementById('btnEditMats')
+  if (btnMats) {
+    btnMats.onclick = () => {
+      const keys =
+        d.role === 'stall'
+          ? ['foodLicense', 'idCardFront', 'idCardBack', 'storePhoto']
+          : d.role === 'supply'
+            ? ['businessLicense', 'idCardFront', 'idCardBack', 'storePhoto', 'warehousePhoto']
+            : ['businessLicense', 'idCardFront', 'idCardBack', 'storePhoto']
+      const body =
+        keys
+          .map((k) => {
+            const cur = mats[k]
+            const url = typeof cur === 'string' ? cur : cur?.url || ''
+            return mediaField(k, LICENSE_LABELS[k] || k, url, 'license')
+          })
+          .join('') + mediaField('coverUrl', '门店封面（可单独改）', d.coverUrl || '', 'merchant')
+      openModal(
+        '编辑证照 / 封面',
+        body,
+        async () => {
+          const next = { ...mats }
+          keys.forEach((k) => {
+            const v = formVal(k)
+            if (v) next[k] = v
+          })
+          await api(`/admin/ops/stores/${id}/materials`, {
+            method: 'PUT',
+            body: JSON.stringify({ materials: next })
+          })
+          const cover = formVal('coverUrl')
+          if (cover) {
+            await api(`/admin/ops/stores/${id}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ coverUrl: cover })
+            })
+          }
+          await refresh()
+        },
+        true
+      )
+    }
+  }
+
+  const btnAdd = document.getElementById('btnAddGoods')
+  if (btnAdd) {
+    btnAdd.onclick = () => {
+      const isCross = d.role === 'cross'
+      openModal(
+        `新增商品 · ${d.name}`,
+        field('name', '品名', '') +
+          field('sku', 'SKU（可空自动生成）', '') +
+          field('price', isCross ? '现金价' : '价格', '0', 'number') +
+          (isCross ? field('pointsNeed', '所需积分', '0', 'number') : field('pointsGrant', '赠送积分额度', '0', 'number')) +
+          field('stock', '库存', '100', 'number') +
+          field('onSale', '上架(1/0)', '1', 'number') +
+          mediaField('imageUrl', '商品图', '', 'goods'),
+        async () => {
+          await api(`/admin/ops/skus/${d.role}`, {
+            method: 'POST',
+            body: JSON.stringify({
+              merchantId: id,
+              name: formVal('name'),
+              sku: formVal('sku'),
+              price: Number(formVal('price')),
+              pointsNeed: Number(formVal('pointsNeed') || 0),
+              pointsGrant: Number(formVal('pointsGrant') || 0),
+              stock: Number(formVal('stock')),
+              onSale: Number(formVal('onSale')),
+              imageUrl: formVal('imageUrl')
+            })
+          })
+          await refresh()
+        },
+        true
+      )
+    }
+  }
+
+  const btnOpen = document.getElementById('btnStoreOpen')
+  if (btnOpen) {
+    btnOpen.onclick = () =>
+      runAction(async () => {
+        await api(`/admin/ops/stores/${id}/status`, { method: 'POST', body: JSON.stringify({ status: 1 }) })
+        await refresh()
+      })
+  }
+  const btnClose = document.getElementById('btnStoreClose')
+  if (btnClose) {
+    btnClose.onclick = () =>
+      runAction(async () => {
+        await api(`/admin/ops/stores/${id}/status`, { method: 'POST', body: JSON.stringify({ status: 2 }) })
+        await refresh()
+      })
+  }
 }
 
 async function renderGoodsSku() {
@@ -734,36 +992,40 @@ async function renderGoodsSku() {
       }
     })
     $('list').querySelectorAll('[data-open]').forEach((b) => {
-      b.onclick = async () => {
-        const [t, id] = b.dataset.open.split(':')
-        await api(`/admin/ops/skus/${t}/${id}/open`, { method: 'POST', body: '{}' })
-        load()
-      }
+      b.onclick = () =>
+        runAction(async () => {
+          const [t, id] = b.dataset.open.split(':')
+          await api(`/admin/ops/skus/${t}/${id}/open`, { method: 'POST', body: '{}' })
+          load()
+        })
     })
     $('list').querySelectorAll('[data-close]').forEach((b) => {
-      b.onclick = async () => {
-        const [t, id] = b.dataset.close.split(':')
-        await api(`/admin/ops/skus/${t}/${id}/close`, { method: 'POST', body: '{}' })
-        load()
-      }
+      b.onclick = () =>
+        runAction(async () => {
+          const [t, id] = b.dataset.close.split(':')
+          await api(`/admin/ops/skus/${t}/${id}/close`, { method: 'POST', body: '{}' })
+          load()
+        })
     })
     $('list').querySelectorAll('[data-del]').forEach((b) => {
-      b.onclick = async () => {
-        if (!confirm('确认删除该商品？')) return
-        const [t, id] = b.dataset.del.split(':')
-        await api(`/admin/ops/skus/${t}/${id}`, { method: 'DELETE' })
-        load()
-      }
+      b.onclick = () =>
+        runAction(async () => {
+          if (!confirm('确认删除该商品？')) return
+          const [t, id] = b.dataset.del.split(':')
+          await api(`/admin/ops/skus/${t}/${id}`, { method: 'DELETE' })
+          load()
+        })
     })
   }
-  $('btnReload').onclick = load
-  $('gType').onchange = async () => {
-    await refreshShops()
-    await load()
-  }
-  $('gShop').onchange = load
+  $('btnReload').onclick = () => runAction(load)
+  $('gType').onchange = () =>
+    runAction(async () => {
+      await refreshShops()
+      await load()
+    })
+  $('gShop').onchange = () => runAction(load)
   $('gShopName').onkeydown = (e) => {
-    if (e.key === 'Enter') load()
+    if (e.key === 'Enter') runAction(load)
   }
   await refreshShops()
   await load()
@@ -1656,10 +1918,11 @@ async function renderSettlements() {
 }
 
 async function renderBanners() {
+  const editable = canEdit('banners')
   content().innerHTML = `
     <div class="toolbar">
       <button class="btn" id="btnReload">刷新</button>
-      <button class="btn primary" id="btnAdd">新建 Banner</button>
+      ${editable ? '<button class="btn primary" id="btnAdd">新建 Banner</button>' : ''}
     </div>
     <div id="list"></div>`
   const load = async () => {
@@ -1673,8 +1936,12 @@ async function renderBanners() {
         <td>${b.id}</td><td>${esc(b.roleScope)}</td><td>${esc(b.title)}</td>
         <td>${esc(b.subTitle)}</td><td>${b.sortOrder}</td><td>${b.status}</td>
         <td class="actions">
-          <button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(b))}">编辑</button>
-          <button class="btn danger sm" data-del="${b.id}">删除</button>
+          ${
+            editable
+              ? `<button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(b))}">编辑</button>
+          <button class="btn danger sm" data-del="${b.id}">删除</button>`
+              : '-'
+          }
         </td></tr>`
         )
         .join('')
@@ -1684,15 +1951,16 @@ async function renderBanners() {
       btn.onclick = () => editBanner(JSON.parse(decodeURIComponent(btn.getAttribute('data-edit'))), load)
     })
     $('list').querySelectorAll('[data-del]').forEach((btn) => {
-      btn.onclick = async () => {
-        if (!confirm('确认删除？')) return
-        await api(`/admin/banners/${btn.dataset.del}`, { method: 'DELETE' })
-        load()
-      }
+      btn.onclick = () =>
+        runAction(async () => {
+          if (!confirm('确认删除？')) return
+          await api(`/admin/banners/${btn.dataset.del}`, { method: 'DELETE' })
+          load()
+        })
     })
   }
-  $('btnAdd').onclick = () => editBanner(null, load)
-  $('btnReload').onclick = load
+  if ($('btnAdd')) $('btnAdd').onclick = () => editBanner(null, load)
+  $('btnReload').onclick = () => runAction(load)
   await load()
 }
 
@@ -1733,10 +2001,11 @@ function editBanner(b, reload) {
 }
 
 async function renderConfigs() {
+  const editable = canEdit('configs')
   content().innerHTML = `
     <div class="toolbar">
       <button class="btn" id="btnReload">刷新</button>
-      <button class="btn primary" id="btnAdd">新增配置</button>
+      ${editable ? '<button class="btn primary" id="btnAdd">新增配置</button>' : ''}
     </div>
     <div id="list"></div>`
   const load = async () => {
@@ -1748,9 +2017,13 @@ async function renderConfigs() {
           (c) => `<tr>
         <td><code>${esc(c.key)}</code></td><td>${esc(c.value)}</td>
         <td>${esc(c.remark || '')}</td><td>${fmtTime(c.updatedAt)}</td>
-        <td><button class="btn sm" data-key="${esc(c.key)}" data-val="${esc(c.value)}" data-remark="${esc(
-            c.remark || ''
-          )}">修改</button></td></tr>`
+        <td>${
+          editable
+            ? `<button class="btn sm" data-key="${esc(c.key)}" data-val="${esc(c.value)}" data-remark="${esc(
+                c.remark || ''
+              )}">修改</button>`
+            : '-'
+        }</td></tr>`
         )
         .join('')
     )
@@ -1770,24 +2043,27 @@ async function renderConfigs() {
       }
     })
   }
-  $('btnAdd').onclick = () => {
-    openModal(
-      '新增配置',
-      field('key', '键', 'points_cash_rate') + field('value', '值', '0.01') + field('remark', '备注', ''),
-      async () => {
-        await api(`/admin/configs/${encodeURIComponent(formVal('key'))}`, {
-          method: 'PUT',
-          body: JSON.stringify({ value: formVal('value'), remark: formVal('remark') })
-        })
-        load()
-      }
-    )
+  if ($('btnAdd')) {
+    $('btnAdd').onclick = () => {
+      openModal(
+        '新增配置',
+        field('key', '键', 'points_cash_rate') + field('value', '值', '0.01') + field('remark', '备注', ''),
+        async () => {
+          await api(`/admin/configs/${encodeURIComponent(formVal('key'))}`, {
+            method: 'PUT',
+            body: JSON.stringify({ value: formVal('value'), remark: formVal('remark') })
+          })
+          load()
+        }
+      )
+    }
   }
-  $('btnReload').onclick = load
+  $('btnReload').onclick = () => runAction(load)
   await load()
 }
 
 async function renderWithdraws() {
+  const editable = canEdit('withdraws')
   content().innerHTML = `
     <div class="toolbar">
       <select id="fStatus">
@@ -1798,7 +2074,7 @@ async function renderWithdraws() {
         <option value="rejected">已驳回</option>
       </select>
       <button class="btn" id="btnReload">刷新</button>
-      <button class="btn" id="btnDemo">演示申请</button>
+      ${editable ? '<button class="btn" id="btnDemo">演示申请</button>' : ''}
     </div>
     <div id="list"></div>`
   const load = async () => {
@@ -1813,51 +2089,57 @@ async function renderWithdraws() {
         <td>${esc(w.accountType)}</td><td>${w.amount}</td><td>${badge(w.status)}</td>
         <td>${fmtTime(w.createdAt)}</td>
         <td class="actions">${
-          w.status === 'pending'
-            ? `<button class="btn ok sm" data-act="approve" data-id="${w.id}">通过</button>
+          !editable
+            ? '-'
+            : w.status === 'pending'
+              ? `<button class="btn ok sm" data-act="approve" data-id="${w.id}">通过</button>
                <button class="btn danger sm" data-act="reject" data-id="${w.id}">驳回</button>`
-            : w.status === 'approved'
-              ? `<button class="btn primary sm" data-act="paid" data-id="${w.id}">已打款</button>`
-              : '-'
+              : w.status === 'approved'
+                ? `<button class="btn primary sm" data-act="paid" data-id="${w.id}">已打款</button>`
+                : '-'
         }</td></tr>`
         )
         .join('')
     )
     $('list').querySelectorAll('[data-act]').forEach((b) => {
-      b.onclick = async () => {
-        await api(`/admin/withdraws/${b.dataset.id}/review`, {
-          method: 'POST',
-          body: JSON.stringify({ action: b.dataset.act })
+      b.onclick = () =>
+        runAction(async () => {
+          await api(`/admin/withdraws/${b.dataset.id}/review`, {
+            method: 'POST',
+            body: JSON.stringify({ action: b.dataset.act })
+          })
+          load()
         })
-        load()
-      }
     })
   }
-  $('btnDemo').onclick = () => {
-    openModal(
-      '创建演示提现',
-      field('merchantId', '商户 ID', '1', 'number') +
-        field('amount', '金额', '100', 'number') +
-        field('accountType', '账户类型', 'cash_settlement'),
-      async () => {
-        await api('/admin/withdraws/demo', {
-          method: 'POST',
-          body: JSON.stringify({
-            merchantId: Number(formVal('merchantId')),
-            amount: Number(formVal('amount')),
-            accountType: formVal('accountType')
+  if ($('btnDemo')) {
+    $('btnDemo').onclick = () => {
+      openModal(
+        '创建演示提现',
+        field('merchantId', '商户 ID', '1', 'number') +
+          field('amount', '金额', '100', 'number') +
+          field('accountType', '账户类型', 'cash_settlement'),
+        async () => {
+          await api('/admin/withdraws/demo', {
+            method: 'POST',
+            body: JSON.stringify({
+              merchantId: Number(formVal('merchantId')),
+              amount: Number(formVal('amount')),
+              accountType: formVal('accountType')
+            })
           })
-        })
-        load()
-      }
-    )
+          load()
+        }
+      )
+    }
   }
-  $('btnReload').onclick = load
-  $('fStatus').onchange = load
+  $('btnReload').onclick = () => runAction(load)
+  $('fStatus').onchange = () => runAction(load)
   await load()
 }
 
 async function renderComplaints() {
+  const editable = canEdit('complaints')
   content().innerHTML = `
     <div class="toolbar">
       <select id="fStatus">
@@ -1881,24 +2163,29 @@ async function renderComplaints() {
         <td style="max-width:280px;white-space:normal">${esc(c.content)}</td>
         <td>${badge(c.status)}</td><td>${fmtTime(c.createdAt)}</td>
         <td class="actions">
-          <button class="btn sm" data-id="${c.id}" data-s="processing">处理中</button>
-          <button class="btn ok sm" data-id="${c.id}" data-s="closed">关闭</button>
+          ${
+            editable
+              ? `<button class="btn sm" data-id="${c.id}" data-s="processing">处理中</button>
+          <button class="btn ok sm" data-id="${c.id}" data-s="closed">关闭</button>`
+              : '-'
+          }
         </td></tr>`
         )
         .join('')
     )
     $('list').querySelectorAll('[data-s]').forEach((b) => {
-      b.onclick = async () => {
-        await api(`/admin/complaints/${b.dataset.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status: b.dataset.s })
+      b.onclick = () =>
+        runAction(async () => {
+          await api(`/admin/complaints/${b.dataset.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: b.dataset.s })
+          })
+          load()
         })
-        load()
-      }
     })
   }
-  $('btnReload').onclick = load
-  $('fStatus').onchange = load
+  $('btnReload').onclick = () => runAction(load)
+  $('fStatus').onchange = () => runAction(load)
   await load()
 }
 
@@ -1926,24 +2213,29 @@ async function renderNeeds() {
         <td>${esc(n.expectTime)}</td><td style="max-width:200px;white-space:normal">${esc(n.note)}</td>
         <td>${badge(n.status)}</td><td>${fmtTime(n.createdAt)}</td>
         <td class="actions">
-          <button class="btn sm" data-id="${n.id}" data-s="quoted">已报价</button>
-          <button class="btn ok sm" data-id="${n.id}" data-s="closed">关闭</button>
+          ${
+            canEdit('needs')
+              ? `<button class="btn sm" data-id="${n.id}" data-s="quoted">已报价</button>
+          <button class="btn ok sm" data-id="${n.id}" data-s="closed">关闭</button>`
+              : '-'
+          }
         </td></tr>`
         )
         .join('')
     )
     $('list').querySelectorAll('[data-s]').forEach((b) => {
-      b.onclick = async () => {
-        await api(`/admin/supply-needs/${b.dataset.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ status: b.dataset.s })
+      b.onclick = () =>
+        runAction(async () => {
+          await api(`/admin/supply-needs/${b.dataset.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: b.dataset.s })
+          })
+          load()
         })
-        load()
-      }
     })
   }
-  $('btnReload').onclick = load
-  $('fStatus').onchange = load
+  $('btnReload').onclick = () => runAction(load)
+  $('fStatus').onchange = () => runAction(load)
   await load()
 }
 

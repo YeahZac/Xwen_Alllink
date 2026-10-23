@@ -65,19 +65,21 @@ async function updateMerchant(id, body) {
     name: 'name',
     city: 'city',
     address: 'address',
+    legalPerson: 'legal_person',
     contactName: 'contact_name',
     contactPhone: 'contact_phone',
     status: 'status',
     coverHue: 'cover_hue',
     coverUrl: 'cover_url',
+    bizType: 'biz_type',
     latitude: 'latitude',
     longitude: 'longitude'
   }
   for (const [k, col] of Object.entries(map)) {
-    if (body[k] !== undefined && body[k] !== null && body[k] !== '') {
-      fields.push(`${col} = :${k}`)
-      params[k] = k === 'latitude' || k === 'longitude' ? Number(body[k]) : body[k]
-    }
+    if (body[k] === undefined || body[k] === null) continue
+    if (body[k] === '' && !['coverUrl', 'address', 'bizType'].includes(k)) continue
+    fields.push(`${col} = :${k}`)
+    params[k] = k === 'latitude' || k === 'longitude' || k === 'status' ? Number(body[k]) : body[k]
   }
   if (!fields.length) throw new HttpError(400, '没有可更新字段')
   await query(`UPDATE merchants SET ${fields.join(', ')} WHERE id=:id`, params)

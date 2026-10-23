@@ -29,10 +29,15 @@ const upload = multer({
 })
 
 /** 页面级 RBAC：GET 需浏览权，写操作需编辑权 */
-function requirePage(pageKey) {
+function requirePage(pageKey, { edit } = {}) {
   return async (req, _res, next) => {
     try {
-      const needEdit = !['GET', 'HEAD', 'OPTIONS'].includes(String(req.method || '').toUpperCase())
+      const needEdit =
+        edit === true
+          ? true
+          : edit === false
+            ? false
+            : !['GET', 'HEAD', 'OPTIONS'].includes(String(req.method || '').toUpperCase())
       await rbacService.ensurePageAccess(req.auth, pageKey, needEdit)
       next()
     } catch (e) {
@@ -40,6 +45,27 @@ function requirePage(pageKey) {
     }
   }
 }
+
+function requireAnyPage(pageKeys, { edit } = {}) {
+  return async (req, _res, next) => {
+    try {
+      const needEdit =
+        edit === true
+          ? true
+          : edit === false
+            ? false
+            : !['GET', 'HEAD', 'OPTIONS'].includes(String(req.method || '').toUpperCase())
+      await rbacService.ensureAnyPageAccess(req.auth, pageKeys, needEdit)
+      next()
+    } catch (e) {
+      next(e)
+    }
+  }
+}
+
+const STORE_PAGES = ['stores_stall', 'stores_cross', 'stores_supply', 'users_all']
+const STORE_EDIT_PAGES = ['stores_stall', 'stores_cross', 'stores_supply']
+const GOODS_EDIT_PAGES = ['goods_sku', 'goods', 'stores_stall', 'stores_cross', 'stores_supply']
 
 async function requireSysEdit(req, _res, next) {
   try {
@@ -266,13 +292,18 @@ router.get('/admin/applies/:id', ...adminOnly, requirePage('applies'), async (re
   }
 })
 
-router.get('/admin/merchants', ...adminOnly, async (req, res, next) => {
-  try {
-    res.json(ok(await applyService.listMerchants({ role: req.query.role, limit: req.query.limit })))
-  } catch (e) {
-    next(e)
+router.get(
+  '/admin/merchants',
+  ...adminOnly,
+  requireAnyPage(STORE_PAGES, { edit: false }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await applyService.listMerchants({ role: req.query.role, limit: req.query.limit })))
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
 router.get('/admin/dashboard', ...adminOnly, requirePage('dashboard'), async (req, res, next) => {
   try {
@@ -282,45 +313,70 @@ router.get('/admin/dashboard', ...adminOnly, requirePage('dashboard'), async (re
   }
 })
 
-router.get('/admin/merchants/:id', ...adminOnly, async (req, res, next) => {
-  try {
-    res.json(ok(await adminService.getMerchantDetail(Number(req.params.id))))
-  } catch (e) {
-    next(e)
+router.get(
+  '/admin/merchants/:id',
+  ...adminOnly,
+  requireAnyPage(STORE_PAGES, { edit: false }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await adminService.getMerchantDetail(Number(req.params.id))))
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
-router.patch('/admin/merchants/:id', ...adminOnly, async (req, res, next) => {
-  try {
-    res.json(ok(await adminService.updateMerchant(Number(req.params.id), req.body)))
-  } catch (e) {
-    next(e)
+router.patch(
+  '/admin/merchants/:id',
+  ...adminOnly,
+  requireAnyPage(STORE_EDIT_PAGES, { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await adminService.updateMerchant(Number(req.params.id), req.body)))
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
-router.get('/admin/users', ...adminOnly, async (req, res, next) => {
-  try {
-    res.json(ok(await adminService.listUsers({ q: req.query.q, limit: req.query.limit })))
-  } catch (e) {
-    next(e)
+router.get(
+  '/admin/users',
+  ...adminOnly,
+  requireAnyPage(['users_consumer', 'users_all'], { edit: false }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await adminService.listUsers({ q: req.query.q, limit: req.query.limit })))
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
-router.patch('/admin/users/:id', ...adminOnly, async (req, res, next) => {
-  try {
-    res.json(ok(await adminService.updateUser(Number(req.params.id), req.body)))
-  } catch (e) {
-    next(e)
+router.patch(
+  '/admin/users/:id',
+  ...adminOnly,
+  requireAnyPage(['users_consumer', 'users_all'], { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await adminService.updateUser(Number(req.params.id), req.body)))
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
-router.post('/admin/users/:id/points', ...adminOnly, async (req, res, next) => {
-  try {
-    res.json(ok(await adminService.adjustUserPoints(Number(req.params.id), req.body)))
-  } catch (e) {
-    next(e)
+router.post(
+  '/admin/users/:id/points',
+  ...adminOnly,
+  requireAnyPage(['users_consumer', 'users_all', 'points'], { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await adminService.adjustUserPoints(Number(req.params.id), req.body)))
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
 router.get('/admin/goods/stall', ...adminOnly, requirePage('goods'), async (req, res, next) => {
   try {
@@ -338,7 +394,7 @@ router.post('/admin/goods/stall', ...adminOnly, requirePage('goods'), async (req
   }
 })
 
-router.get('/admin/goods/stall/:id/options', ...adminOnly, async (req, res, next) => {
+router.get('/admin/goods/stall/:id/options', ...adminOnly, requirePage('goods'), async (req, res, next) => {
   try {
     const stallOptionsService = require('../services/stallOptionsService')
     res.json(ok(await stallOptionsService.getGoodsOptionGroups(Number(req.params.id))))
@@ -347,7 +403,7 @@ router.get('/admin/goods/stall/:id/options', ...adminOnly, async (req, res, next
   }
 })
 
-router.put('/admin/goods/stall/:id/options', ...adminOnly, async (req, res, next) => {
+router.put('/admin/goods/stall/:id/options', ...adminOnly, requirePage('goods'), async (req, res, next) => {
   try {
     const stallOptionsService = require('../services/stallOptionsService')
     res.json(
@@ -694,6 +750,10 @@ router.post('/admin/rbac/accounts', ...adminOnly, requireSysEdit, async (req, re
 router.post(
   '/admin/media/upload',
   ...adminOnly,
+  requireAnyPage(
+    ['sys_media', 'banners', 'goods', 'goods_sku', 'applies', 'stores_stall', 'stores_cross', 'stores_supply'],
+    { edit: true }
+  ),
   upload.single('file'),
   async (req, res, next) => {
     try {
@@ -713,19 +773,20 @@ router.post(
   }
 )
 
-router.get('/admin/media', ...adminOnly, async (req, res, next) => {
-  try {
-    await rbacService.ensurePageAccess(req.auth, 'sys_media', false).catch(async () => {
-      // 无媒体页权限时仍允许有业务编辑权限的账号上传回显列表为空处理：允许查看自己上传
-      return true
-    })
-    res.json(ok(await storageService.listMedia({ bizType: req.query.bizType, limit: req.query.limit })))
-  } catch (e) {
-    next(e)
+router.get(
+  '/admin/media',
+  ...adminOnly,
+  requireAnyPage(['sys_media', 'banners', 'goods', 'goods_sku'], { edit: false }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await storageService.listMedia({ bizType: req.query.bizType, limit: req.query.limit })))
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
-router.delete('/admin/media', ...adminOnly, async (req, res, next) => {
+router.delete('/admin/media', ...adminOnly, requirePage('sys_media', { edit: true }), async (req, res, next) => {
   try {
     res.json(
       ok(
@@ -772,116 +833,183 @@ router.get('/admin/ops/identities', ...adminOnly, async (req, res, next) => {
   }
 })
 
-router.get('/admin/ops/stores/:id', ...adminOnly, async (req, res, next) => {
-  try {
-    if (!rbacService.isSuperAdmin(req.auth)) {
-      const { permissions } = await rbacService.getMyPermissions(req.auth)
-      const okView = ['stores_stall', 'stores_cross', 'stores_supply', 'users_all', 'applies'].some(
-        (k) => permissions[k] && permissions[k].view
-      )
-      if (!okView) throw new HttpError(403, '无浏览权限')
+router.get(
+  '/admin/ops/stores/:id',
+  ...adminOnly,
+  requireAnyPage([...STORE_PAGES, 'applies'], { edit: false }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await opsService.getStoreDetail(Number(req.params.id))))
+    } catch (e) {
+      next(e)
     }
-    res.json(ok(await opsService.getStoreDetail(Number(req.params.id))))
-  } catch (e) {
-    next(e)
   }
-})
+)
 
-router.post('/admin/ops/stores/:id/status', ...adminOnly, async (req, res, next) => {
-  try {
-    if (!rbacService.isSuperAdmin(req.auth)) {
-      const { permissions } = await rbacService.getMyPermissions(req.auth)
-      const okEdit = ['stores_stall', 'stores_cross', 'stores_supply'].some(
-        (k) => permissions[k] && permissions[k].edit
-      )
-      if (!okEdit) throw new HttpError(403, '无编辑权限')
+router.patch(
+  '/admin/ops/stores/:id',
+  ...adminOnly,
+  requireAnyPage(STORE_EDIT_PAGES, { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await opsService.updateStore(Number(req.params.id), req.body || {})))
+    } catch (e) {
+      next(e)
     }
-    res.json(ok(await opsService.setMerchantStatus(Number(req.params.id), req.body.status)))
-  } catch (e) {
-    next(e)
   }
-})
+)
 
-router.delete('/admin/ops/stores/:id', ...adminOnly, async (req, res, next) => {
-  try {
-    res.json(ok(await opsService.softDeleteMerchant(Number(req.params.id))))
-  } catch (e) {
-    next(e)
+router.post(
+  '/admin/ops/stores/:id/status',
+  ...adminOnly,
+  requireAnyPage(STORE_EDIT_PAGES, { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await opsService.setMerchantStatus(Number(req.params.id), req.body.status)))
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
-router.put('/admin/ops/stores/:id/materials', ...adminOnly, async (req, res, next) => {
-  try {
-    res.json(ok(await opsService.updateMerchantMaterials(Number(req.params.id), req.body.materials)))
-  } catch (e) {
-    next(e)
+router.delete(
+  '/admin/ops/stores/:id',
+  ...adminOnly,
+  requireAnyPage(STORE_EDIT_PAGES, { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await opsService.softDeleteMerchant(Number(req.params.id))))
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
-router.post('/admin/ops/users/:id/status', ...adminOnly, async (req, res, next) => {
-  try {
-    res.json(ok(await opsService.setUserStatus(Number(req.params.id), req.body.status)))
-  } catch (e) {
-    next(e)
+router.put(
+  '/admin/ops/stores/:id/materials',
+  ...adminOnly,
+  requireAnyPage(STORE_EDIT_PAGES, { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await opsService.updateMerchantMaterials(Number(req.params.id), req.body.materials)))
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
-router.delete('/admin/ops/users/:id', ...adminOnly, async (req, res, next) => {
-  try {
-    res.json(ok(await opsService.softDeleteUser(Number(req.params.id))))
-  } catch (e) {
-    next(e)
+router.post(
+  '/admin/ops/users/:id/status',
+  ...adminOnly,
+  requireAnyPage(['users_consumer', 'users_all'], { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await opsService.setUserStatus(Number(req.params.id), req.body.status)))
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
-router.get('/admin/ops/skus', ...adminOnly, requirePage('goods_sku'), async (req, res, next) => {
-  try {
-    res.json(
-      ok(
-        await opsService.listSkus({
-          type: req.query.type,
-          merchantId: req.query.merchantId,
-          shopName: req.query.shopName,
-          includeDeleted: req.query.includeDeleted === '1'
-        })
+router.delete(
+  '/admin/ops/users/:id',
+  ...adminOnly,
+  requireAnyPage(['users_consumer', 'users_all'], { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await opsService.softDeleteUser(Number(req.params.id))))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get(
+  '/admin/ops/skus',
+  ...adminOnly,
+  requireAnyPage(GOODS_EDIT_PAGES, { edit: false }),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await opsService.listSkus({
+            type: req.query.type,
+            merchantId: req.query.merchantId,
+            shopName: req.query.shopName,
+            includeDeleted: req.query.includeDeleted === '1'
+          })
+        )
       )
-    )
-  } catch (e) {
-    next(e)
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
-router.post('/admin/ops/skus/:type/:id/open', ...adminOnly, requirePage('goods_sku'), async (req, res, next) => {
-  try {
-    res.json(ok(await opsService.setGoodsOpen(req.params.type, Number(req.params.id), true)))
-  } catch (e) {
-    next(e)
+router.post(
+  '/admin/ops/skus/:type',
+  ...adminOnly,
+  requireAnyPage(GOODS_EDIT_PAGES, { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await opsService.createSku(req.params.type, req.body || {})))
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
-router.post('/admin/ops/skus/:type/:id/close', ...adminOnly, requirePage('goods_sku'), async (req, res, next) => {
-  try {
-    res.json(ok(await opsService.setGoodsOpen(req.params.type, Number(req.params.id), false)))
-  } catch (e) {
-    next(e)
+router.post(
+  '/admin/ops/skus/:type/:id/open',
+  ...adminOnly,
+  requireAnyPage(GOODS_EDIT_PAGES, { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await opsService.setGoodsOpen(req.params.type, Number(req.params.id), true)))
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
-router.delete('/admin/ops/skus/:type/:id', ...adminOnly, requirePage('goods_sku'), async (req, res, next) => {
-  try {
-    res.json(ok(await opsService.softDeleteGoods(req.params.type, Number(req.params.id))))
-  } catch (e) {
-    next(e)
+router.post(
+  '/admin/ops/skus/:type/:id/close',
+  ...adminOnly,
+  requireAnyPage(GOODS_EDIT_PAGES, { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await opsService.setGoodsOpen(req.params.type, Number(req.params.id), false)))
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
-router.put('/admin/ops/skus/:type/:id', ...adminOnly, requirePage('goods_sku'), async (req, res, next) => {
-  try {
-    res.json(ok(await opsService.saveSku(req.params.type, { ...req.body, id: Number(req.params.id) })))
-  } catch (e) {
-    next(e)
+router.delete(
+  '/admin/ops/skus/:type/:id',
+  ...adminOnly,
+  requireAnyPage(GOODS_EDIT_PAGES, { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await opsService.softDeleteGoods(req.params.type, Number(req.params.id))))
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
+
+router.put(
+  '/admin/ops/skus/:type/:id',
+  ...adminOnly,
+  requireAnyPage(GOODS_EDIT_PAGES, { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await opsService.saveSku(req.params.type, { ...req.body, id: Number(req.params.id) })))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
 
 router.post('/track/visit', async (req, res, next) => {
   try {
@@ -1416,21 +1544,26 @@ router.post(
   }
 )
 
-router.post('/admin/points-pool/grant', ...adminOnly, async (req, res, next) => {
-  try {
-    res.json(
-      ok(
-        await adminService.grantPool({
-          merchantId: Number(req.body.merchantId),
-          points: Number(req.body.points) || 500,
-          title: req.body.title
-        })
+router.post(
+  '/admin/points-pool/grant',
+  ...adminOnly,
+  requireAnyPage(['points', ...STORE_EDIT_PAGES], { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await adminService.grantPool({
+            merchantId: Number(req.body.merchantId),
+            points: Number(req.body.points) || 500,
+            title: req.body.title
+          })
+        )
       )
-    )
-  } catch (e) {
-    next(e)
+    } catch (e) {
+      next(e)
+    }
   }
-})
+)
 
 // ---------- Merchant accounts / withdraw / purchase fulfill ----------
 router.get(
