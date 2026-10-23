@@ -85,10 +85,10 @@ async function requireSysRolesEdit(req, _res, next) {
   }
 }
 
-router.get('/health', async (_req, res) => {
+router.get('/health', async (req, res) => {
+  const config = require('../config')
   let db = { ok: false }
   try {
-    const config = require('../config')
     await query('SELECT 1 AS ok')
     db = {
       ok: true,
@@ -104,10 +104,15 @@ router.get('/health', async (_req, res) => {
         '无法连接 MySQL。云托管请在服务环境变量配置 MYSQL_ADDRESS / MYSQL_USERNAME / MYSQL_PASSWORD（或 DB_HOST/DB_USER/DB_PASSWORD），并执行 sql 初始化脚本。'
     }
   }
+  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim()
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim()
+  const origin = config.publicBaseUrl || (host ? `${proto}://${host}` : '')
   res.status(db.ok ? 200 : 503).json(
     ok({
       service: 'xwen-alllink-api',
       ts: Date.now(),
+      publicBaseUrl: origin || null,
+      adminUrl: origin ? `${origin}/admin/` : '/admin/',
       db
     })
   )

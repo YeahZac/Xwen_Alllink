@@ -48,9 +48,19 @@ if (require.main === module || process.env.LOG_DB_TARGET === '1') {
   )
 }
 
+/** 对外访问根地址，如 https://api.wanye.cloud（自定义域名） */
+function resolvePublicBaseUrl() {
+  const raw = String(process.env.PUBLIC_BASE_URL || process.env.PUBLIC_HOST || '').trim()
+  if (!raw) return ''
+  if (/^https?:\/\//i.test(raw)) return raw.replace(/\/+$/, '')
+  return `https://${raw.replace(/\/+$/, '')}`
+}
+
 module.exports = {
   port: Number(process.env.PORT || 80),
   env: process.env.NODE_ENV || 'production',
+  /** 浏览器 / 运营台对外域名，用于健康检查提示与绝对链接 */
+  publicBaseUrl: resolvePublicBaseUrl(),
   jwt: {
     secret: process.env.JWT_SECRET || 'dev_secret_change_me',
     expiresIn: process.env.JWT_EXPIRES_IN || '7d'
