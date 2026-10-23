@@ -7,6 +7,8 @@ const { notFound, errorHandler } = require('./middleware/error')
 const { ensureSchema } = require('./utils/migrate')
 
 const app = express()
+const adminDir = path.join(__dirname, '../public/admin')
+const adminStatic = express.static(adminDir, { index: 'index.html' })
 
 // 云托管 / 自定义域名经反向代理终止 TLS
 app.set('trust proxy', true)
@@ -15,17 +17,37 @@ app.use(cors())
 app.use(express.json({ limit: '5mb' }))
 app.use(express.urlencoded({ extended: true }))
 
+function requestHost(req) {
+  return String(req.headers['x-forwarded-host'] || req.headers.host || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase()
+    .split(':')[0]
+}
+
+/** admin.wanye.cloud → 根路径即运营台 */
+function isAdminHost(req) {
+  const host = requestHost(req)
+  if (!host) return false
+  if (config.adminHost && host === config.adminHost) return true
+  if (host.startsWith('admin.')) return true
+  return false
+}
+
 function publicOrigin(req) {
   if (config.publicBaseUrl) return config.publicBaseUrl
   const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim()
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim()
+  const host = requestHost(req)
   if (!host) return ''
   return `${proto}://${host}`
 }
 
-app.get('/', (req, res) => {
+app.get('/', (req, res, next) => {
+  // 运营台域名：根路径直接出 index.html
+  if (isAdminHost(req)) {
+    return res.sendFile(path.join(adminDir, 'index.html'))
+  }
   const accept = String(req.headers.accept || '')
-  // 浏览器打开自定义域名根路径 → 直接进运营台
   if (accept.includes('text/html')) {
     return res.redirect(302, '/admin/')
   }
@@ -35,16 +57,34 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     health: '/api/health',
     admin: '/admin/',
+    adminHost: config.adminHost || null,
     publicBaseUrl: origin || null,
-    adminUrl: origin ? `${origin}/admin/` : '/admin/',
-    docs: '运营后台请打开 /admin/ ，账号 admin / 密码 123456'
+    adminUrl: config.adminHost ? `https://${config.adminHost}/` : origin ? `${origin}/admin/` : '/admin/',
+    docs: '运营后台请使用 https://admin.wanye.cloud/ ，账号 admin / 密码 123456'
   })
 })
 
-app.use('/admin', express.static(path.join(__dirname, '../public/admin'), { index: 'index.html' }))
-app.get('/admin', (_req, res) => {
-  res.redirect(302, '/admin/')
+// 运营台域名：静态资源挂在根路径（/styles.css、/app.js 等）
+app.use((req, res, next) => {
+  if (!isAdminHost(req)) return next()
+  if (
+    req.path.startsWith('/api') ||
+    req.path.startsWith('/uploads') ||
+    req.path.startsWith('/banners') ||
+    req.path.startsWith('/admin')
+  ) {
+    return next()
+  }
+  return adminStatic(req, res, next)
 })
+
+// 兼容旧路径 /admin/
+app.use('/admin', adminStatic)
+app.get('/admin', (req, res) => {
+  if (isAdminHost(req)) return res.redirect(302, '/')
+  return res.redirect(302, '/admin/')
+})
+
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')))
 app.use('/banners', express.static(path.join(__dirname, '../public/banners')))
 
@@ -64,8 +104,10 @@ if (require.main === module) {
   }
   app.listen(config.port, () => {
     console.log(`[xwen-alllink-api] listening on :${config.port}`)
-    const pub = config.publicBaseUrl || `http://127.0.0.1:${config.port}`
-    console.log(`[xwen-alllink-api] admin UI: ${pub}/admin/`)
+    const adminUrl = config.adminHost
+      ? `https://${config.adminHost}/`
+      : `${config.publicBaseUrl || `http://127.0.0.1:${config.port}`}/admin/`
+    console.log(`[xwen-alllink-api] admin UI: ${adminUrl}`)
     ensureSchema().catch((e) => console.warn('[schema]', e.message))
   })
 }

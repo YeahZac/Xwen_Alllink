@@ -105,14 +105,26 @@ router.get('/health', async (req, res) => {
     }
   }
   const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim()
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim()
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase()
+    .split(':')[0]
   const origin = config.publicBaseUrl || (host ? `${proto}://${host}` : '')
+  const onAdminHost = host && (host === config.adminHost || host.startsWith('admin.'))
   res.status(db.ok ? 200 : 503).json(
     ok({
       service: 'xwen-alllink-api',
       ts: Date.now(),
       publicBaseUrl: origin || null,
-      adminUrl: origin ? `${origin}/admin/` : '/admin/',
+      adminHost: config.adminHost || null,
+      adminUrl: onAdminHost
+        ? `${proto}://${host}/`
+        : config.adminHost
+          ? `https://${config.adminHost}/`
+          : origin
+            ? `${origin}/admin/`
+            : '/admin/',
       db
     })
   )
