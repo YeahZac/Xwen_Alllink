@@ -1,6 +1,7 @@
 const api = require('../../utils/api')
 const location = require('../../utils/location')
 const store = require('../../utils/store')
+const legal = require('../../utils/legal')
 
 const TYPE_META = {
   stall: {
@@ -244,6 +245,9 @@ Page({
   },
   toggleAgree() {
     this.setData({ 'form.agreed': !this.data.form.agreed })
+  },
+  openMerchantLegal() {
+    legal.openDoc('merchant')
   },
   queryStatus() {
     this.queryApplyProgress()

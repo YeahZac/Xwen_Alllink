@@ -91,9 +91,13 @@
         </view>
       </view>
     </view>
-    <view class="agree surface" bindtap="toggleAgree">
-      <text class="agree__check {{form.agreed ? 'agree__check--on' : ''}}">✓</text>
-      <text class="agree__text">我已阅读并同意《万业互联云商户入驻协议》及平台经营规范</text>
+    <view class="agree surface">
+      <view class="agree__row" bindtap="toggleAgree">
+        <text class="agree__check {{form.agreed ? 'agree__check--on' : ''}}">✓</text>
+        <text class="agree__text">我已阅读并同意</text>
+      </view>
+      <text class="agree__link" catchtap="openMerchantLegal">《商户入驻平台协议》</text>
+      <text class="agree__text">及平台经营规范</text>
     </view>
     <view class="btns">
       <button class="btn-ghost half" bindtap="prevStep">上一步</button>

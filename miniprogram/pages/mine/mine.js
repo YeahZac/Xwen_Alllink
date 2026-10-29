@@ -61,6 +61,9 @@ Page({
   goSupplyNeed() {
     wx.navigateTo({ url: '/pages/supply-need/supply-need' })
   },
+  goLegal() {
+    wx.navigateTo({ url: '/pages/legal/legal' })
+  },
   async onChooseAvatar(e) {
     const path = (e.detail && e.detail.avatarUrl) || ''
     if (!path) return

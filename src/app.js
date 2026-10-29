@@ -60,6 +60,7 @@ app.get('/', (req, res, next) => {
     adminHost: config.adminHost || null,
     publicBaseUrl: origin || null,
     adminUrl: config.adminHost ? `https://${config.adminHost}/` : origin ? `${origin}/admin/` : '/admin/',
+    legal: '/legal/',
     docs: '运营后台请使用 https://admin.wanye.cloud/ ，账号 admin / 密码 123456'
   })
 })
@@ -71,6 +72,7 @@ app.use((req, res, next) => {
     req.path.startsWith('/api') ||
     req.path.startsWith('/uploads') ||
     req.path.startsWith('/banners') ||
+    req.path.startsWith('/legal') ||
     req.path.startsWith('/admin')
   ) {
     return next()
@@ -87,6 +89,19 @@ app.get('/admin', (req, res) => {
 
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')))
 app.use('/banners', express.static(path.join(__dirname, '../public/banners')))
+/** 平台协议 PDF（审核 / 用户查看） */
+app.use(
+  '/legal',
+  express.static(path.join(__dirname, '../public/legal'), {
+    index: 'index.html',
+    setHeaders(res, filePath) {
+      if (String(filePath).toLowerCase().endsWith('.pdf')) {
+        res.setHeader('Content-Type', 'application/pdf')
+        res.setHeader('Content-Disposition', 'inline')
+      }
+    }
+  })
+)
 
 app.use('/api', routes)
 app.use(notFound)

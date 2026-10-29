@@ -1,0 +1,27 @@
+<view class="legal-page">
+  <view class="legal-hero">
+    <text class="legal-hero__title">平台协议与规则</text>
+    <text class="legal-hero__desc">以下协议置于显著位置，内容与线上一致。点击即可查看完整 PDF。</text>
+  </view>
+
+  <view class="legal-list">
+    <view
+      class="legal-row"
+      wx:for="{{docs}}"
+      wx:key="key"
+      bindtap="openDoc"
+      data-key="{{item.key}}"
+    >
+      <view class="legal-row__main">
+        <text class="legal-row__title">{{item.short}}</text>
+        <text class="legal-row__sub">{{item.desc}}</text>
+      </view>
+      <text class="legal-row__arrow">›</text>
+    </view>
+  </view>
+
+  <view class="legal-foot">
+    <text>也可在浏览器打开：</text>
+    <text class="legal-foot__url" selectable="true">{{portalUrl}}</text>
+  </view>
+</view>

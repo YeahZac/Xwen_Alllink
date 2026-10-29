@@ -1,23 +1,14 @@
 const store = require('../../utils/store')
 const api = require('../../utils/api')
 const scan = require('../../utils/scan')
+const legal = require('../../utils/legal')
 const { ensureCloud } = require('../../utils/request')
 
-const LEGAL = {
+const LEGAL_MODAL = {
   privacy: {
     title: '平台隐私政策',
     content:
-      '万业互联云会使用你的手机号用于登录、订单通知和账号保护。头像、昵称、性别由你在「我的」中自行填写，可随时修改。我们不会把你的个人信息出售给第三方。'
-  },
-  minor: {
-    title: '未成年人保护须知',
-    content:
-      '未满 18 周岁应在监护人同意下使用本平台。请勿进行大额消费或代付。如发现异常订单，可通过「我的 · 投诉与反馈」联系平台。'
-  },
-  member: {
-    title: '用户服务协议',
-    content:
-      '使用万业互联云即表示你同意按实际订单完成支付。餐饮等门店消费产生的积分以到账为准，可在附近鲜花、蛋糕、百货门店兑换。演示身份仅供联调，不代表正式开户。'
+      '万业互联云会使用你的手机号用于登录、订单通知和账号保护。头像、昵称、性别由你在「我的」中自行填写，可随时修改。我们不会把你的个人信息出售给第三方。完整平台协议可在「我的 → 平台协议」查看。'
   }
 }
 
@@ -155,8 +146,15 @@ Page({
   },
   openLegal(e) {
     const key = e.currentTarget.dataset.key
-    const item = LEGAL[key]
-    if (!item) return
+    if (legal.docByKey(key)) {
+      legal.openDoc(key)
+      return
+    }
+    const item = LEGAL_MODAL[key]
+    if (!item) {
+      wx.navigateTo({ url: '/pages/legal/legal' })
+      return
+    }
     wx.showModal({
       title: item.title,
       content: item.content,

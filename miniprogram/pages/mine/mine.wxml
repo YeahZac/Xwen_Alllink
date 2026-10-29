@@ -87,6 +87,14 @@
       </view>
       <text class="m-row__arrow">›</text>
     </view>
+    <view class="m-row" bindtap="goLegal">
+      <view class="m-row__seal m-row__seal--soft">协</view>
+      <view class="m-row__main">
+        <text class="m-row__title">平台协议</text>
+        <text class="m-row__sub">用户协议 · 入驻协议 · 消费者权益保障</text>
+      </view>
+      <text class="m-row__arrow">›</text>
+    </view>
     <view class="m-row" bindtap="onComplaint">
       <view class="m-row__seal m-row__seal--soft">诉</view>
       <view class="m-row__main">

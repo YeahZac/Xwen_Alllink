@@ -215,10 +215,24 @@
   color: #fff;
 }
 
+.agree__row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
 .agree__text {
   font-size: var(--font-caption);
   color: var(--color-text-secondary);
   line-height: var(--lh-body);
+}
+
+.agree__link {
+  display: inline;
+  font-size: var(--font-caption);
+  color: var(--color-primary);
+  line-height: var(--lh-body);
+  font-weight: 600;
 }
 
 .btns {

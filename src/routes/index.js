@@ -130,6 +130,45 @@ router.get('/health', async (req, res) => {
   )
 })
 
+/** 平台协议目录（与 /legal 静态资源一致，供审核与前端引用） */
+router.get('/legal', (req, res) => {
+  const base = (config.publicBaseUrl || 'https://admin.wanye.cloud').replace(/\/+$/, '')
+  res.json(
+    ok({
+      portal: `${base}/legal/`,
+      docs: [
+        {
+          key: 'user',
+          title: '用户服务协议',
+          name: '万业互联云平台用户服务协议',
+          url: `${base}/legal/user-service-agreement.pdf`,
+          path: '/legal/user-service-agreement.pdf'
+        },
+        {
+          key: 'merchant',
+          title: '商户入驻平台协议',
+          name: '万业互联云商户入驻服务协议',
+          url: `${base}/legal/merchant-onboarding-agreement.pdf`,
+          path: '/legal/merchant-onboarding-agreement.pdf'
+        },
+        {
+          key: 'dispute',
+          title: '消费者权益保障措施说明',
+          name: '万业互联云平台交易纠纷处理机制说明',
+          url: `${base}/legal/transaction-dispute-resolution.pdf`,
+          path: '/legal/transaction-dispute-resolution.pdf'
+        }
+      ],
+      miniprogram: {
+        login: '登录页底部协议勾选区可点开《用户服务协议》《消费者权益保障措施说明》',
+        mine: '我的 → 平台协议',
+        apply: '申请入驻 → 《商户入驻平台协议》',
+        page: 'pages/legal/legal'
+      }
+    })
+  )
+})
+
 // ---------- Auth ----------
 router.post('/auth/login', async (req, res, next) => {
   try {
