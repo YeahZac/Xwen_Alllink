@@ -1,0 +1,4 @@
+<view wx:if="{{loading && !src}}" class="legal-web-loading">
+  <text>正在打开协议…</text>
+</view>
+<web-view wx:if="{{src}}" src="{{src}}"></web-view>

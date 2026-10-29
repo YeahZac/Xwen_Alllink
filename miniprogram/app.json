@@ -18,6 +18,7 @@
     "pages/supply-need/supply-need",
     "pages/mine/mine",
     "pages/legal/legal",
+    "pages/legal-web/legal-web",
     "pages/identity/identity",
     "merchant/home/home",
     "merchant/purchase/purchase",

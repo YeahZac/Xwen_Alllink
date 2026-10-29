@@ -82,7 +82,27 @@
 
     <ad-banner role="{{role}}" height="280" />
 
-    <view class="logout" bindtap="goTestLogin">测试入口 · 切换身份</view>
+    <view class="m-list m-list--legal">
+      <view class="m-row" bindtap="openLegalDoc" data-key="user">
+        <view class="m-row__main">
+          <text class="m-row__title">用户服务协议</text>
+        </view>
+        <text class="m-row__arrow">›</text>
+      </view>
+      <view class="m-row" bindtap="openLegalDoc" data-key="merchant">
+        <view class="m-row__main">
+          <text class="m-row__title">商户入驻平台协议</text>
+        </view>
+        <text class="m-row__arrow">›</text>
+      </view>
+      <view class="m-row" bindtap="openLegalDoc" data-key="dispute">
+        <view class="m-row__main">
+          <text class="m-row__title">消费者权益保障措施说明</text>
+        </view>
+        <text class="m-row__arrow">›</text>
+      </view>
+    </view>
+
     <view class="logout" bindtap="onLogout">退出登录</view>
   </view>
 </view>

@@ -8,7 +8,6 @@ Page({
   onLoad(q) {
     const key = q && q.key
     if (key && legal.docByKey(key)) {
-      // 从登录/入驻深链直接打开对应 PDF
       setTimeout(() => legal.openDoc(key), 200)
     }
   },

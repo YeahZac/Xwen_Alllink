@@ -9,7 +9,9 @@ const { setToken, getToken } = require('./request')
 const KEYS = {
   session: 'wy_session',
   cart: 'wy_cart',
-  cashRate: 'wy_cash_rate'
+  cashRate: 'wy_cash_rate',
+  /** 用户主动退出后禁止静默自动登录，直到再次主动授权登录 */
+  manualLogout: 'wy_manual_logout'
 }
 
 const ROLE_HOME = {
@@ -72,10 +74,27 @@ function isLoggedIn() {
   return !!(s && s.role && getToken())
 }
 
+function clearManualLogout() {
+  write(KEYS.manualLogout, null)
+  try {
+    wx.removeStorageSync(KEYS.manualLogout)
+  } catch (_) {}
+}
+
+function markManualLogout() {
+  write(KEYS.manualLogout, 1)
+}
+
+function isManualLogout() {
+  return !!read(KEYS.manualLogout, null)
+}
+
 function applyAuthResult(data) {
   if (!data) throw new Error('登录失败')
   if (data.token) setToken(data.token)
   else if (!getToken()) throw new Error('登录失败：无 token')
+  // 用户主动登录成功后，才允许后续静默恢复
+  clearManualLogout()
   if (data.cashRate) setCashRate(data.cashRate)
   const cur = getSession() || {}
   const session = {
@@ -135,10 +154,25 @@ function wxLoginCode() {
 
 /** 静默微信登录：已绑定手机号的用户可直接恢复会话，无需再点授权 */
 async function silentWeChatLogin() {
+  if (isManualLogout()) {
+    return { ok: false, message: '已退出登录', manualLogout: true }
+  }
   const jsCode = await wxLoginCode()
   if (!jsCode) return { ok: false, message: '无法获取微信登录码' }
-  const res = await loginWithWeChat({ jsCode })
-  if (!res.ok) return res
+  if (isManualLogout()) {
+    return { ok: false, message: '已退出登录', manualLogout: true }
+  }
+  let data
+  try {
+    data = await api.wxLogin({ jsCode })
+  } catch (e) {
+    return { ok: false, message: (e && e.message) || '微信登录失败' }
+  }
+  // 请求返回期间用户可能已点退出：丢弃结果，绝不写回会话
+  if (isManualLogout()) {
+    return { ok: false, message: '已退出登录', manualLogout: true }
+  }
+  const res = applyAuthResult(data)
   if (res.session && res.session.needPhone) {
     return { ok: false, message: '需要手机号授权', needPhone: true, session: res.session }
   }
@@ -148,7 +182,8 @@ async function silentWeChatLogin() {
 /**
  * 启动时恢复登录态：
  * 1) 本地 token + session 仍在 → 拉 profile 校验
- * 2) token 失效 → 静默微信登录（已绑手机号则直接进首页）
+ * 2) 用户主动退出过 → 不静默登录，留在登录页
+ * 3) 否则 token 失效/无会话 → 静默微信登录（已绑手机号则直接进首页）
  */
 async function bootstrapSession() {
   if (isLoggedIn()) {
@@ -161,8 +196,13 @@ async function bootstrapSession() {
         // 网络/冷启动失败时保留本地会话，避免误踢
         return { ok: true, session: getSession(), source: 'cache' }
       }
-      logout()
+      // 仅清会话，不记「手动退出」，允许后续静默恢复
+      setToken('')
+      write(KEYS.session, null)
     }
+  }
+  if (isManualLogout()) {
+    return { ok: false, message: '已退出登录', manualLogout: true }
   }
   try {
     const silent = await silentWeChatLogin()
@@ -200,6 +240,12 @@ async function refreshProfile() {
 function logout() {
   setToken('')
   write(KEYS.session, null)
+  markManualLogout()
+  // 取消进行中的启动静默登录，避免退出后又被 bootPromise 写回会话
+  try {
+    const app = getApp()
+    if (app && app.globalData) app.globalData.bootPromise = null
+  } catch (_) {}
 }
 
 function requireRole(roles) {
@@ -378,6 +424,8 @@ module.exports = {
   silentWeChatLogin,
   bootstrapSession,
   logout,
+  isManualLogout,
+  clearManualLogout,
   requireRole,
   routeAfterLogin,
   ensureLoggedIn,

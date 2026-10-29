@@ -1,0 +1,8 @@
+.legal-web-loading {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8f959e;
+  font-size: 28rpx;
+}

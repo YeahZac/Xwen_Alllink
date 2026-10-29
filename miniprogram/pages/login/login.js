@@ -4,14 +4,6 @@ const scan = require('../../utils/scan')
 const legal = require('../../utils/legal')
 const { ensureCloud } = require('../../utils/request')
 
-const LEGAL_MODAL = {
-  privacy: {
-    title: '平台隐私政策',
-    content:
-      '万业互联云会使用你的手机号用于登录、订单通知和账号保护。头像、昵称、性别由你在「我的」中自行填写，可随时修改。我们不会把你的个人信息出售给第三方。完整平台协议可在「我的 → 平台协议」查看。'
-  }
-}
-
 const AGREE_KEY = 'wy_agreed'
 
 function wxLoginCode() {
@@ -39,8 +31,6 @@ function writeAgreed(v) {
 
 Page({
   data: {
-    code: '',
-    showTest: false,
     headerTop: 92,
     loading: false,
     resuming: false,
@@ -48,8 +38,7 @@ Page({
     canReturnPay: false,
     canSkip: false,
     agreed: false,
-    showAgreeTip: false,
-    heroImage: 'https://7072-prod-d3g1vkrj3290d085e-1467541248.tcb.qcloud.la/admin/banner/20260918/295311cfb0213203.webp'
+    showAgreeTip: false
   },
   onLoad(q) {
     ensureCloud()
@@ -88,6 +77,10 @@ Page({
   },
   async resumeIfPossible(fromScan) {
     if (this._resuming) return
+    if (store.isManualLogout && store.isManualLogout()) {
+      this.setData({ resuming: false })
+      return
+    }
     this._resuming = true
     this.setData({ resuming: true })
     try {
@@ -99,9 +92,9 @@ Page({
       } else {
         boot = await store.bootstrapSession()
       }
+      if (boot && boot.manualLogout) return
       if (!boot || !boot.ok) {
-        // 已有本地会话但静默失败时仍可先进入（仅扫码支付页需要登录）
-        if (store.isLoggedIn() && !fromScan) {
+        if (store.isLoggedIn() && !fromScan && !(store.isManualLogout && store.isManualLogout())) {
           store.routeAfterLogin()
           return
         }
@@ -146,27 +139,8 @@ Page({
   },
   openLegal(e) {
     const key = e.currentTarget.dataset.key
-    if (legal.docByKey(key)) {
-      legal.openDoc(key)
-      return
-    }
-    const item = LEGAL_MODAL[key]
-    if (!item) {
-      wx.navigateTo({ url: '/pages/legal/legal' })
-      return
-    }
-    wx.showModal({
-      title: item.title,
-      content: item.content,
-      showCancel: false,
-      confirmText: '知道了'
-    })
-  },
-  onInput(e) {
-    this.setData({ code: e.detail.value })
-  },
-  toggleTest() {
-    this.setData({ showTest: !this.data.showTest })
+    // 小程序内打开：原生 PDF 阅读器或 web-view，不跳浏览器
+    legal.openDoc(key)
   },
   goApply() {
     wx.navigateTo({ url: '/pages/apply/apply' })
@@ -196,31 +170,6 @@ Page({
       }
     })()
   },
-  async onLoginCode(e) {
-    if (this.data.loading || this.data.resuming) return
-    const fromRow = e && e.currentTarget && e.currentTarget.dataset
-      ? String(e.currentTarget.dataset.code || '').trim()
-      : ''
-    const code = fromRow || String(this.data.code || '').trim()
-    if (!code) {
-      wx.showToast({ title: '请选择演示身份或输入邀请码', icon: 'none' })
-      return
-    }
-    this.setData({ code, loading: true })
-    try {
-      const res = await store.loginWithCode(code)
-      this.setData({ loading: false })
-      if (!res.ok) {
-        wx.showToast({ title: res.message, icon: 'none' })
-        return
-      }
-      wx.showToast({ title: store.ROLE_LABEL[res.session.role] || '登录成功', icon: 'success' })
-      setTimeout(() => store.routeAfterLogin(), 400)
-    } catch (err) {
-      this.setData({ loading: false })
-      wx.showToast({ title: (err && err.message) || '登录失败', icon: 'none' })
-    }
-  },
   async onPhoneLogin(e) {
     if (this.data.loading || this.data.resuming) return
     if (!this.data.agreed) {
@@ -229,7 +178,6 @@ Page({
     }
     const detail = (e && e.detail) || {}
     if (detail.errMsg && String(detail.errMsg).indexOf('ok') < 0) {
-      // 用户取消授权时，若本地已有可恢复会话则直接进入
       if (store.isLoggedIn()) {
         store.routeAfterLogin()
         return
@@ -240,7 +188,6 @@ Page({
     const phoneCode = detail.code
     this.setData({ loading: true })
     try {
-      // 已绑定过手机号：静默微信登录即可，不必再绑
       if (!phoneCode) {
         const silent = await store.silentWeChatLogin()
         if (silent.ok) {

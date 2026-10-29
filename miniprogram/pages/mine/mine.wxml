@@ -87,11 +87,27 @@
       </view>
       <text class="m-row__arrow">›</text>
     </view>
-    <view class="m-row" bindtap="goLegal">
-      <view class="m-row__seal m-row__seal--soft">协</view>
+    <view class="m-row" bindtap="openLegalDoc" data-key="user">
+      <view class="m-row__seal m-row__seal--soft">用</view>
       <view class="m-row__main">
-        <text class="m-row__title">平台协议</text>
-        <text class="m-row__sub">用户协议 · 入驻协议 · 消费者权益保障</text>
+        <text class="m-row__title">用户服务协议</text>
+        <text class="m-row__sub">万业互联云平台用户服务协议</text>
+      </view>
+      <text class="m-row__arrow">›</text>
+    </view>
+    <view class="m-row" bindtap="openLegalDoc" data-key="merchant">
+      <view class="m-row__seal m-row__seal--soft">入</view>
+      <view class="m-row__main">
+        <text class="m-row__title">商户入驻平台协议</text>
+        <text class="m-row__sub">万业互联云商户入驻服务协议</text>
+      </view>
+      <text class="m-row__arrow">›</text>
+    </view>
+    <view class="m-row" bindtap="openLegalDoc" data-key="dispute">
+      <view class="m-row__seal m-row__seal--soft">权</view>
+      <view class="m-row__main">
+        <text class="m-row__title">消费者权益保障措施说明</text>
+        <text class="m-row__sub">交易纠纷处理机制说明</text>
       </view>
       <text class="m-row__arrow">›</text>
     </view>
@@ -99,14 +115,6 @@
       <view class="m-row__seal m-row__seal--soft">诉</view>
       <view class="m-row__main">
         <text class="m-row__title">投诉与反馈</text>
-      </view>
-      <text class="m-row__arrow">›</text>
-    </view>
-    <view class="m-row" bindtap="goTestLogin">
-      <view class="m-row__seal m-row__seal--gold">测</view>
-      <view class="m-row__main">
-        <text class="m-row__title">测试入口 · 切换身份</text>
-        <text class="m-row__sub">进入地摊 / 异业 / 供应链演示账号</text>
       </view>
       <text class="m-row__arrow">›</text>
     </view>
