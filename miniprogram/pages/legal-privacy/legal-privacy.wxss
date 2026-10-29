@@ -1,0 +1,39 @@
+.privacy {
+  height: 100vh;
+  padding: 32rpx 36rpx calc(48rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+  background: #fff;
+}
+
+.privacy__h1 {
+  display: block;
+  font-size: 36rpx;
+  font-weight: 800;
+  color: #1f2329;
+  margin-bottom: 24rpx;
+  line-height: 1.35;
+}
+
+.privacy__h2 {
+  display: block;
+  margin-top: 32rpx;
+  margin-bottom: 12rpx;
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #1f2329;
+}
+
+.privacy__p {
+  display: block;
+  font-size: 28rpx;
+  color: #4e5969;
+  line-height: 1.7;
+}
+
+.privacy__foot {
+  display: block;
+  margin-top: 48rpx;
+  font-size: 24rpx;
+  color: #8f959e;
+  line-height: 1.5;
+}

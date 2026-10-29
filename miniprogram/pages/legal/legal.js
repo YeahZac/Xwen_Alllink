@@ -2,8 +2,7 @@ const legal = require('../../utils/legal')
 
 Page({
   data: {
-    docs: legal.DOCS,
-    portalUrl: `${legal.LEGAL_BASE}/`
+    docs: legal.DOCS
   },
   onLoad(q) {
     const key = q && q.key

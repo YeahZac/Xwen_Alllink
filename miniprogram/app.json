@@ -19,6 +19,7 @@
     "pages/mine/mine",
     "pages/legal/legal",
     "pages/legal-web/legal-web",
+    "pages/legal-privacy/legal-privacy",
     "pages/identity/identity",
     "merchant/home/home",
     "merchant/purchase/purchase",

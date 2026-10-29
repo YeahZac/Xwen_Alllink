@@ -1,7 +1,10 @@
 /**
- * 平台协议：小程序内直接打开（优先原生 PDF 阅读器，其次 web-view）
- * 线上审核路径：https://admin.wanye.cloud/legal/
+ * 平台协议：全程在小程序内用微信 PDF 阅读器打开（不用 web-view，避免业务域名拦截）
+ * 1) 代码包 assets/legal/*.pdf → 复制到用户目录 → openDocument
+ * 2) 失败则经云托管 callContainer 拉取 /legal/*.pdf 再打开
  */
+const config = require('./config')
+
 const LEGAL_BASE = 'https://admin.wanye.cloud/legal'
 
 const DOCS = [
@@ -11,7 +14,6 @@ const DOCS = [
     short: '《用户服务协议》',
     file: 'user-service-agreement.pdf',
     packagePath: 'assets/legal/user-service-agreement.pdf',
-    webPath: 'user.html',
     desc: '万业互联云平台用户服务协议'
   },
   {
@@ -20,7 +22,6 @@ const DOCS = [
     short: '《商户入驻平台协议》',
     file: 'merchant-onboarding-agreement.pdf',
     packagePath: 'assets/legal/merchant-onboarding-agreement.pdf',
-    webPath: 'merchant.html',
     desc: '万业互联云商户入驻服务协议'
   },
   {
@@ -29,7 +30,6 @@ const DOCS = [
     short: '《消费者权益保障措施说明》',
     file: 'transaction-dispute-resolution.pdf',
     packagePath: 'assets/legal/transaction-dispute-resolution.pdf',
-    webPath: 'dispute.html',
     desc: '万业互联云平台交易纠纷处理机制说明'
   },
   {
@@ -38,7 +38,7 @@ const DOCS = [
     short: '《平台隐私政策》',
     file: '',
     packagePath: '',
-    webPath: 'privacy.html',
+    page: '/pages/legal-privacy/legal-privacy',
     desc: '万业互联云平台隐私政策'
   }
 ]
@@ -48,87 +48,191 @@ function docByKey(key) {
 }
 
 function docUrl(doc) {
-  if (!doc) return LEGAL_BASE + '/'
-  if (doc.webPath) return `${LEGAL_BASE}/${doc.webPath}`
+  if (!doc) return `${LEGAL_BASE}/`
   if (doc.file) return `${LEGAL_BASE}/${doc.file}`
   return `${LEGAL_BASE}/`
 }
 
-function webViewUrl(doc) {
-  return docUrl(doc)
+function destPath(doc) {
+  return `${wx.env.USER_DATA_PATH}/wy_legal_${doc.key}.pdf`
 }
 
-/** 代码包 PDF → 用户目录 → 微信内置阅读器（不跳出小程序） */
-function openNativePdf(doc) {
+function openFile(filePath) {
+  return new Promise((resolve) => {
+    wx.openDocument({
+      filePath,
+      fileType: 'pdf',
+      showMenu: true,
+      success: () => resolve(true),
+      fail: (err) => {
+        console.warn('[legal] openDocument fail', err)
+        resolve(false)
+      }
+    })
+  })
+}
+
+function writeAndOpen(doc, data) {
+  return new Promise((resolve) => {
+    const fsm = wx.getFileSystemManager()
+    const dest = destPath(doc)
+    try {
+      fsm.writeFileSync(dest, data)
+      openFile(dest).then(resolve)
+    } catch (e) {
+      fsm.writeFile({
+        filePath: dest,
+        data,
+        success: () => openFile(dest).then(resolve),
+        fail: (err) => {
+          console.warn('[legal] writeFile fail', err)
+          resolve(false)
+        }
+      })
+    }
+  })
+}
+
+/** 从代码包打开 */
+function openFromPackage(doc) {
   return new Promise((resolve) => {
     if (!doc || !doc.packagePath) {
       resolve(false)
       return
     }
     const fsm = wx.getFileSystemManager()
-    const dest = `${wx.env.USER_DATA_PATH}/wy_legal_${doc.key}.pdf`
-    const open = (filePath) => {
-      wx.openDocument({
-        filePath,
-        fileType: 'pdf',
-        showMenu: true,
-        success: () => resolve(true),
-        fail: () => resolve(false)
+    const dest = destPath(doc)
+    const srcs = [
+      doc.packagePath,
+      `/${String(doc.packagePath).replace(/^\//, '')}`
+    ]
+
+    try {
+      fsm.accessSync(dest)
+      openFile(dest).then((ok) => {
+        if (ok) resolve(true)
+        else tryCopy(0)
       })
+      return
+    } catch (_) {
+      /* need copy */
     }
-    const writeAndOpen = (data) => {
-      fsm.writeFile({
-        filePath: dest,
-        data,
-        success: () => open(dest),
-        fail: () => resolve(false)
-      })
+
+    function tryCopy(i) {
+      if (i >= srcs.length) {
+        resolve(false)
+        return
+      }
+      const src = srcs[i]
+      try {
+        fsm.copyFileSync(src, dest)
+        openFile(dest).then((ok) => (ok ? resolve(true) : tryCopy(i + 1)))
+        return
+      } catch (_) {}
+      try {
+        const data = fsm.readFileSync(src)
+        writeAndOpen(doc, data).then((ok) => (ok ? resolve(true) : tryCopy(i + 1)))
+      } catch (e) {
+        console.warn('[legal] package read fail', src, e)
+        tryCopy(i + 1)
+      }
     }
-    fsm.readFile({
-      filePath: doc.packagePath,
-      success: (res) => writeAndOpen(res.data),
-      fail: () => {
-        fsm.copyFile({
-          srcPath: doc.packagePath,
-          destPath: dest,
-          success: () => open(dest),
-          fail: () => {
-            fsm.copyFile({
-              srcPath: `/${doc.packagePath}`,
-              destPath: dest,
-              success: () => open(dest),
-              fail: () => resolve(false)
-            })
-          }
-        })
+
+    tryCopy(0)
+  })
+}
+
+/** 经云托管拉取 PDF（不依赖 downloadFile / web-view 业务域名） */
+function openFromCloud(doc) {
+  return new Promise((resolve) => {
+    if (!doc || !doc.file) {
+      resolve(false)
+      return
+    }
+    if (!wx.cloud || !wx.cloud.callContainer) {
+      resolve(false)
+      return
+    }
+    try {
+      wx.cloud.init({ env: config.envId, traceUser: true })
+    } catch (_) {}
+
+    wx.cloud.callContainer({
+      config: { env: config.envId },
+      path: `/legal/${doc.file}`,
+      method: 'GET',
+      timeout: 20000,
+      responseType: 'arraybuffer',
+      header: {
+        'X-WX-SERVICE': config.serviceName,
+        'content-type': 'application/pdf'
+      },
+      success: (res) => {
+        const code = res.statusCode || 0
+        const data = res.data
+        if (code !== 200 || !data) {
+          console.warn('[legal] cloud pdf status', code)
+          resolve(false)
+          return
+        }
+        // 若网关误返回 JSON 字符串，则失败
+        if (typeof data === 'string' && data.trim().charAt(0) === '{') {
+          resolve(false)
+          return
+        }
+        writeAndOpen(doc, data).then(resolve)
+      },
+      fail: (err) => {
+        console.warn('[legal] cloud pdf fail', err)
+        resolve(false)
       }
     })
   })
 }
 
-/** 跳转 web-view 页，在小程序内打开协议页（需配置业务域名 admin.wanye.cloud） */
-function openInWebView(keyOrDoc) {
-  const doc = typeof keyOrDoc === 'string' ? docByKey(keyOrDoc) : keyOrDoc
-  if (!doc) {
-    wx.showToast({ title: '协议不存在', icon: 'none' })
-    return
-  }
-  const key = doc.key
-  wx.navigateTo({
-    url: `/pages/legal-web/legal-web?key=${encodeURIComponent(key)}`,
-    fail: () => {
-      wx.navigateTo({ url: `/pages/legal/legal` })
-    }
+function openPrivacy() {
+  return new Promise((resolve) => {
+    wx.navigateTo({
+      url: '/pages/legal-privacy/legal-privacy',
+      success: () => resolve(true),
+      fail: () => resolve(false)
+    })
   })
 }
 
 /**
- * 打开协议：进入协议页（原生 PDF 阅读器 / web-view）
- * 全程留在小程序内，不再复制浏览器链接
+ * 打开协议（小程序内，不跳浏览器、不用 web-view）
  */
 function openDoc(keyOrDoc) {
-  openInWebView(keyOrDoc)
-  return Promise.resolve(true)
+  const doc = typeof keyOrDoc === 'string' ? docByKey(keyOrDoc) : keyOrDoc
+  if (!doc) {
+    wx.showToast({ title: '协议不存在', icon: 'none' })
+    return Promise.resolve(false)
+  }
+  if (doc.key === 'privacy' || doc.page) {
+    return openPrivacy()
+  }
+
+  wx.showLoading({ title: '打开协议…', mask: true })
+  return openFromPackage(doc)
+    .then((ok) => (ok ? true : openFromCloud(doc)))
+    .then((ok) => {
+      wx.hideLoading()
+      if (!ok) {
+        wx.showToast({ title: '协议暂时无法打开，请稍后重试', icon: 'none' })
+      }
+      return ok
+    })
+    .catch(() => {
+      wx.hideLoading()
+      wx.showToast({ title: '协议暂时无法打开，请稍后重试', icon: 'none' })
+      return false
+    })
+}
+
+function openInWebView(keyOrDoc) {
+  // 兼容旧调用：改为小程序内打开，不再走 web-view
+  return openDoc(keyOrDoc)
 }
 
 module.exports = {
@@ -136,8 +240,8 @@ module.exports = {
   DOCS,
   docByKey,
   docUrl,
-  webViewUrl,
   openDoc,
   openInWebView,
-  openNativePdf
+  openFromPackage,
+  openFromCloud
 }

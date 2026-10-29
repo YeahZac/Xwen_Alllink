@@ -20,8 +20,4 @@
     </view>
   </view>
 
-  <view class="legal-foot">
-    <text>也可在浏览器打开：</text>
-    <text class="legal-foot__url" selectable="true">{{portalUrl}}</text>
-  </view>
 </view>
