@@ -132,6 +132,7 @@ router.get('/health', async (req, res) => {
 
 /** 平台协议目录（与 /legal 静态资源一致，供审核与前端引用） */
 router.get('/legal', (req, res) => {
+  const config = require('../config')
   const base = (config.publicBaseUrl || 'https://admin.wanye.cloud').replace(/\/+$/, '')
   res.json(
     ok({
