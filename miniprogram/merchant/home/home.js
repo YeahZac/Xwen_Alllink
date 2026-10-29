@@ -1,5 +1,6 @@
 const store = require('../../utils/store')
 const api = require('../../utils/api')
+const legal = require('../../utils/legal')
 const { ensureCloud } = require('../../utils/request')
 
 const META = {
@@ -213,6 +214,10 @@ Page({
       wx.hideLoading()
       wx.showToast({ title: e.message || '切换失败', icon: 'none' })
     }
+  },
+  openLegalDoc(e) {
+    const key = e.currentTarget.dataset.key
+    legal.openDoc(key)
   },
   onLogout() {
     store.logout()

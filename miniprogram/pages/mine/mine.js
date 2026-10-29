@@ -1,5 +1,6 @@
 const store = require('../../utils/store')
 const api = require('../../utils/api')
+const legal = require('../../utils/legal')
 
 const GENDER_OPTIONS = ['不展示', '男', '女']
 
@@ -63,6 +64,10 @@ Page({
   },
   goLegal() {
     wx.navigateTo({ url: '/pages/legal/legal' })
+  },
+  openLegalDoc(e) {
+    const key = e.currentTarget.dataset.key
+    legal.openDoc(key)
   },
   async onChooseAvatar(e) {
     const path = (e.detail && e.detail.avatarUrl) || ''
