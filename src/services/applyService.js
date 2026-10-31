@@ -1,6 +1,7 @@
 const { query, withTransaction } = require('../utils/db')
 const { HttpError } = require('../utils/response')
 const { orderNo, shortCode } = require('../utils/id')
+const { parsePaging, pageResult } = require('../utils/paging')
 const cityService = require('./cityService')
 const referralService = require('./referralService')
 const { parseMaybeJson, pickCoverFromLicenses } = require('../utils/mediaPick')
@@ -207,7 +208,7 @@ function mapStatusRow(r) {
 }
 
 /** 运营审核通过：创建商户 + 额度池 + 账户 + 邀请码 */
-async function approveApply(applyId, { reviewerId } = {}) {
+async function approveApply(applyId, { reviewerId, remark } = {}) {
   return withTransaction(async (conn) => {
     const [rows] = await conn.execute(
       `SELECT * FROM merchant_applications WHERE id = ? FOR UPDATE`,
@@ -252,6 +253,8 @@ async function approveApply(applyId, { reviewerId } = {}) {
     const inviteCode = shortCode(a.role === 'stall' ? 'D' : a.role === 'cross' ? 'Y' : 'G')
     const merchantNo = orderNo('M')
     const licenses = parseMaybeJson(a.license_json) || {}
+    const adminRemark = String(remark || '').trim()
+    if (adminRemark) licenses.adminRemark = adminRemark.slice(0, 255)
     const coverUrl = pickCoverFromLicenses(licenses) || null
     const materialsJson = JSON.stringify(licenses)
     const [ins] = await conn.execute(
@@ -288,22 +291,52 @@ async function approveApply(applyId, { reviewerId } = {}) {
       [merchantId]
     )
 
-    // 按联系电话创建/关联经营主体用户，写入 owner_user_id
+    // 优先绑定申请人账号，手机号匹配为兜底，避免 owner 与申请人错位
     let ownerUserId = 0
-    const [byPhone] = await conn.execute(
-      "SELECT id FROM users WHERE phone=? AND status=1 LIMIT 1",
-      [a.contact_phone]
-    )
-    if (byPhone.length) {
-      ownerUserId = Number(byPhone[0].id)
-    } else {
-      const ownerInvite = `${inviteCode}_U`
-      const [uins] = await conn.execute(
-        `INSERT INTO users (invite_code, nickname, phone, points_balance, status)
-         VALUES (?, ?, ?, 0, 1)`,
-        [ownerInvite, a.contact_name || a.shop_name, a.contact_phone]
-      )
-      ownerUserId = Number(uins.insertId) || 0
+    const applicantId = Number(a.applicant_user_id) || 0
+    if (applicantId > 0) {
+      try {
+        const [byApplicant] = await conn.execute(
+          'SELECT id FROM users WHERE id=? AND status=1 AND deleted_at IS NULL LIMIT 1',
+          [applicantId]
+        )
+        if (byApplicant.length) ownerUserId = Number(byApplicant[0].id)
+      } catch (e) {
+        if (!/deleted_at|Unknown column/i.test(String(e.message || ''))) throw e
+        const [byApplicant] = await conn.execute(
+          'SELECT id FROM users WHERE id=? AND status=1 LIMIT 1',
+          [applicantId]
+        )
+        if (byApplicant.length) ownerUserId = Number(byApplicant[0].id)
+      }
+    }
+    if (!ownerUserId) {
+      let phoneRows = []
+      try {
+        const [byPhone] = await conn.execute(
+          'SELECT id FROM users WHERE phone=? AND status=1 AND deleted_at IS NULL LIMIT 1',
+          [a.contact_phone]
+        )
+        phoneRows = byPhone
+      } catch (e) {
+        if (!/deleted_at|Unknown column/i.test(String(e.message || ''))) throw e
+        const [byPhone] = await conn.execute(
+          'SELECT id FROM users WHERE phone=? AND status=1 LIMIT 1',
+          [a.contact_phone]
+        )
+        phoneRows = byPhone
+      }
+      if (phoneRows.length) {
+        ownerUserId = Number(phoneRows[0].id)
+      } else {
+        const ownerInvite = `${inviteCode}_U`
+        const [uins] = await conn.execute(
+          `INSERT INTO users (invite_code, nickname, phone, points_balance, status)
+           VALUES (?, ?, ?, 0, 1)`,
+          [ownerInvite, a.contact_name || a.shop_name, a.contact_phone]
+        )
+        ownerUserId = Number(uins.insertId) || 0
+      }
     }
     if (ownerUserId) {
       await conn.execute('UPDATE merchants SET owner_user_id=? WHERE id=?', [ownerUserId, merchantId])
@@ -321,12 +354,32 @@ async function approveApply(applyId, { reviewerId } = {}) {
         [merchantId]
       )
     }
-    await conn.execute(
-      `UPDATE merchant_applications
-       SET status='approved', merchant_id=?, reviewer_id=?, reviewed_at=NOW()
-       WHERE id=?`,
-      [merchantId, reviewerId || null, applyId]
-    )
+    // 回写可选审核备注到 license_json.adminRemark，避免强依赖新列
+    if (adminRemark) {
+      try {
+        await conn.execute(
+          `UPDATE merchant_applications
+           SET status='approved', merchant_id=?, reviewer_id=?, reviewed_at=NOW(),
+               license_json=CAST(? AS JSON)
+           WHERE id=?`,
+          [merchantId, reviewerId || null, JSON.stringify(licenses), applyId]
+        )
+      } catch (_) {
+        await conn.execute(
+          `UPDATE merchant_applications
+           SET status='approved', merchant_id=?, reviewer_id=?, reviewed_at=NOW()
+           WHERE id=?`,
+          [merchantId, reviewerId || null, applyId]
+        )
+      }
+    } else {
+      await conn.execute(
+        `UPDATE merchant_applications
+         SET status='approved', merchant_id=?, reviewer_id=?, reviewed_at=NOW()
+         WHERE id=?`,
+        [merchantId, reviewerId || null, applyId]
+      )
+    }
 
     // 触发点：商户入驻审核通过（BRD §4.5 第 4 步第 3 项）
     const rewarded = await referralService.rewardMerchantApproved(conn, {
@@ -389,20 +442,25 @@ function mapApplyRow(r) {
   }
 }
 
-async function listApplies({ status, limit = 50 } = {}) {
-  const lim = Math.min(Number(limit) || 50, 200)
-  let sql = `SELECT id, apply_no, role, shop_name, credit_code, legal_person, contact_name, contact_phone,
-                    city, address, license_json, referrer_code, latitude, longitude,
-                    status, reject_reason, merchant_id, created_at, reviewed_at
-             FROM merchant_applications`
+async function listApplies({ status, page, pageSize, limit } = {}) {
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = ''
   const params = {}
   if (status && ['pending', 'approved', 'rejected'].includes(status)) {
-    sql += ` WHERE status = :status`
+    where = ` WHERE status = :status`
     params.status = status
   }
-  sql += ` ORDER BY id DESC LIMIT ${lim}`
-  const rows = await query(sql, params)
-  return rows.map(mapApplyRow)
+  const countRows = await query(`SELECT COUNT(*) AS c FROM merchant_applications${where}`, params)
+  const total = Number(countRows[0]?.c) || 0
+  const rows = await query(
+    `SELECT id, apply_no, role, shop_name, credit_code, legal_person, contact_name, contact_phone,
+            city, address, license_json, referrer_code, latitude, longitude,
+            status, reject_reason, merchant_id, created_at, reviewed_at
+     FROM merchant_applications${where}
+     ORDER BY id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+    params
+  )
+  return pageResult(rows.map(mapApplyRow), total, paging)
 }
 
 async function getApplyDetail(id) {
@@ -423,13 +481,15 @@ async function rejectApply(applyId, { reason, reviewerId } = {}) {
   })
   if (!rows.length) throw new HttpError(404, '申请不存在')
   if (rows[0].status !== 'pending') throw new HttpError(400, '申请状态不可审核')
+  const rejectReason = String(reason || '').trim()
+  if (!rejectReason) throw new HttpError(400, '请填写驳回原因')
   await query(
     `UPDATE merchant_applications
      SET status='rejected', reject_reason=:reason, reviewer_id=:rid, reviewed_at=NOW()
      WHERE id=:id`,
     {
       id: applyId,
-      reason: String(reason || '资料不符合要求').slice(0, 255),
+      reason: rejectReason.slice(0, 255),
       rid: reviewerId || null
     }
   )

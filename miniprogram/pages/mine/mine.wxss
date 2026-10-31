@@ -1,4 +1,28 @@
 /* profile + stats only; list rows use shared m-row */
+.guest-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-lg) var(--space-page);
+  margin-bottom: var(--space-md);
+  background: var(--color-ink);
+  border-color: transparent;
+}
+
+.guest-card .profile__name-input {
+  color: #fff;
+  font-weight: 700;
+}
+
+.guest-card .profile__hint {
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.guest-card .m-row__arrow {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 36rpx;
+}
+
 .profile {
   display: flex;
   align-items: center;

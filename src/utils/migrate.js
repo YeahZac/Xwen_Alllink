@@ -117,6 +117,11 @@ async function ensureSchema() {
       'users',
       'deleted_at',
       "`deleted_at` DATETIME DEFAULT NULL COMMENT '软删除' AFTER `status`"
+    ),
+    addColumn(
+      'complaints',
+      'handle_remark',
+      "`handle_remark` VARCHAR(512) DEFAULT NULL COMMENT '处理备注' AFTER `status`"
     )
   ]
   for (const job of jobs) {

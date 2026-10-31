@@ -306,7 +306,14 @@ router.post(
   requirePage('applies'),
   async (req, res, next) => {
     try {
-      res.json(ok(await applyService.approveApply(Number(req.params.id), { reviewerId: req.auth.userId })))
+      res.json(
+        ok(
+          await applyService.approveApply(Number(req.params.id), {
+            reviewerId: req.auth.userId,
+            remark: req.body?.remark
+          })
+        )
+      )
     } catch (e) {
       next(e)
     }
@@ -335,7 +342,49 @@ router.post(
 
 router.get('/admin/applies', ...adminOnly, requirePage('applies'), async (req, res, next) => {
   try {
-    res.json(ok(await applyService.listApplies({ status: req.query.status, limit: req.query.limit })))
+    res.json(
+      ok(
+        await applyService.listApplies({
+          status: req.query.status,
+          page: req.query.page,
+          pageSize: req.query.pageSize,
+          limit: req.query.limit
+        })
+      )
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/cities', ...adminOnly, requirePage('cities'), async (req, res, next) => {
+  try {
+    res.json(
+      ok(
+        await cityService.listCities({
+          status: req.query.status,
+          page: req.query.page,
+          pageSize: req.query.pageSize,
+          limit: req.query.limit
+        })
+      )
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/cities', ...adminOnly, requirePage('cities'), async (req, res, next) => {
+  try {
+    res.json(ok(await cityService.saveCity(req.body || {})))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/cities/:id/close', ...adminOnly, requirePage('cities'), async (req, res, next) => {
+  try {
+    res.json(ok(await cityService.closeCity(Number(req.params.id))))
   } catch (e) {
     next(e)
   }
@@ -503,6 +552,17 @@ router.post('/admin/goods/supply', ...adminOnly, requirePage('goods'), async (re
   }
 })
 
+router.delete('/admin/goods/:type/:id', ...adminOnly, requirePage('goods'), async (req, res, next) => {
+  try {
+    const type = String(req.params.type || '')
+    if (!['stall', 'cross', 'supply'].includes(type)) {
+      throw new HttpError(400, '商品类型无效')
+    }
+    res.json(ok(await opsService.softDeleteGoods(type, Number(req.params.id))))
+  } catch (e) {
+    next(e)
+  }
+})
 
 router.get('/admin/goods-categories', ...adminOnly, requirePage('goods_categories'), async (req, res, next) => {
   try {
@@ -836,7 +896,16 @@ router.get(
   requireAnyPage(['sys_media', 'banners', 'goods', 'goods_sku'], { edit: false }),
   async (req, res, next) => {
     try {
-      res.json(ok(await storageService.listMedia({ bizType: req.query.bizType, limit: req.query.limit })))
+      res.json(
+        ok(
+          await storageService.listMedia({
+            bizType: req.query.bizType,
+            page: req.query.page,
+            pageSize: req.query.pageSize,
+            limit: req.query.limit
+          })
+        )
+      )
     } catch (e) {
       next(e)
     }
@@ -883,7 +952,15 @@ router.get('/admin/ops/identities', ...adminOnly, async (req, res, next) => {
               : 'users_all'
     await rbacService.ensurePageAccess(req.auth, pageKey, false)
     res.json(
-      ok(await opsService.listAllIdentities({ role: req.query.role, q: req.query.q, limit: req.query.limit }))
+      ok(
+        await opsService.listAllIdentities({
+          role: req.query.role,
+          q: req.query.q,
+          page: req.query.page,
+          pageSize: req.query.pageSize,
+          limit: req.query.limit
+        })
+      )
     )
   } catch (e) {
     next(e)
@@ -993,7 +1070,10 @@ router.get(
             type: req.query.type,
             merchantId: req.query.merchantId,
             shopName: req.query.shopName,
-            includeDeleted: req.query.includeDeleted === '1'
+            includeDeleted: req.query.includeDeleted === '1',
+            page: req.query.page,
+            pageSize: req.query.pageSize,
+            limit: req.query.limit
           })
         )
       )

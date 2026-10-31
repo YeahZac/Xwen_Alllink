@@ -6,6 +6,7 @@ const GENDER_OPTIONS = ['不展示', '男', '女']
 
 Page({
   data: {
+    loggedIn: false,
     name: '',
     roleLabel: '',
     points: 0,
@@ -17,7 +18,25 @@ Page({
     genderOptions: GENDER_OPTIONS
   },
   async onShow() {
-    if (!store.ensureConsumerOrRedirect()) return
+    if (!store.isLoggedIn()) {
+      this.setData({
+        loggedIn: false,
+        name: '',
+        roleLabel: '',
+        points: 0,
+        orderCount: 0,
+        coverUrl: '',
+        phone: '',
+        gender: 0,
+        genderText: ''
+      })
+      return
+    }
+    if (store.getSession() && store.getSession().role !== 'consumer') {
+      store.routeAfterLogin()
+      return
+    }
+    this.setData({ loggedIn: true })
     try {
       const [session, orders, pointsData] = await Promise.all([
         store.refreshProfile(),
@@ -26,6 +45,7 @@ Page({
       ])
       const gender = Number(session.gender) || 0
       this.setData({
+        loggedIn: true,
         name: session.name,
         roleLabel: store.ROLE_LABEL[session.role] || '',
         points: pointsData.points != null ? pointsData.points : session.points || 0,
@@ -39,6 +59,7 @@ Page({
       const s = store.getSession() || {}
       const gender = Number(s.gender) || 0
       this.setData({
+        loggedIn: true,
         name: s.name || '',
         roleLabel: store.ROLE_LABEL[s.role] || '',
         points: s.points || 0,
@@ -47,19 +68,35 @@ Page({
       })
     }
   },
+  goLogin() {
+    try {
+      wx.removeStorageSync('wy_guest_browse')
+      const app = getApp()
+      if (app && app.globalData) app.globalData.preferGuest = false
+    } catch (_) {}
+    wx.navigateTo({ url: '/pages/login/login' })
+  },
+  requireLogin() {
+    if (store.isLoggedIn()) return true
+    this.goLogin()
+    return false
+  },
   goOrders() {
+    if (!this.requireLogin()) return
     wx.navigateTo({ url: '/pages/orders/orders' })
   },
   goPoints() {
     wx.switchTab({ url: '/pages/points/points' })
   },
   goRecommend() {
+    if (!this.requireLogin()) return
     wx.navigateTo({ url: '/pages/recommend/recommend' })
   },
   goApply() {
     wx.navigateTo({ url: '/pages/apply/apply' })
   },
   goSupplyNeed() {
+    if (!this.requireLogin()) return
     wx.navigateTo({ url: '/pages/supply-need/supply-need' })
   },
   goLegal() {

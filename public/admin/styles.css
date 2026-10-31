@@ -378,3 +378,15 @@ img.thumb.lg {
 .chk { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; white-space: nowrap; }
 .btn.danger { color: #9b1530; border-color: #f0c8d0; }
 .muted { color: #6b7280; font-size: 13px; }
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 4px 0 8px;
+}
+.pager .btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

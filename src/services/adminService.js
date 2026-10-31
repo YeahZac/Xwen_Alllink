@@ -1,5 +1,6 @@
 const { query, withTransaction } = require('../utils/db')
 const { HttpError } = require('../utils/response')
+const { parsePaging, pageResult } = require('../utils/paging')
 const orderService = require('./orderService')
 const accountService = require('./accountService')
 const catalogService = require('./catalogService')
@@ -25,14 +26,23 @@ async function dashboard() {
     openNeeds,
     pendingWithdraw
   ] = await Promise.all([
-    one('SELECT COUNT(*) c FROM users WHERE status=1'),
-    one('SELECT COUNT(*) c FROM merchants WHERE status=1'),
+    one('SELECT COUNT(*) c FROM users WHERE status=1 AND deleted_at IS NULL').catch(() =>
+      one('SELECT COUNT(*) c FROM users WHERE status=1')
+    ),
+    one('SELECT COUNT(*) c FROM merchants WHERE status=1 AND deleted_at IS NULL').catch(() =>
+      one('SELECT COUNT(*) c FROM merchants WHERE status=1')
+    ),
     one(`SELECT COUNT(*) c FROM merchant_applications WHERE status='pending'`),
     one('SELECT COUNT(*) c FROM consumer_orders'),
     one('SELECT COUNT(*) c FROM cross_orders'),
     one('SELECT COUNT(*) c FROM purchase_orders'),
-    one('SELECT IFNULL(SUM(balance),0) c FROM merchant_points_pool'),
-    one('SELECT IFNULL(SUM(points_balance),0) c FROM users'),
+    one(
+      `SELECT IFNULL(SUM(p.balance),0) c FROM merchant_points_pool p
+       JOIN merchants m ON m.id=p.merchant_id WHERE m.deleted_at IS NULL`
+    ).catch(() => one('SELECT IFNULL(SUM(balance),0) c FROM merchant_points_pool')),
+    one('SELECT IFNULL(SUM(points_balance),0) c FROM users WHERE deleted_at IS NULL').catch(() =>
+      one('SELECT IFNULL(SUM(points_balance),0) c FROM users')
+    ),
     one(`SELECT COUNT(*) c FROM complaints WHERE status!='closed'`),
     one(`SELECT COUNT(*) c FROM supply_needs WHERE status='open'`),
     one(`SELECT COUNT(*) c FROM withdraw_requests WHERE status='pending'`)
@@ -57,8 +67,8 @@ async function dashboard() {
 
 /* ---------- merchants ---------- */
 async function updateMerchant(id, body) {
-  const rows = await query('SELECT id FROM merchants WHERE id=:id', { id })
-  if (!rows.length) throw new HttpError(404, '商户不存在')
+  const rows = await query('SELECT id FROM merchants WHERE id=:id AND deleted_at IS NULL', { id })
+  if (!rows.length) throw new HttpError(404, '商户不存在或已删除')
   const fields = []
   const params = { id }
   const map = {
@@ -91,10 +101,10 @@ async function getMerchantDetail(id) {
     `SELECT m.*, IFNULL(p.balance,0) AS pool_balance
      FROM merchants m
      LEFT JOIN merchant_points_pool p ON p.merchant_id=m.id
-     WHERE m.id=:id`,
+     WHERE m.id=:id AND m.deleted_at IS NULL`,
     { id }
   )
-  if (!rows.length) throw new HttpError(404, '商户不存在')
+  if (!rows.length) throw new HttpError(404, '商户不存在或已删除')
   const m = rows[0]
   const { pickCoverFromLicenses } = require('../utils/mediaPick')
   const coverUrl = m.cover_url || pickCoverFromLicenses(m.materials_json) || ''
@@ -180,21 +190,28 @@ async function adjustUserPoints(id, { points, title } = {}) {
 }
 
 /* ---------- goods ---------- */
-async function listStallGoods({ merchantId, limit = 200 } = {}) {
-  const lim = Math.min(Number(limit) || 200, 500)
-  let sql = `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name, g.price,
-                    g.points_grant AS pointsGrant, g.category, g.desc_text AS description,
-                    g.image_url AS imageUrl, g.stock, g.on_sale AS onSale, g.sku_code AS sku,
-                    g.sales_count AS sales
-             FROM stall_goods g JOIN merchants m ON m.id=g.merchant_id
-             WHERE g.deleted_at IS NULL`
+async function listStallGoods({ merchantId, page, pageSize, limit } = {}) {
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = ` WHERE g.deleted_at IS NULL`
   const params = {}
   if (merchantId) {
-    sql += ` AND g.merchant_id=:merchantId`
+    where += ` AND g.merchant_id=:merchantId`
     params.merchantId = Number(merchantId)
   }
-  sql += ` ORDER BY g.id DESC LIMIT ${lim}`
-  return query(sql, params)
+  const countRows = await query(
+    `SELECT COUNT(*) AS c FROM stall_goods g JOIN merchants m ON m.id=g.merchant_id${where}`,
+    params
+  )
+  const list = await query(
+    `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name, g.price,
+            g.points_grant AS pointsGrant, g.category, g.desc_text AS description,
+            g.image_url AS imageUrl, g.stock, g.on_sale AS onSale, g.sku_code AS sku,
+            g.sales_count AS sales
+     FROM stall_goods g JOIN merchants m ON m.id=g.merchant_id${where}
+     ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+    params
+  )
+  return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
 async function saveStallGoods(body) {
@@ -271,21 +288,42 @@ async function saveStallGoods(body) {
   return { id }
 }
 
-async function listCrossGoods({ merchantId, limit = 200 } = {}) {
-  const lim = Math.min(Number(limit) || 200, 500)
-  let sql = `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name,
-                    g.points_need AS pointsNeed, g.cash_price AS cashPrice,
-                    g.desc_text AS description, g.image_url AS imageUrl, g.on_sale AS onSale,
-                    g.sku_code AS sku, g.sales_count AS sales
-             FROM cross_goods g JOIN merchants m ON m.id=g.merchant_id
-             WHERE g.deleted_at IS NULL`
+async function listCrossGoods({ merchantId, page, pageSize, limit } = {}) {
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = ` WHERE g.deleted_at IS NULL`
   const params = {}
   if (merchantId) {
-    sql += ` AND g.merchant_id=:merchantId`
+    where += ` AND g.merchant_id=:merchantId`
     params.merchantId = Number(merchantId)
   }
-  sql += ` ORDER BY g.id DESC LIMIT ${lim}`
-  return query(sql, params)
+  const countRows = await query(
+    `SELECT COUNT(*) AS c FROM cross_goods g JOIN merchants m ON m.id=g.merchant_id${where}`,
+    params
+  )
+  let list
+  try {
+    list = await query(
+      `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name,
+              g.points_need AS pointsNeed, g.cash_price AS cashPrice, g.stock,
+              g.desc_text AS description, g.image_url AS imageUrl, g.on_sale AS onSale,
+              g.sku_code AS sku, g.sales_count AS sales
+       FROM cross_goods g JOIN merchants m ON m.id=g.merchant_id${where}
+       ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
+  } catch (e) {
+    if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+    list = await query(
+      `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name,
+              g.points_need AS pointsNeed, g.cash_price AS cashPrice,
+              g.desc_text AS description, g.image_url AS imageUrl, g.on_sale AS onSale,
+              g.sku_code AS sku, g.sales_count AS sales
+       FROM cross_goods g JOIN merchants m ON m.id=g.merchant_id${where}
+       ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
+  }
+  return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
 async function saveCrossGoods(body) {
@@ -360,20 +398,27 @@ async function saveCrossGoods(body) {
   return { id }
 }
 
-async function listSupplyGoodsAdmin({ merchantId, limit = 200 } = {}) {
-  const lim = Math.min(Number(limit) || 200, 500)
-  let sql = `SELECT g.id, g.merchant_id AS merchantId, m.name AS vendor, g.name, g.price, g.stock,
-                    g.points_grant AS pointsGrant, g.points_ratio_text AS pointsRatio,
-                    g.image_url AS imageUrl, g.status, g.sku_code AS sku, g.sales_count AS sales
-             FROM supply_goods g JOIN merchants m ON m.id=g.merchant_id
-             WHERE g.deleted_at IS NULL`
+async function listSupplyGoodsAdmin({ merchantId, page, pageSize, limit } = {}) {
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = ` WHERE g.deleted_at IS NULL`
   const params = {}
   if (merchantId) {
-    sql += ` AND g.merchant_id=:merchantId`
+    where += ` AND g.merchant_id=:merchantId`
     params.merchantId = Number(merchantId)
   }
-  sql += ` ORDER BY g.id DESC LIMIT ${lim}`
-  return query(sql, params)
+  const countRows = await query(
+    `SELECT COUNT(*) AS c FROM supply_goods g JOIN merchants m ON m.id=g.merchant_id${where}`,
+    params
+  )
+  const list = await query(
+    `SELECT g.id, g.merchant_id AS merchantId, m.name AS vendor, g.name, g.price, g.stock,
+            g.points_grant AS pointsGrant, g.points_ratio_text AS pointsRatio,
+            g.image_url AS imageUrl, g.status, g.sku_code AS sku, g.sales_count AS sales
+     FROM supply_goods g JOIN merchants m ON m.id=g.merchant_id${where}
+     ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+    params
+  )
+  return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
 async function saveSupplyGoods(body) {
@@ -450,43 +495,49 @@ async function saveSupplyGoods(body) {
 }
 
 /* ---------- orders ---------- */
-async function listConsumerOrders({ limit = 100 } = {}) {
-  const lim = Math.min(Number(limit) || 100, 300)
-  return query(
+async function listConsumerOrders({ page, pageSize, limit } = {}) {
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  const countRows = await query('SELECT COUNT(*) AS c FROM consumer_orders')
+  const list = await query(
     `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount, o.points_allocated AS pointsAllocated,
             o.pay_status AS payStatus, o.order_status AS orderStatus, o.created_at AS createdAt,
             u.nickname AS userName, m.name AS shopName
      FROM consumer_orders o
      JOIN users u ON u.id=o.user_id
      JOIN merchants m ON m.id=o.merchant_id
-     ORDER BY o.id DESC LIMIT ${lim}`
+     ORDER BY o.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`
   )
+  return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
-async function listCrossOrders({ limit = 100 } = {}) {
-  const lim = Math.min(Number(limit) || 100, 300)
-  return query(
+async function listCrossOrders({ page, pageSize, limit } = {}) {
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  const countRows = await query('SELECT COUNT(*) AS c FROM cross_orders')
+  const list = await query(
     `SELECT o.id, o.order_no AS orderNo, o.pay_mode AS payMode, o.points_spend AS pointsSpend,
             o.cash_amount AS cashAmount, o.status, o.goods_name AS goodsName, o.created_at AS createdAt,
             u.nickname AS userName, m.name AS shopName
      FROM cross_orders o
      JOIN users u ON u.id=o.user_id
      JOIN merchants m ON m.id=o.merchant_id
-     ORDER BY o.id DESC LIMIT ${lim}`
+     ORDER BY o.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`
   )
+  return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
-async function listPurchaseOrders({ limit = 100 } = {}) {
-  const lim = Math.min(Number(limit) || 100, 300)
-  return query(
+async function listPurchaseOrders({ page, pageSize, limit } = {}) {
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  const countRows = await query('SELECT COUNT(*) AS c FROM purchase_orders')
+  const list = await query(
     `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount, o.points_grant AS pointsGrant,
             o.fulfill_type AS fulfillType, o.status, o.created_at AS createdAt,
             b.name AS buyerName, s.name AS sellerName
      FROM purchase_orders o
      JOIN merchants b ON b.id=o.buyer_merchant_id
      JOIN merchants s ON s.id=o.seller_merchant_id
-     ORDER BY o.id DESC LIMIT ${lim}`
+     ORDER BY o.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`
   )
+  return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
 /* ---------- banners ---------- */
@@ -546,19 +597,27 @@ async function deleteBanner(id) {
 }
 
 /* ---------- withdraw ---------- */
-async function listWithdraws({ status, limit = 100 } = {}) {
-  const lim = Math.min(Number(limit) || 100, 300)
-  let sql = `SELECT w.id, w.request_no AS requestNo, w.account_type AS accountType, w.amount,
-                    w.status, w.remark, w.created_at AS createdAt, m.name AS shopName, m.role
-             FROM withdraw_requests w
-             JOIN merchants m ON m.id=w.merchant_id`
+async function listWithdraws({ status, page, pageSize, limit } = {}) {
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = ''
   const params = {}
   if (status) {
-    sql += ` WHERE w.status=:status`
+    where = ` WHERE w.status=:status`
     params.status = status
   }
-  sql += ` ORDER BY w.id DESC LIMIT ${lim}`
-  return query(sql, params)
+  const countRows = await query(
+    `SELECT COUNT(*) AS c FROM withdraw_requests w JOIN merchants m ON m.id=w.merchant_id${where}`,
+    params
+  )
+  const list = await query(
+    `SELECT w.id, w.request_no AS requestNo, w.account_type AS accountType, w.amount,
+            w.status, w.remark, w.created_at AS createdAt, m.name AS shopName, m.role
+     FROM withdraw_requests w
+     JOIN merchants m ON m.id=w.merchant_id${where}
+     ORDER BY w.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+    params
+  )
+  return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
 async function reviewWithdraw(id, { action, remark } = {}) {
@@ -591,6 +650,8 @@ async function reviewWithdraw(id, { action, remark } = {}) {
     }
     if (action === 'reject') {
       if (!['pending', 'approved'].includes(w.status)) throw new HttpError(400, '当前状态不可驳回')
+      const reason = String(remark || '').trim()
+      if (!reason) throw new HttpError(400, '请填写驳回原因')
       await accountService.unfreezeWithdraw(conn, {
         merchantId: w.merchant_id,
         accountType: w.account_type,
@@ -600,7 +661,7 @@ async function reviewWithdraw(id, { action, remark } = {}) {
       })
       await conn.execute(
         `UPDATE withdraw_requests SET status='rejected', remark=? WHERE id=?`,
-        [remark || '已驳回', id]
+        [reason.slice(0, 255), id]
       )
       return { id: Number(id), status: 'rejected' }
     }
@@ -617,66 +678,119 @@ async function createDemoWithdraw({ merchantId, accountType, amount } = {}) {
 }
 
 /* ---------- complaints / needs / referrals ---------- */
-async function listComplaints({ status, limit = 100 } = {}) {
-  const lim = Math.min(Number(limit) || 100, 300)
-  let sql = `SELECT c.id, c.target_type AS targetType, c.target_id AS targetId, c.content,
-                    c.status, c.created_at AS createdAt, u.nickname AS userName
-             FROM complaints c LEFT JOIN users u ON u.id=c.user_id`
+async function listComplaints({ status, page, pageSize, limit } = {}) {
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = ''
   const params = {}
   if (status) {
-    sql += ` WHERE c.status=:status`
+    where = ` WHERE c.status=:status`
     params.status = status
   }
-  sql += ` ORDER BY c.id DESC LIMIT ${lim}`
-  return query(sql, params)
+  const countRows = await query(
+    `SELECT COUNT(*) AS c FROM complaints c LEFT JOIN users u ON u.id=c.user_id${where}`,
+    params
+  )
+  let list
+  try {
+    list = await query(
+      `SELECT c.id, c.target_type AS targetType, c.target_id AS targetId, c.content,
+              c.status, c.handle_remark AS handleRemark, c.created_at AS createdAt, u.nickname AS userName
+       FROM complaints c LEFT JOIN users u ON u.id=c.user_id${where}
+       ORDER BY c.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
+  } catch (e) {
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('handle_remark')))) {
+      throw e
+    }
+    list = await query(
+      `SELECT c.id, c.target_type AS targetType, c.target_id AS targetId, c.content,
+              c.status, c.created_at AS createdAt, u.nickname AS userName
+       FROM complaints c LEFT JOIN users u ON u.id=c.user_id${where}
+       ORDER BY c.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
+  }
+  return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
-async function updateComplaint(id, { status } = {}) {
+async function updateComplaint(id, { status, handleRemark } = {}) {
   if (!['open', 'processing', 'closed'].includes(status)) {
     throw new HttpError(400, '状态无效')
   }
-  await query('UPDATE complaints SET status=:s WHERE id=:id', { id, s: status })
-  return { id: Number(id), status }
+  const remark = handleRemark != null ? String(handleRemark).slice(0, 512) : null
+  try {
+    if (remark != null && remark !== '') {
+      await query('UPDATE complaints SET status=:s, handle_remark=:r WHERE id=:id', {
+        id,
+        s: status,
+        r: remark
+      })
+    } else {
+      await query('UPDATE complaints SET status=:s WHERE id=:id', { id, s: status })
+    }
+  } catch (e) {
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('handle_remark')))) {
+      throw e
+    }
+    await query('UPDATE complaints SET status=:s WHERE id=:id', { id, s: status })
+  }
+  return { id: Number(id), status, handleRemark: remark }
 }
 
-async function listSupplyNeeds({ status, limit = 100 } = {}) {
-  const lim = Math.min(Number(limit) || 100, 300)
-  let sql = `SELECT id, goods_name AS goodsName, qty_text AS qtyText, expect_time AS expectTime,
-                    note, status, created_at AS createdAt, user_id AS userId,
-                    quote_price AS quotePrice, quote_note AS quoteNote,
-                    quoted_merchant_id AS quotedMerchantId, quoted_at AS quotedAt
-             FROM supply_needs`
+async function listSupplyNeeds({ status, page, pageSize, limit } = {}) {
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = ''
   const params = {}
   if (status) {
-    sql += ` WHERE status=:status`
+    where = ` WHERE status=:status`
     params.status = status
   }
-  sql += ` ORDER BY id DESC LIMIT ${lim}`
+  const countRows = await query(`SELECT COUNT(*) AS c FROM supply_needs${where}`, params)
+  let list
   try {
-    return await query(sql, params)
+    list = await query(
+      `SELECT id, goods_name AS goodsName, qty_text AS qtyText, expect_time AS expectTime,
+              note, status, created_at AS createdAt, user_id AS userId,
+              quote_price AS quotePrice, quote_note AS quoteNote,
+              quoted_merchant_id AS quotedMerchantId, quoted_at AS quotedAt
+       FROM supply_needs${where}
+       ORDER BY id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
   } catch (e) {
     if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('quote_')))) throw e
-    let fallback = `SELECT id, goods_name AS goodsName, qty_text AS qtyText, expect_time AS expectTime,
-                    note, status, created_at AS createdAt, user_id AS userId
-             FROM supply_needs`
-    if (status) fallback += ` WHERE status=:status`
-    fallback += ` ORDER BY id DESC LIMIT ${lim}`
-    return query(fallback, params)
+    list = await query(
+      `SELECT id, goods_name AS goodsName, qty_text AS qtyText, expect_time AS expectTime,
+              note, status, created_at AS createdAt, user_id AS userId
+       FROM supply_needs${where}
+       ORDER BY id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
   }
+  return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
-async function updateSupplyNeed(id, { status, quotePrice, quoteNote, merchantId } = {}) {
-  if (['quoted', 'closed'].includes(status) || quotePrice != null) {
-    return catalogService.quoteSupplyNeed(id, { merchantId, status: status || 'quoted', quotePrice, quoteNote })
+async function updateSupplyNeed(id, { status, quotePrice, quoteNote, quoteAmount, quoteRemark, merchantId } = {}) {
+  const price = quotePrice != null ? quotePrice : quoteAmount
+  const note = quoteNote != null ? quoteNote : quoteRemark
+  if (['quoted', 'closed'].includes(status) || price != null) {
+    return catalogService.quoteSupplyNeed(id, {
+      merchantId,
+      status: status || 'quoted',
+      quotePrice: price,
+      quoteNote: note
+    })
   }
   if (!['open', 'quoted', 'closed'].includes(status)) throw new HttpError(400, '状态无效')
   await query('UPDATE supply_needs SET status=:s WHERE id=:id', { id, s: status })
   return { id: Number(id), status }
 }
 
-async function listReferrals({ limit = 100 } = {}) {
-  const lim = Math.min(Number(limit) || 100, 300)
-  return query(
+async function listReferrals({ page, pageSize, limit } = {}) {
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  const countRows = await query('SELECT COUNT(*) AS c FROM referral_records')
+  const list = await query(
     `SELECT r.id, r.trigger_type AS triggerType, r.reward_points AS rewardPoints, r.created_at AS createdAt,
             r.biz_id AS bizId,
             IFNULL(t.name, r.trigger_type) AS triggerName,
@@ -688,8 +802,9 @@ async function listReferrals({ limit = 100 } = {}) {
      LEFT JOIN users b ON b.id=r.invitee_user_id AND r.invitee_user_id > 0
      LEFT JOIN merchants m ON m.id=r.invitee_merchant_id
      LEFT JOIN referral_triggers t ON t.trigger_key=r.trigger_type
-     ORDER BY r.id DESC LIMIT ${lim}`
+     ORDER BY r.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`
   )
+  return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
 async function grantPool(body) {

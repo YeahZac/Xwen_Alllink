@@ -1,6 +1,8 @@
 const store = require('../../utils/store')
 const api = require('../../utils/api')
 const location = require('../../utils/location')
+const dataCache = require('../../utils/data-cache')
+const homePrefetch = require('../../utils/home-prefetch')
 const scan = require('../../utils/scan')
 const navigate = require('../../utils/navigate')
 
@@ -81,7 +83,7 @@ Page({
     keyword: '',
     loading: false,
     loadHint: '',
-    locationText: '定位中',
+    locationText: '深圳市宝安区沙井街道',
     locating: false,
     category: 'all',
     categories: CATEGORY_MAP.stall,
@@ -95,13 +97,25 @@ Page({
       const capsule = wx.getMenuButtonBoundingClientRect()
       if (capsule && capsule.bottom) headerTop = capsule.bottom + 8
     } catch (_) {}
-    this.setData({ headerTop })
+    // 默认沙井：首屏文案与预取数据先落地，避免空白
+    location.ensureDefaultLoc()
+    const pre = homePrefetch.getPayload()
+    const patch = {
+      headerTop,
+      locationText: location.displayDistrictName(location.getEffective())
+    }
+    this.setData(patch)
+    if (pre) {
+      this.applyHomePayload(pre, store.getSession() || {})
+    }
   },
   async onShow() {
-    // 启动页已改为首页：先等自动登录，未登录再进登录页
+    // 启动页=首页：游客可逛；仅商户身份才改道工作台
     try {
       const app = getApp()
-      if (app && app.globalData && app.globalData.bootPromise) {
+      const guest = !!(app && app.globalData && app.globalData.preferGuest) ||
+        !!(store.preferGuestBrowse && store.preferGuestBrowse())
+      if (!guest && app && app.globalData && app.globalData.bootPromise) {
         const boot = await app.globalData.bootPromise
         app.globalData.bootPromise = null
         if (boot && boot.ok && boot.session && boot.session.role && boot.session.role !== 'consumer') {
@@ -110,118 +124,269 @@ Page({
         }
       }
     } catch (_) {}
-    if (!store.ensureConsumerOrRedirect()) return
+    if (!store.ensureConsumerOrRedirect({ allowGuest: true })) return
+    if (store.isLoggedIn() && store.getSession() && store.getSession().role !== 'consumer') {
+      store.routeAfterLogin()
+      return
+    }
 
-    // 定位不阻塞列表：先出数，定位成功后再刷距离
+    location.ensureDefaultLoc()
     this._loadError = ''
     this.syncLocationText()
-    this.reload()
-    this.ensureLocation()
-      .then((changed) => {
-        if (changed) this.reload()
+
+    // 若列表仍空：最多等预取 ~3s，保证首次进入尽量有数据
+    if (!this.data.displayList.length) {
+      this.setData({ loading: true, loadHint: '正在加载附近门店…' })
+      const pre = await homePrefetch.waitForData(3200)
+      if (pre) this.applyHomePayload(pre, store.getSession() || {})
+    }
+
+    this.reload({ preferCache: true })
+    // 仅已授权定位时后台校正；未授权不弹窗，继续用沙井默认数据
+    this.ensureLocationSoft()
+      .then((needReload) => {
+        if (needReload) this.reload({ preferCache: false })
       })
       .catch(() => {})
+  },
+  /** 首进不强制要定位权限；已授权才静默同步真实位置 */
+  async ensureLocationSoft() {
+    if (location.isFresh(location.getSaved())) {
+      this.setData({ locating: false })
+      this.syncLocationText()
+      return false
+    }
+    let auth
+    try {
+      auth = await location.getUserLocationAuth()
+    } catch (_) {
+      auth = undefined
+    }
+    // 未询问 / 已拒绝：保持沙井默认，等用户点「定位」再授权
+    if (auth !== true) {
+      this.setData({ locating: false })
+      this.syncLocationText()
+      return false
+    }
+    return this.ensureLocation({ force: false })
   },
   geoQuery() {
     return location.queryFromSaved()
   },
   syncLocationText() {
-    const loc = location.getSaved() || {}
-    if (this.data.locating) {
-      this.setData({ locationText: '定位中' })
-      return
-    }
+    const loc = location.getEffective() || {}
     if (loc.lat == null) {
       this.setData({ locationText: '点击定位' })
       return
     }
-    const label = loc.displayCity || loc.city || '当前位置'
-    this.setData({ locationText: label })
+    // 顶栏固定区级名（如「深圳市宝安区」），禁止经纬度
+    this.setData({ locationText: location.displayDistrictName(loc) })
+  },
+  _clearLocatingUiSoon(startedAt) {
+    const elapsed = Date.now() - (startedAt || Date.now())
+    const left = Math.max(0, location.UI_LOCATING_MS - elapsed)
+    if (this._locatingUiTimer) clearTimeout(this._locatingUiTimer)
+    this._locatingUiTimer = setTimeout(() => {
+      if (this.data.locating) {
+        this.setData({ locating: false })
+        this.syncLocationText()
+      }
+    }, left)
+  },
+  _bindPendingLocate(pending, baseline) {
+    if (!pending || typeof pending.then !== 'function') return
+    const seq = (this._pendingLocSeq = (this._pendingLocSeq || 0) + 1)
+    pending
+      .then((real) => {
+        if (seq !== this._pendingLocSeq) return
+        const fin = location.finalizePending(baseline, real)
+        this.setData({ locating: false })
+        this.syncLocationText()
+        if (fin.shouldReload) this.reload({ preferCache: false })
+        else {
+          // 位移不大：只重算距离文案
+          this.applyHomePayload(
+            {
+              stalls: this.data.stalls,
+              crossStores: this.data.crossStores,
+              supplyMerchants: this.data.supplyMerchants,
+              points: this.data.points,
+              cashValue: this.data.cashValue
+            },
+            store.getSession() || {}
+          )
+        }
+      })
+      .catch(() => {
+        if (seq !== this._pendingLocSeq) return
+        this.setData({ locating: false })
+        this.syncLocationText()
+      })
+  },
+  applyHomePayload(payload, session) {
+    const stalls = location.decorateList(payload.stalls || [])
+    const crossStores = location.decorateList(payload.crossStores || [])
+    const supplyMerchants = location.decorateList(payload.supplyMerchants || [])
+    const points =
+      payload.points != null ? payload.points : store.getConsumerPoints()
+    if (payload.points != null) store.setConsumerPoints(points)
+    const cashRaw =
+      payload.cashValue != null ? payload.cashValue : store.pointsToCash(points)
+    const tab = this.data.tab
+    const displayList = this.computeDisplayList(tab, {
+      stalls,
+      crossStores,
+      supplyMerchants,
+      keyword: this.data.keyword,
+      category: this.data.category,
+      sort: this.data.sort
+    })
+    this.setData({
+      userName: (session && session.name) || this.data.userName || '',
+      stalls,
+      crossStores,
+      supplyMerchants,
+      points,
+      cashValue: Number(cashRaw).toFixed(2),
+      displayList,
+      loading: false,
+      loadHint: displayList.length
+        ? ''
+        : this.data.category !== 'all' || this.data.keyword
+          ? '当前筛选无结果，可点「全部」或清空搜索'
+          : ''
+    })
   },
   async ensureLocation({ force = false } = {}) {
-    // 有新鲜缓存：不亮「定位中」，后台也不重复打 GPS
-    if (!force && location.isFresh(location.getSaved())) {
+    const cached = location.getSaved()
+    if (!force && location.isFresh(cached)) {
       this.setData({ locating: false })
       this.syncLocationText()
       return false
     }
-    const hadCache = !!(location.getSaved() && location.getSaved().lat != null)
-    // 已有旧坐标时不盖住文案，避免整页像卡住
-    if (!hadCache) {
+
+    // 先决定顶部文案：无可用真实点 / 手动刷新 → 短时「正在获取定位」
+    const usable = !force && location.isUsable(cached)
+    const startedAt = Date.now()
+    if (force || !usable) {
       this.setData({ locating: true })
       this.syncLocationText()
-    }
-    try {
-      await location.locate(api, { force, highAccuracy: !!force })
+      this._clearLocatingUiSoon(startedAt)
+    } else {
       this.setData({ locating: false })
       this.syncLocationText()
-      const loc = location.getSaved() || {}
-      if (force && loc.inService === false) {
-        wx.showToast({ title: '当前不在开通城市，已按距离展示附近门店', icon: 'none' })
+    }
+
+    try {
+      const result = await location.locate(api, { force, highAccuracy: !!force })
+
+      if (result.status === 'denied') {
+        this.setData({ locating: false })
+        this.syncLocationText()
+        if (force) {
+          wx.showModal({
+            title: '需要定位权限',
+            content: '开启定位后才能按你的真实位置展示附近门店',
+            confirmText: '去开启',
+            success: (r) => {
+              if (r.confirm) wx.openSetting({})
+            }
+          })
+        }
+        return false
       }
-      return true
+
+      if (result.status === 'pending') {
+        const baseline = result.loc || location.getEffective()
+        this._bindPendingLocate(result.pending, baseline)
+        return false
+      }
+
+      if (result.status === 'ok' || result.status === 'fresh') {
+        this.setData({ locating: false })
+        this.syncLocationText()
+        if (force && result.loc && result.loc.inService === false) {
+          wx.showToast({ title: '当前不在开通城市，已按距离展示附近门店', icon: 'none' })
+        }
+        return !!result.shouldReload
+      }
+
+      this.setData({ locating: false })
+      this.syncLocationText()
+      return false
     } catch (e) {
       this.setData({ locating: false })
       this.syncLocationText()
-      if (!location.getSaved()) {
-        wx.showToast({ title: e.message || '定位失败', icon: 'none' })
+      if (force) {
+        wx.showToast({ title: (e && e.message) || '定位失败', icon: 'none' })
       }
-      throw e
+      return false
     }
   },
-  async reload() {
+  async reload({ preferCache = false } = {}) {
     const seq = (this._reloadSeq = (this._reloadSeq || 0) + 1)
-    this.setData({ loading: true })
+    const q = this.geoQuery()
+    const cacheKey = dataCache.homeKey(q)
+    const cached = dataCache.read(cacheKey)
+    const sessionHint = store.getSession() || {}
+    const origin = location.getEffective()
+
+    if (preferCache && cached && cached.data) {
+      this.applyHomePayload(cached.data, sessionHint)
+      this.syncLocationText()
+      location.setListOrigin(origin)
+      if (cached.fresh) {
+        this._silentRefresh(seq, q, cacheKey, sessionHint, origin)
+        return
+      }
+    } else if (!this.data.displayList.length) {
+      this.setData({ loading: true })
+    }
+
     try {
-      const session = await store.refreshProfile().catch(() => store.getSession() || {})
-      const q = this.geoQuery()
+      const loggedIn = store.isLoggedIn()
+      // 游客不调需登录接口，避免 401 把人踢回登录页
+      const session = loggedIn
+        ? await store.refreshProfile().catch(() => sessionHint)
+        : sessionHint
       const [stalls, crossStores, supplyMerchants, pointsData] = await Promise.all([
         api.stalls(q),
         api.crossStores(q),
         api.supplyMerchants(q).catch(() => []),
-        api.myPoints().catch(() => ({ points: session.points || 0, cashValue: 0 }))
+        loggedIn
+          ? api.myPoints().catch(() => ({ points: session.points || 0, cashValue: 0 }))
+          : Promise.resolve({ points: 0, cashValue: 0 })
       ])
       if (seq !== this._reloadSeq) return
       this._loadError = ''
-      api.trackVisit({
-        roleScope: 'consumer',
-        pageKey: 'index',
-        city: q.city,
-        latitude: q.lat,
-        longitude: q.lng
-      }).catch(() => {})
-      const points = pointsData.points != null ? pointsData.points : store.getConsumerPoints()
-      store.setConsumerPoints(points)
+      if (loggedIn) {
+        api
+          .trackVisit({
+            roleScope: 'consumer',
+            pageKey: 'index',
+            city: q.city,
+            latitude: q.lat,
+            longitude: q.lng
+          })
+          .catch(() => {})
+      }
+      const payload = {
+        stalls: stalls || [],
+        crossStores: crossStores || [],
+        supplyMerchants: supplyMerchants || [],
+        points: pointsData.points != null ? pointsData.points : store.getConsumerPoints(),
+        cashValue: pointsData.cashValue
+      }
+      dataCache.write(cacheKey, payload, dataCache.TTL.homeLists)
+      location.setListOrigin(origin)
       this.syncLocationText()
-      const decoratedStalls = location.decorateList(stalls || [])
-      const decoratedCross = location.decorateList(crossStores || [])
-      const decoratedSupply = location.decorateList(supplyMerchants || [])
-      const tab = this.data.tab
-      const displayList = this.computeDisplayList(tab, {
-        stalls: decoratedStalls,
-        crossStores: decoratedCross,
-        supplyMerchants: decoratedSupply,
-        keyword: this.data.keyword,
-        category: this.data.category,
-        sort: this.data.sort
-      })
-      this.setData({
-        userName: session.name || '',
-        stalls: decoratedStalls,
-        crossStores: decoratedCross,
-        supplyMerchants: decoratedSupply,
-        points,
-        cashValue: Number(pointsData.cashValue != null ? pointsData.cashValue : store.pointsToCash(points)).toFixed(2),
-        displayList,
-        loading: false,
-        loadHint: displayList.length
-          ? ''
-          : this.data.category !== 'all' || this.data.keyword
-            ? '当前筛选无结果，可点「全部」或清空搜索'
-            : ''
-      })
+      this.applyHomePayload(payload, session)
     } catch (e) {
       if (seq !== this._reloadSeq) return
+      if (cached && cached.data && this.data.displayList.length) {
+        this.setData({ loading: false })
+        return
+      }
       this._loadError = (e && e.message) || '加载失败'
       this.setData({
         loading: false,
@@ -229,6 +394,33 @@ Page({
       })
       wx.showToast({ title: this._loadError, icon: 'none' })
     }
+  },
+  async _silentRefresh(seq, q, cacheKey, sessionHint, origin) {
+    try {
+      const loggedIn = store.isLoggedIn()
+      const session = loggedIn
+        ? await store.refreshProfile().catch(() => sessionHint)
+        : sessionHint
+      const [stalls, crossStores, supplyMerchants, pointsData] = await Promise.all([
+        api.stalls(q),
+        api.crossStores(q),
+        api.supplyMerchants(q).catch(() => []),
+        loggedIn
+          ? api.myPoints().catch(() => ({ points: session.points || 0, cashValue: 0 }))
+          : Promise.resolve({ points: 0, cashValue: 0 })
+      ])
+      if (seq !== this._reloadSeq) return
+      const payload = {
+        stalls: stalls || [],
+        crossStores: crossStores || [],
+        supplyMerchants: supplyMerchants || [],
+        points: pointsData.points != null ? pointsData.points : store.getConsumerPoints(),
+        cashValue: pointsData.cashValue
+      }
+      dataCache.write(cacheKey, payload, dataCache.TTL.homeLists)
+      location.setListOrigin(origin || location.getEffective())
+      this.applyHomePayload(payload, session)
+    } catch (_) {}
   },
   computeDisplayList(tab, ctx) {
     const kw = String((ctx && ctx.keyword != null ? ctx.keyword : this.data.keyword) || '')
@@ -367,10 +559,13 @@ Page({
   },
   async onRelocate() {
     if (this.data.locating) return
-    wx.showLoading({ title: '定位中' })
-    await this.ensureLocation({ force: true })
-    wx.hideLoading()
-    await this.reload()
+    wx.showLoading({ title: '正在获取定位' })
+    try {
+      await this.ensureLocation({ force: true })
+      await this.reload({ preferCache: false })
+    } finally {
+      wx.hideLoading()
+    }
   },
   onSearchInput(e) {
     this.setData({ keyword: e.detail.value || '' })

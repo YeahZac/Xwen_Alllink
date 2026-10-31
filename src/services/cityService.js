@@ -59,17 +59,29 @@ async function resolveCity(lat, lng) {
   }
 }
 
-async function listCities() {
-  return query(
+async function listCities({ page, pageSize, limit, status } = {}) {
+  const { parsePaging, pageResult } = require('../utils/paging')
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = ''
+  const params = {}
+  if (status === 0 || status === '0' || status === 1 || status === '1') {
+    where = ` WHERE c.status = :status`
+    params.status = Number(status)
+  }
+  const countRows = await query(`SELECT COUNT(*) AS c FROM operating_cities c${where}`, params)
+  const list = await query(
     `SELECT c.id, c.name, c.province, c.status, c.opened_at AS openedAt, c.remark,
             (SELECT COUNT(*) FROM merchants m
               WHERE m.city = c.name AND m.deleted_at IS NULL) AS merchantCount,
             (SELECT COUNT(*) FROM merchants m
               WHERE m.city = c.name AND m.deleted_at IS NULL
                 AND m.latitude IS NOT NULL) AS geoCount
-     FROM operating_cities c
-     ORDER BY c.status DESC, c.name`
+     FROM operating_cities c${where}
+     ORDER BY c.status DESC, c.name
+     LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+    params
   )
+  return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
 /** 入驻/开店前置校验 */

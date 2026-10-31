@@ -1,5 +1,13 @@
 <view class="page mine">
-  <view class="profile surface">
+  <view wx:if="{{!loggedIn}}" class="guest-card surface" bindtap="goLogin">
+    <view class="avatar">万</view>
+    <view class="profile__info">
+      <text class="profile__name-input">点击登录</text>
+      <text class="profile__hint">登录后查看订单、积分与资料；也可先回首页逛逛</text>
+    </view>
+    <text class="m-row__arrow">›</text>
+  </view>
+  <view wx:else class="profile surface">
     <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
       <image wx:if="{{coverUrl}}" class="avatar avatar--image" src="{{coverUrl}}" mode="aspectFill" />
       <view wx:else class="avatar">万</view>
@@ -118,7 +126,7 @@
       </view>
       <text class="m-row__arrow">›</text>
     </view>
-    <view class="m-row" bindtap="onLogout">
+    <view wx:if="{{loggedIn}}" class="m-row" bindtap="onLogout">
       <view class="m-row__seal m-row__seal--muted">出</view>
       <view class="m-row__main">
         <text class="m-row__title m-row__title--muted">退出登录</text>

@@ -24,6 +24,14 @@
         "value": "assets/covers"
       },
       {
+        "type": "folder",
+        "value": "assets/banners"
+      },
+      {
+        "type": "folder",
+        "value": "assets/legal"
+      },
+      {
         "type": "file",
         "value": "utils/mock.js"
       },

@@ -419,19 +419,25 @@ async function deleteByKeyOrUrl({ fileKey, fileUrl, id }) {
   return { deleted: true, fileKey: key }
 }
 
-async function listMedia({ bizType, limit = 50 } = {}) {
-  const lim = Math.min(Number(limit) || 50, 200)
-  let sql = `SELECT id, file_key AS fileKey, file_url AS fileUrl, mime, size_bytes AS size,
-                    width, height, biz_type AS bizType, original_name AS originalName,
-                    created_at AS createdAt
-             FROM media_assets`
+async function listMedia({ bizType, page, pageSize, limit } = {}) {
+  const { parsePaging, pageResult } = require('../utils/paging')
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = ''
   const params = {}
   if (bizType) {
-    sql += ` WHERE biz_type=:b`
+    where = ` WHERE biz_type=:b`
     params.b = bizType
   }
-  sql += ` ORDER BY id DESC LIMIT ${lim}`
-  return query(sql, params)
+  const countRows = await query(`SELECT COUNT(*) AS c FROM media_assets${where}`, params)
+  const list = await query(
+    `SELECT id, file_key AS fileKey, file_url AS fileUrl, mime, size_bytes AS size,
+            width, height, biz_type AS bizType, original_name AS originalName,
+            created_at AS createdAt
+     FROM media_assets${where}
+     ORDER BY id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+    params
+  )
+  return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
 module.exports = {
