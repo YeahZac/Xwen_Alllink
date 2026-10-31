@@ -273,9 +273,19 @@ function resumePendingPay() {
 function routeAfterLogin() {
   const s = getSession()
   if (!s) {
+    // 游客浏览中：不要再强制拉回登录
+    if (preferGuestBrowse()) {
+      wx.reLaunch({ url: '/pages/index/index' })
+      return
+    }
     wx.reLaunch({ url: '/pages/login/login' })
     return
   }
+  try {
+    wx.removeStorageSync('wy_guest_browse')
+    const app = getApp()
+    if (app && app.globalData) app.globalData.preferGuest = false
+  } catch (_) {}
   try {
     const ref = wx.getStorageSync('wy_pending_ref')
     if (ref) {
@@ -304,16 +314,34 @@ function routeAfterLogin() {
 function ensureLoggedIn() {
   const s = getSession()
   if (!s || !getToken()) {
-    wx.reLaunch({ url: '/pages/login/login' })
+    wx.navigateTo({
+      url: '/pages/login/login',
+      fail: () => wx.reLaunch({ url: '/pages/login/login' })
+    })
     return false
   }
   return true
 }
 
-function ensureConsumerOrRedirect() {
+/**
+ * @param {{ allowGuest?: boolean, soft?: boolean }} [opts]
+ * - allowGuest: 未登录也可继续（浏览首页/兑换等）
+ * - soft: 未登录用 navigateTo 进登录页（可返回），避免 reLaunch 卡住
+ */
+function ensureConsumerOrRedirect(opts = {}) {
+  const allowGuest = !!(opts && opts.allowGuest)
+  const soft = !!(opts && opts.soft)
   const s = getSession()
   if (!s || !getToken()) {
-    wx.reLaunch({ url: '/pages/login/login' })
+    if (allowGuest) return true
+    if (soft) {
+      wx.navigateTo({
+        url: '/pages/login/login',
+        fail: () => wx.reLaunch({ url: '/pages/login/login' })
+      })
+    } else {
+      wx.reLaunch({ url: '/pages/login/login' })
+    }
     return false
   }
   if (s.role !== 'consumer') {
@@ -321,6 +349,45 @@ function ensureConsumerOrRedirect() {
     return false
   }
   return true
+}
+
+/** 游客进入首页浏览（不强制登录） */
+function enterAsGuest() {
+  try {
+    wx.setStorageSync('wy_guest_browse', 1)
+  } catch (_) {}
+  // 打断启动态自动路由，避免「先逛逛」后又被拉回登录页
+  try {
+    const app = getApp()
+    if (app && app.globalData) {
+      app.globalData.bootPromise = null
+      app.globalData.preferGuest = true
+    }
+  } catch (_) {}
+  // reLaunch 最稳：清空含登录页在内的栈，直接进首页
+  wx.reLaunch({
+    url: '/pages/index/index',
+    fail: () => {
+      wx.switchTab({
+        url: '/pages/index/index',
+        fail: () => {
+          wx.showToast({ title: '无法打开首页，请重试', icon: 'none' })
+        }
+      })
+    }
+  })
+}
+
+function preferGuestBrowse() {
+  try {
+    const app = getApp()
+    if (app && app.globalData && app.globalData.preferGuest) return true
+  } catch (_) {}
+  try {
+    return !!wx.getStorageSync('wy_guest_browse')
+  } catch (_) {
+    return false
+  }
 }
 
 function ensureMerchantOrRedirect() {
@@ -431,6 +498,8 @@ module.exports = {
   ensureLoggedIn,
   ensureConsumerOrRedirect,
   ensureMerchantOrRedirect,
+  enterAsGuest,
+  preferGuestBrowse,
   getCart,
   setCart,
   clearCart,

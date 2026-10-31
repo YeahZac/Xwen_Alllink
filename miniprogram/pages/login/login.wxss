@@ -18,15 +18,17 @@
 .auth-top {
   min-height: 56rpx;
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   margin-bottom: 24rpx;
 }
 
 .auth-close {
-  padding: 8rpx 4rpx;
+  padding: 12rpx 20rpx;
   font-size: 28rpx;
-  font-weight: 600;
-  color: #646a73;
+  font-weight: 700;
+  color: #ff4d4f;
+  background: rgba(255, 77, 79, 0.08);
+  border-radius: 999rpx;
 }
 
 .auth-brand {
@@ -201,6 +203,18 @@
   opacity: 0.55;
 }
 
+.auth-btn--guest {
+  background: #fff !important;
+  color: #1f2329 !important;
+  border: 2rpx solid #e5e6eb !important;
+  box-shadow: none !important;
+  text-align: center;
+}
+
+.auth-btn--guest:active {
+  background: #f5f6f8 !important;
+}
+
 .auth-btn--ghost {
   background: transparent !important;
   color: #8f959e !important;
@@ -209,6 +223,17 @@
   line-height: 72rpx !important;
   font-size: 28rpx !important;
   margin-bottom: 0 !important;
+  text-align: center;
+}
+
+.auth-hint {
+  display: block;
+  margin-top: 8rpx;
+  padding: 16rpx 8rpx 0;
+  font-size: 24rpx;
+  color: #8f959e;
+  line-height: 1.55;
+  text-align: center;
 }
 
 .auth-foot {

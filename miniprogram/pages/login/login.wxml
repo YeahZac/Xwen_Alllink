@@ -1,7 +1,7 @@
 <view class="auth-page">
   <view class="auth-safe" style="padding-top: {{headerTop}}px;">
     <view class="auth-top">
-      <view wx:if="{{canSkip}}" class="auth-close" bindtap="skipLogin">关闭</view>
+      <view class="auth-close" bindtap="enterGuest">先逛逛</view>
     </view>
 
     <view class="auth-brand">
@@ -12,7 +12,7 @@
 
     <view class="auth-card">
       <text class="auth-hello">欢迎回来</text>
-      <text class="auth-desc">使用手机号一键登录。头像、昵称可在「我的」完善。</text>
+      <text class="auth-desc">可先浏览门店；下单、积分等功能需登录。手机号授权可随时取消。</text>
 
       <view class="auth-pending" wx:if="{{pendingHint}}">{{pendingHint}}</view>
       <button wx:if="{{canReturnPay}}" class="auth-btn auth-btn--primary" bindtap="returnPay">返回支付</button>
@@ -35,13 +35,18 @@
       </view>
 
       <button
-        wx:if="{{agreed}}"
+        wx:if="{{agreed && !phoneCooling}}"
         class="auth-btn auth-btn--primary"
         open-type="getPhoneNumber"
         bindgetphonenumber="onPhoneLogin"
         loading="{{loading}}"
-        disabled="{{loading}}"
+        disabled="{{loading || phoneCooling}}"
       >手机号一键登录</button>
+      <button
+        wx:elif="{{agreed && phoneCooling}}"
+        class="auth-btn auth-btn--primary"
+        disabled="true"
+      >请 {{phoneCoolSec}} 秒后再试</button>
       <button
         wx:else
         class="auth-btn auth-btn--primary"
@@ -49,7 +54,11 @@
         disabled="{{loading}}"
       >手机号一键登录</button>
 
-      <button wx:if="{{canSkip}}" class="auth-btn auth-btn--ghost" bindtap="skipLogin" disabled="{{loading}}">暂不登录</button>
+      <!-- 显著可取消：始终展示，不依赖来源页 -->
+      <view class="auth-btn auth-btn--guest" bindtap="enterGuest">暂不登录，先逛逛</view>
+      <view wx:if="{{canSkip}}" class="auth-btn auth-btn--ghost" bindtap="skipLogin">返回上一页</view>
+
+      <text class="auth-hint" wx:if="{{cancelHint}}">{{cancelHint}}</text>
     </view>
 
     <view class="auth-foot">

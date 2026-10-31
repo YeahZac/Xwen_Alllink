@@ -70,7 +70,27 @@ function request({ path, method = 'GET', data, auth = true, header = {}, _retry 
         try {
           wx.removeStorageSync('wy_session')
         } catch (_) {}
-        if (!redirectingToLogin) {
+        // 游客浏览 / 首页兑换等公开页：清登录态即可，禁止强制拉回登录（否则「先逛逛」会闪回登录页）
+        let forceLogin = true
+        try {
+          if (wx.getStorageSync('wy_guest_browse')) forceLogin = false
+        } catch (_) {}
+        try {
+          const app = getApp()
+          if (app && app.globalData && app.globalData.preferGuest) forceLogin = false
+        } catch (_) {}
+        try {
+          const pages = getCurrentPages() || []
+          const route = String((pages[pages.length - 1] && pages[pages.length - 1].route) || '')
+          if (
+            /pages\/index\/index|pages\/cross\/cross|pages\/login\/login|pages\/legal|pages\/points\/points|pages\/mine\/mine/.test(
+              route
+            )
+          ) {
+            forceLogin = false
+          }
+        } catch (_) {}
+        if (forceLogin && !redirectingToLogin) {
           redirectingToLogin = true
           let loginUrl = '/pages/login/login'
           try {
