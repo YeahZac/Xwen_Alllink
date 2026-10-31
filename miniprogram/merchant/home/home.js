@@ -33,29 +33,26 @@ function withSeal(rows) {
   }))
 }
 
+/** 对齐 ok-merchant：2×3 功能宫格，不堆协议与次要入口 */
 function menusFor(role) {
   if (role === 'stall') {
     return withSeal([
       { id: 'goods', icon: '品', tone: 'seal', title: '销售商品', sub: '菜单上架与售价', url: '/merchant/goods/goods' },
-      { id: 'orders', icon: '单', tone: 'ink', title: '订单中心', sub: '点餐履约与出餐', url: '/merchant/orders/orders' },
-      { id: 'customers', icon: '客', tone: 'gold', title: '客户列表', sub: '到店消费者档案', url: '/merchant/customers/customers' },
-      { id: 'flow', icon: '流', tone: 'teal', title: '交易流水', sub: '收款与采购记录', url: '/merchant/flow/flow' },
-      { id: 'supply', icon: '供', tone: 'ink', title: '供应链门店', sub: '查看供货商家与商品', url: '/merchant/supply-list/supply-list' },
+      { id: 'customers', icon: '客', tone: 'gold', title: '客户列表', sub: '到店消费者', url: '/merchant/customers/customers' },
+      { id: 'flow', icon: '流', tone: 'teal', title: '交易流水', sub: '收款与采购', url: '/merchant/flow/flow' },
       { id: 'purchase', icon: '采', tone: 'seal', title: '向供应链采购', sub: '成交获积分额度', url: '/merchant/purchase/purchase' },
       { id: 'pool', icon: '池', tone: 'soft', title: '积分额度管理', sub: '池余额与划拨', url: '/merchant/points-pool/points-pool' },
-      { id: 'invite', icon: '荐', tone: 'gold', title: '邀请有奖', sub: '人人可推 · 查看奖励规则', url: '/pages/recommend/recommend' }
+      { id: 'orders', icon: '单', tone: 'ink', title: '订单中心', sub: '点餐履约与出餐', url: '/merchant/orders/orders' }
     ])
   }
   if (role === 'cross') {
     return withSeal([
       { id: 'goods', icon: '品', tone: 'seal', title: '门店商品', sub: '积分价 / 现金价', url: '/merchant/goods/goods' },
-      { id: 'orders', icon: '单', tone: 'ink', title: '兑换订单', sub: '积分 / 现金核销记录', url: '/merchant/orders/orders' },
       { id: 'customers', icon: '客', tone: 'gold', title: '客流与客户', sub: '积分客 / 现金客', url: '/merchant/customers/customers' },
       { id: 'flow', icon: '流', tone: 'teal', title: '成交流水', sub: '核销与收银', url: '/merchant/flow/flow' },
-      { id: 'supply', icon: '供', tone: 'ink', title: '供应链门店', sub: '查看供货商家与商品', url: '/merchant/supply-list/supply-list' },
       { id: 'purchase', icon: '采', tone: 'seal', title: '采购获额度', sub: '向供应链进货', url: '/merchant/purchase/purchase' },
       { id: 'pool', icon: '池', tone: 'soft', title: '积分额度管理', sub: '池余额查询', url: '/merchant/points-pool/points-pool' },
-      { id: 'invite', icon: '荐', tone: 'gold', title: '邀请有奖', sub: '人人可推 · 查看奖励规则', url: '/pages/recommend/recommend' }
+      { id: 'orders', icon: '单', tone: 'ink', title: '兑换订单', sub: '积分 / 现金核销', url: '/merchant/orders/orders' }
     ])
   }
   return withSeal([
@@ -64,8 +61,7 @@ function menusFor(role) {
     { id: 'orders', icon: '单', tone: 'ink', title: '采购订单', sub: '发货 / 确认', url: '/merchant/orders/orders' },
     { id: 'customers', icon: '店', tone: 'gold', title: '客户门店', sub: '地摊 / 异业客户', url: '/merchant/customers/customers' },
     { id: 'flow', icon: '流', tone: 'teal', title: '交易流水', sub: '出货与提现', url: '/merchant/flow/flow' },
-    { id: 'assets', icon: '资', tone: 'soft', title: '资产账户', sub: '货款与积分折现', url: '/merchant/assets/assets' },
-    { id: 'invite', icon: '荐', tone: 'gold', title: '邀请有奖', sub: '人人可推 · 查看奖励规则', url: '/pages/recommend/recommend' }
+    { id: 'assets', icon: '资', tone: 'soft', title: '资产账户', sub: '货款与积分折现', url: '/merchant/assets/assets' }
   ])
 }
 
@@ -73,6 +69,7 @@ Page({
   data: {
     role: 'stall',
     roleName: '',
+    navTitle: '商户工作台',
     shopName: '',
     userName: '',
     heroMeta: '',
@@ -138,22 +135,28 @@ Page({
     else if (fee.serviceStatus === 'overdue') feeHint = '服务费已逾期，请联系平台'
 
     const shopName = session.shopName || '未命名门店'
-    const userName = session.name || ''
+    const userName = session.name || session.contactName || '老板'
+    const featureTags =
+      role === 'supply'
+        ? '需求大厅 · 供货商品 · 发货 · 客户门店 · 资产账户'
+        : role === 'cross'
+          ? '门店商品 · 兑换订单 · 客户 · 流水 · 采购获额度'
+          : '销售商品 · 客户 · 流水 · 采购获额度 · 划拨给顾客'
     this.setData({
       role,
       roleName: m.name,
+      navTitle: `${m.name}工作台`,
       shopName,
       userName,
-      heroMeta: [userName === shopName ? '' : userName, '万业互联云'].filter(Boolean).join(' · '),
+      heroMeta: featureTags,
       coverUrl: (dash.merchant && dash.merchant.coverUrl) || session.coverUrl || '',
-      assetsHint: m.assetsHint,
+      assetsHint: role === 'supply' ? '资产账户' : `资产账户 · ${m.assetsHint}`,
       kpi,
       shopOpen,
       feeHint,
       menus: menusFor(role),
       loading: false
     })
-    wx.setNavigationBarTitle({ title: `${m.name}工作台` })
   },
   go(e) {
     const url = e.currentTarget.dataset.url
@@ -171,6 +174,9 @@ Page({
     } catch (e) {
       wx.showToast({ title: e.message || '操作失败', icon: 'none' })
     }
+  },
+  onQr() {
+    this.onOrderQr()
   },
   onOrderQr() {
     const merchantId = store.getSession().merchantId

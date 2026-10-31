@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "异业门店"
+  "navigationBarTitleText": "异业门店",
+  "navigationBarBackgroundColor": "#FF4D4F",
+  "navigationBarTextStyle": "white"
 }

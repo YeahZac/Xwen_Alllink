@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "进货 / 供货"
+  "navigationBarTitleText": "进货 / 供货",
+  "navigationBarBackgroundColor": "#FF4D4F",
+  "navigationBarTextStyle": "white"
 }

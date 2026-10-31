@@ -10,6 +10,10 @@ Component({
     height: {
       type: Number,
       value: 280
+    },
+    force: {
+      type: Boolean,
+      value: false
     }
   },
   data: {
@@ -23,7 +27,10 @@ Component({
   },
   lifetimes: {
     attached() {
-      this.load(this.properties.role)
+      // 先塞兜底，避免接口慢时整块空白
+      const scope = this.properties.role || 'consumer'
+      this.setData({ list: mergeBanners(scope, []) })
+      this.load(scope)
     }
   },
   methods: {
@@ -35,7 +42,11 @@ Component({
       } catch (_) {
         rows = []
       }
-      this.setData({ list: mergeBanners(scope, rows), current: 0 })
+      const list = mergeBanners(scope, rows)
+      this.setData({
+        list: list.length ? list : mergeBanners(scope, []),
+        current: 0
+      })
     },
     onImgError(e) {
       const idx = e.currentTarget.dataset.index

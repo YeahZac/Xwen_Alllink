@@ -1,40 +1,46 @@
-<view class="page points">
-  <view wx:if="{{needLogin}}" class="empty-state surface">
-    <text class="empty-state__title">登录后查看积分</text>
-    <text class="empty-state__desc">也可先回首页逛逛门店，需要时再登录</text>
-    <button class="btn-primary" style="margin-top: 24rpx;" bindtap="goLogin">去登录</button>
-    <button class="btn-ghost" style="margin-top: 16rpx;" bindtap="goHome">先逛逛</button>
-  </view>
+<view class="page points page--flush">
+  <page-nav title="积分" tone="solid" />
 
-  <block wx:else>
-    <view class="wallet surface">
-      <text class="wallet__label">可用积分</text>
-      <text class="wallet__num">{{points}}</text>
-      <text class="wallet__hint">约可抵现 ¥{{cashValue}} · {{cashRateText}}</text>
-      <button class="btn-on-ink wallet__btn" bindtap="goCross">去异业兑换 / 抵现</button>
+  <view class="points-shell">
+    <view wx:if="{{needLogin}}" class="empty-state surface">
+      <text class="empty-state__title">登录后查看积分</text>
+      <text class="empty-state__desc">也可先回首页逛逛门店，需要时再登录</text>
+      <button class="btn-primary" style="margin-top: 24rpx;" bindtap="goLogin">去登录</button>
+      <button class="btn-ghost" style="margin-top: 16rpx;" bindtap="goHome">先逛逛</button>
     </view>
 
-    <text class="section-title ink-rail section-title--first">积分明细</text>
-    <text class="section-desc">来自商家额度池划拨 · 可追溯每笔消费</text>
-
-    <view wx:if="{{loading}}" class="empty-state">
-      <text class="empty-state__title">正在加载积分明细</text>
-      <text class="empty-state__desc">请稍候</text>
-    </view>
-
-    <view wx:elif="{{!ledger.length}}" class="empty-state surface">
-      <text class="empty-state__title">暂无积分明细</text>
-      <text class="empty-state__desc">完成点餐或兑换后会记录在这里</text>
-    </view>
-
-    <view wx:for="{{ledger}}" wx:key="id" class="ledger surface row-between">
-      <view class="ledger__main">
-        <text class="ledger__title ellipsis-1">{{item.title}}</text>
-        <text class="muted">{{item.timeText}} · {{item.cashText}}</text>
+    <block wx:else>
+      <view class="hero-card">
+        <text class="hero-card__label">可用积分</text>
+        <text class="hero-card__num">{{points}}</text>
+        <text class="hero-card__hint">约可抵现 ¥{{cashValue}} · 抵现汇率 (后台可调): {{cashRateText}}</text>
+        <view class="btn-ghost-on-hero" bindtap="goCross">去异业兑换 / 抵现</view>
       </view>
-      <text class="ledger__change {{item.up ? 'up' : 'down'}}">{{item.changeText}}</text>
-    </view>
 
-    <ad-banner role="consumer" height="200" />
-  </block>
+      <view class="points-body">
+        <ad-banner role="consumer" height="220" force="{{true}}" />
+
+        <text class="section-title">积分明细</text>
+        <text class="section-desc">来自商家额度池划拨 · 可追溯每笔消费</text>
+
+        <view wx:if="{{loading}}" class="empty-state">
+          <text class="empty-state__title">正在加载积分明细</text>
+          <text class="empty-state__desc">请稍候</text>
+        </view>
+
+        <view wx:elif="{{!ledger.length}}" class="empty-state surface">
+          <text class="empty-state__title">暂无积分明细</text>
+          <text class="empty-state__desc">完成点餐或兑换后会记录在这里</text>
+        </view>
+
+        <view wx:for="{{ledger}}" wx:key="id" class="ledger-card row-between">
+          <view class="ledger__main">
+            <text class="ledger__title ellipsis-1">{{item.title}}</text>
+            <text class="muted">{{item.timeText}}{{item.cashText ? ' · ' + item.cashText : ''}}</text>
+          </view>
+          <text class="ledger__change {{item.up ? 'up' : 'down'}}">{{item.changeText}}</text>
+        </view>
+      </view>
+    </block>
+  </view>
 </view>

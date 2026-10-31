@@ -1,0 +1,13 @@
+<view class="page-nav page-nav--{{tone}} {{flush ? 'page-nav--flush' : ''}}" style="padding-top: {{padTop}}px;">
+  <view class="page-nav__bar" style="height: {{barHeight}}px; padding-right: {{capsuleRight}}px;">
+    <view wx:if="{{showHome}}" class="page-nav__home" bindtap="onHome" hover-class="page-nav__home--active">
+      <view class="page-nav__home-ico"></view>
+    </view>
+    <view wx:elif="{{showBack}}" class="page-nav__home" bindtap="onBack" hover-class="page-nav__home--active">
+      <view class="page-nav__back-ico"></view>
+    </view>
+    <view wx:else class="page-nav__home page-nav__home--spacer"></view>
+    <text class="page-nav__title ellipsis-1">{{title}}</text>
+    <view class="page-nav__home page-nav__home--spacer"></view>
+  </view>
+</view>
