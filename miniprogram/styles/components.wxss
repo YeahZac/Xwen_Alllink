@@ -482,15 +482,13 @@
 .store-card {
   display: flex;
   gap: var(--space-md);
-  box-shadow: var(--shadow-soft);
-  border-radius: var(--radius-xl);
-  background: var(--color-surface);
-  overflow: hidden;
   padding: var(--space-md);
   margin-bottom: var(--space-sm);
   background: var(--color-surface);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   border: none;
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
 }
 
 .store-card:active {
