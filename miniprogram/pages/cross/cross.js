@@ -4,6 +4,31 @@ const location = require('../../utils/location')
 const dataCache = require('../../utils/data-cache')
 const homePrefetch = require('../../utils/home-prefetch')
 
+/** 分类页：合并异业 + 地摊，按 id 去重 */
+function mergeRedeemStores(crossRows, stallRows) {
+  const map = new Map()
+  ;(crossRows || []).forEach((s) => {
+    if (!s || s.id == null) return
+    map.set(String(s.id), {
+      ...s,
+      role: s.role || 'cross',
+      roleLabel: s.roleLabel || (s.role === 'stall' ? '点餐' : '兑换')
+    })
+  })
+  ;(stallRows || []).forEach((s) => {
+    if (!s || s.id == null) return
+    const key = String(s.id)
+    if (map.has(key)) return
+    map.set(key, {
+      ...s,
+      role: 'stall',
+      roleLabel: '点餐',
+      category: s.category || s.tag || '餐饮'
+    })
+  })
+  return Array.from(map.values())
+}
+
 Page({
   data: {
     stores: [],
@@ -14,10 +39,9 @@ Page({
   async onShow() {
     if (!store.ensureConsumerOrRedirect({ allowGuest: true })) return
     location.ensureDefaultLoc()
-    const q = { ...location.queryFromSaved(), includeStall: 1 }
+    const q = location.queryFromSaved()
     const cacheKey = `cross:all:${dataCache.homeKey(q)}`
 
-    // 先用首页预取/磁盘缓存灌入，避免空白等定位
     const cached = dataCache.read(cacheKey)
     if (cached && cached.data) {
       this.applyPayload(cached.data)
@@ -29,7 +53,7 @@ Page({
       const home = homePrefetch.getPayload()
       if (home && (home.crossStores || home.stalls)) {
         this.applyPayload({
-          stores: [].concat(home.crossStores || [], home.stalls || []),
+          stores: mergeRedeemStores(home.crossStores, home.stalls),
           points: home.points,
           cashValue: home.cashValue
         })
@@ -45,13 +69,15 @@ Page({
     const rows = payload.stores || []
     this.setData({
       stores: location.decorateList(rows).map((s) => {
-        const roleLabel = s.roleLabel || (s.role === 'stall' ? '点餐' : s.role === 'cross' ? '兑换' : '')
+        const role = s.role || 'cross'
+        const roleLabel = s.roleLabel || (role === 'stall' ? '点餐' : '兑换')
         return {
           ...s,
-          role: s.role || 'cross',
+          role,
           initial: s.initial || (s.name || '').slice(0, 1),
           coverImage: s.coverImage || '',
-          metaText: [s.category, roleLabel, s.distance || s.city]
+          // 文案不用「异业」字样
+          metaText: [s.category || s.tag, roleLabel, s.distance || s.city]
             .map((v) => String(v || '').trim())
             .filter((v, i, arr) => v && arr.indexOf(v) === i)
             .join(' · ')
@@ -67,14 +93,17 @@ Page({
   async fetchAndApply(q, cacheKey, { silent }) {
     try {
       const loggedIn = store.isLoggedIn()
-      const [stores, pointsData] = await Promise.all([
-        api.crossStores(q),
+      // 并行拉异业 + 地摊；不依赖后端 includeStall 是否已发布
+      const [crossRows, stallRows, pointsData] = await Promise.all([
+        api.crossStores({ ...q, includeStall: 1 }).catch(() => api.crossStores(q)),
+        api.stalls(q).catch(() => []),
         loggedIn
           ? api.myPoints().catch(() => ({ points: store.getConsumerPoints(), cashValue: 0 }))
           : Promise.resolve({ points: 0, cashValue: 0 })
       ])
+      const stores = mergeRedeemStores(crossRows, stallRows)
       const payload = {
-        stores: stores || [],
+        stores,
         points: pointsData.points != null ? pointsData.points : 0,
         cashValue: pointsData.cashValue
       }
