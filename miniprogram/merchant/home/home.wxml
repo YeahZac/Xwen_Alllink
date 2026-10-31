@@ -1,27 +1,9 @@
-<!-- 商户工作台 · 经营驾驶舱 -->
-<view class="page m-home page--flush">
-  <view class="hero">
-    <image wx:if="{{coverUrl}}" class="hero__cover" src="{{coverUrl}}" mode="aspectFill" />
-    <view wx:else class="hero__cover hero__cover--fallback"></view>
-    <view class="hero__mask"></view>
-    <view class="hero__body">
-      <view class="hero__role">{{roleName}}</view>
-      <text class="hero__shop">{{shopName}}</text>
-      <text class="hero__meta ellipsis-1">{{heroMeta}}</text>
-    </view>
-  </view>
-
-  <view class="panel">
-    <view wx:if="{{loadError}}" class="status-strip status-strip--warn">
-      <text>{{loadError}}，功能入口仍可使用</text>
-    </view>
-    <view wx:if="{{feeHint}}" class="status-strip">
-      <text>{{feeHint}}</text>
-    </view>
-    <view class="status-strip {{shopOpen ? '' : 'status-strip--warn'}}" bindtap="onToggleOpen">
-      <text>{{shopOpen ? '营业中 · 点此歇业' : '歇业中 · 点此开业'}}</text>
-    </view>
-
+<!-- 商户工作台 · cross-final / ok-merchant 风格 -->
+<view class="page m-home">
+  <view class="shop-card">
+    <text class="shop-card__name">{{shopName}}</text>
+    <text class="shop-card__meta ellipsis-1">{{userName}} · {{roleName}} · 万业互联云</text>
+    <text class="shop-card__tags ellipsis-1">{{heroMeta}}</text>
     <view class="kpi">
       <view class="kpi__cell">
         <text class="kpi__v ellipsis-1">{{kpi.a}}</text>
@@ -36,73 +18,58 @@
         <text class="kpi__l">{{kpi.cLabel}}</text>
       </view>
     </view>
-
-    <view class="block">
-      <view class="block__head ink-rail">
-        <text class="block__title">经营功能</text>
-        <text class="block__sub">点选进入</text>
-      </view>
-
-      <view class="m-list">
-        <view
-          wx:for="{{menus}}"
-          wx:key="id"
-          class="m-row"
-          bindtap="go"
-          data-url="{{item.url}}"
-        >
-          <view class="m-row__seal {{item.sealClass}}">{{item.icon}}</view>
-          <view class="m-row__main">
-            <text class="m-row__title ellipsis-1">{{item.title}}</text>
-            <text class="m-row__sub ellipsis-1">{{item.sub}}</text>
-          </view>
-          <text class="m-row__arrow">›</text>
-        </view>
-      </view>
-    </view>
-
-    <view class="m-list tools">
-      <view class="m-row" wx:if="{{role !== 'supply'}}" bindtap="goAssets">
-        <view class="m-row__seal m-row__seal--gold">资</view>
-        <view class="m-row__main">
-          <text class="m-row__title">资产账户</text>
-          <text class="m-row__sub ellipsis-1">{{assetsHint}}</text>
-        </view>
-        <text class="m-row__arrow">›</text>
-      </view>
-      <view class="m-row" wx:if="{{role === 'stall'}}" bindtap="onQr">
-        <view class="m-row__seal">码</view>
-        <view class="m-row__main">
-          <text class="m-row__title">摊位收款码</text>
-          <text class="m-row__sub">顾客扫码后输入金额付款</text>
-        </view>
-        <text class="m-row__arrow">›</text>
-      </view>
-    </view>
-
-    <ad-banner role="{{role}}" height="280" />
-
-    <view class="m-list m-list--legal">
-      <view class="m-row" bindtap="openLegalDoc" data-key="user">
-        <view class="m-row__main">
-          <text class="m-row__title">用户服务协议</text>
-        </view>
-        <text class="m-row__arrow">›</text>
-      </view>
-      <view class="m-row" bindtap="openLegalDoc" data-key="merchant">
-        <view class="m-row__main">
-          <text class="m-row__title">商户入驻平台协议</text>
-        </view>
-        <text class="m-row__arrow">›</text>
-      </view>
-      <view class="m-row" bindtap="openLegalDoc" data-key="dispute">
-        <view class="m-row__main">
-          <text class="m-row__title">消费者权益保障措施说明</text>
-        </view>
-        <text class="m-row__arrow">›</text>
-      </view>
-    </view>
-
-    <view class="logout" bindtap="onLogout">退出登录</view>
   </view>
+
+  <view wx:if="{{loadError}}" class="status-strip status-strip--warn">
+    <text>{{loadError}}，功能入口仍可使用</text>
+  </view>
+  <view wx:if="{{feeHint}}" class="status-strip">
+    <text>{{feeHint}}</text>
+  </view>
+  <view class="status-strip {{shopOpen ? '' : 'status-strip--warn'}}" bindtap="onToggleOpen">
+    <text>{{shopOpen ? '营业中 · 点此歇业' : '歇业中 · 点此开业'}}</text>
+  </view>
+
+  <ad-banner role="{{role}}" height="240" />
+
+  <view class="menu-grid">
+    <view
+      wx:for="{{menus}}"
+      wx:key="id"
+      class="menu-tile"
+      bindtap="go"
+      data-url="{{item.url}}"
+    >
+      <text class="menu-tile__title">{{item.title}}</text>
+      <text class="menu-tile__sub">{{item.sub}}</text>
+    </view>
+  </view>
+
+  <view class="action-stack">
+    <view wx:if="{{role !== 'supply'}}" class="btn-outline-primary" bindtap="goAssets">{{assetsHint}}</view>
+    <view wx:if="{{role === 'stall'}}" class="btn-outline-primary" bindtap="onQr">摊位码</view>
+  </view>
+
+  <view class="m-list legal-list">
+    <view class="m-row" bindtap="openLegalDoc" data-key="user">
+      <view class="m-row__main">
+        <text class="m-row__title">用户服务协议</text>
+      </view>
+      <text class="m-row__arrow">›</text>
+    </view>
+    <view class="m-row" bindtap="openLegalDoc" data-key="merchant">
+      <view class="m-row__main">
+        <text class="m-row__title">商户入驻平台协议</text>
+      </view>
+      <text class="m-row__arrow">›</text>
+    </view>
+    <view class="m-row" bindtap="openLegalDoc" data-key="dispute">
+      <view class="m-row__main">
+        <text class="m-row__title">消费者权益保障措施说明</text>
+      </view>
+      <text class="m-row__arrow">›</text>
+    </view>
+  </view>
+
+  <view class="btn-gradient logout" bindtap="onLogout">退出登录</view>
 </view>

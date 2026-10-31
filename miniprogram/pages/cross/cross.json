@@ -1,5 +1,5 @@
 {
-  "navigationBarTitleText": "积分兑换",
+  "navigationBarTitleText": "分类兑换",
   "usingComponents": {
     "ad-banner": "/components/ad-banner/ad-banner"
   }

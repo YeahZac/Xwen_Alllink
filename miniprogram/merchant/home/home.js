@@ -138,15 +138,21 @@ Page({
     else if (fee.serviceStatus === 'overdue') feeHint = '服务费已逾期，请联系平台'
 
     const shopName = session.shopName || '未命名门店'
-    const userName = session.name || ''
+    const userName = session.name || session.contactName || '老板'
+    const featureTags =
+      role === 'supply'
+        ? '需求大厅 · 供货商品 · 发货 · 客户门店 · 资产账户'
+        : role === 'cross'
+          ? '门店商品 · 兑换订单 · 客户 · 流水 · 采购获额度'
+          : '销售商品 · 客户 · 流水 · 采购获额度 · 划拨给顾客'
     this.setData({
       role,
       roleName: m.name,
       shopName,
       userName,
-      heroMeta: [userName === shopName ? '' : userName, '万业互联云'].filter(Boolean).join(' · '),
+      heroMeta: featureTags,
       coverUrl: (dash.merchant && dash.merchant.coverUrl) || session.coverUrl || '',
-      assetsHint: m.assetsHint,
+      assetsHint: role === 'supply' ? '资产账户' : `资产账户 · ${m.assetsHint}`,
       kpi,
       shopOpen,
       feeHint,

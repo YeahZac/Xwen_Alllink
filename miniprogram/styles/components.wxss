@@ -38,7 +38,7 @@
   font-size: var(--font-display);
   font-weight: 800;
   letter-spacing: 0.04em;
-  background: linear-gradient(145deg, #9B1530 0%, #C41E3A 100%);
+  background: linear-gradient(145deg, #FF8A5C 0%, #FF4D4F 100%);
 }
 
 /* 双列商品卡 */
@@ -289,21 +289,43 @@
   background: #fff;
 }
 
-/* —— 商户端列表行：禁止纯白空字块 —— */
+/* —— 商户端 / 我的：白卡列表 —— */
 .m-list {
   display: flex;
   flex-direction: column;
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+}
+
+.m-list--spaced {
   gap: var(--space-sm);
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.m-list--spaced .m-row {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  border-bottom: none;
 }
 
 .m-row {
   display: flex;
   align-items: center;
   gap: var(--space-md);
-  padding: 24rpx 20rpx;
-  background: var(--color-surface);
-  border-radius: var(--radius-lg);
+  padding: 28rpx 28rpx;
+  background: transparent;
+  border-radius: 0;
   border: none;
+  border-bottom: 1rpx solid var(--color-border);
+}
+
+.m-row:last-child {
+  border-bottom: none;
 }
 
 .m-row:active {
@@ -433,13 +455,17 @@
 
 .m-page-head {
   margin-bottom: var(--space-md);
+  padding: var(--space-md) var(--space-md);
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft);
 }
 
 .m-page-head__title {
   display: block;
-  font-size: var(--font-display);
+  font-size: var(--font-title);
   font-weight: 800;
-  color: var(--color-ink);
+  color: var(--color-primary);
   letter-spacing: var(--tracking-display);
   line-height: var(--lh-tight);
 }
@@ -456,6 +482,10 @@
 .store-card {
   display: flex;
   gap: var(--space-md);
+  box-shadow: var(--shadow-soft);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  overflow: hidden;
   padding: var(--space-md);
   margin-bottom: var(--space-sm);
   background: var(--color-surface);

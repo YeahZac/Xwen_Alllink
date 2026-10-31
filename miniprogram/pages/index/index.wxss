@@ -1,7 +1,12 @@
-/* mall-hub · 本地生活枢纽首页 */
+/* mall-hub · 本地生活枢纽首页（本页视觉锁定，不受全局暖米底改版影响） */
 .mall-page {
-  background: var(--color-bg);
+  background: #F5F6F8;
   min-height: 100vh;
+  --color-bg: #F5F6F8;
+  --color-border: #EBEDF0;
+  --radius-lg: 20rpx;
+  --radius-xl: 28rpx;
+  --shadow-soft: none;
 }
 
 .counter-head {

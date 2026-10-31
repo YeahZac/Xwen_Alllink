@@ -1,60 +1,27 @@
 .cross.page--flush {
   padding: 0;
   padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom));
+  background: var(--color-bg);
 }
 
-.cross-banner {
-  padding: var(--space-lg) var(--space-page) var(--space-xl);
-  background: var(--color-primary);
-  color: #fff;
-  position: relative;
-  overflow: hidden;
-}
-
-.cross-banner::after {
-  content: "";
-  position: absolute;
-  right: -28rpx;
-  bottom: -40rpx;
-  width: 160rpx;
-  height: 160rpx;
-  border: 8rpx solid rgba(255, 255, 255, 0.16);
-  border-radius: var(--radius-lg);
-  transform: rotate(18deg);
-  pointer-events: none;
-}
-
-.cross-banner__title {
-  display: block;
-  font-size: var(--font-display);
-  font-weight: 800;
-  line-height: var(--lh-tight);
-  letter-spacing: var(--tracking-display);
-  position: relative;
-  z-index: 1;
-}
-
-.cross-banner__sub {
-  display: block;
-  margin-top: var(--space-sm);
-  font-size: var(--font-caption);
-  color: rgba(255, 255, 255, 0.85);
-  line-height: var(--lh-snug);
-  position: relative;
-  z-index: 1;
-}
-
-/* 不上移：负 margin 会让提示文案顶部压在横幅红底上 */
 .cross-body {
-  padding: var(--space-md) var(--space-page);
+  margin-top: -24rpx;
+  padding: 0 var(--space-page) var(--space-md);
   position: relative;
   z-index: 1;
 }
 
 .cross-tip {
   display: block;
-  margin: var(--space-2) 0 var(--space-md);
+  margin: var(--space-md) 0;
   font-size: var(--font-caption);
   color: var(--color-text-muted);
   line-height: var(--lh-snug);
+}
+
+.cross-body .empty-state.surface,
+.cross-body .surface {
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft);
 }

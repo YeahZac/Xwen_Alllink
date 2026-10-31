@@ -35,9 +35,9 @@
   ],
   "window": {
     "navigationBarTitleText": "万业互联云",
-    "navigationBarBackgroundColor": "#FFFFFF",
-    "navigationBarTextStyle": "black",
-    "backgroundColor": "#F5F6F8",
+    "navigationBarBackgroundColor": "#FF4D4F",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#F7F4F0",
     "backgroundTextStyle": "dark"
   },
   "tabBar": {
@@ -54,7 +54,7 @@
       },
       {
         "pagePath": "pages/cross/cross",
-        "text": "兑换",
+        "text": "分类",
         "iconPath": "assets/icons/tab-cross.png",
         "selectedIconPath": "assets/icons/tab-cross-active.png"
       },
