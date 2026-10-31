@@ -35,7 +35,7 @@ Page({
         ...s,
         initial: s.initial || (s.name || '').slice(0, 1),
         coverImage: s.coverImage || '',
-        metaText: [s.category, s.distance, s.city]
+        metaText: [s.category || '异业', '异业', s.distance || s.city]
           .map((v) => String(v || '').trim())
           .filter((v, i, arr) => v && arr.indexOf(v) === i)
           .join(' · ')

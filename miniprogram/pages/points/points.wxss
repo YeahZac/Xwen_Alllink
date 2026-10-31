@@ -1,5 +1,11 @@
-.points {
-  padding-top: var(--space-md);
+.points.page--flush {
+  padding: 0;
+  padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom));
+  background: var(--color-bg);
+}
+
+.points-shell {
+  padding: var(--space-md) 0 var(--space-md);
 }
 
 .points .hero-card {
@@ -7,7 +13,7 @@
 }
 
 .points-body {
-  padding-bottom: var(--space-md);
+  padding: 0 var(--space-page) var(--space-md);
 }
 
 .points .section-title {
@@ -68,6 +74,7 @@
 }
 
 .points .empty-state.surface {
+  margin: 0 var(--space-page);
   background: var(--color-surface);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-soft);

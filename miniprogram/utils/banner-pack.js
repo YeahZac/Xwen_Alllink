@@ -3,11 +3,11 @@ const HOST = 'https://7072-prod-d3g1vkrj3290d085e-1467541248.tcb.qcloud.la/admin
 const PACK = {
   consumer: [
     {
-      title: '商场好店上新',
-      sub: '餐饮 · 鲜花 · 蛋糕 · 百货',
+      title: '新客专享',
+      sub: '首单立减 · 扫码点餐',
       image: HOST + '/8e81329f825d6afd.webp',
-      link: '',
-      linkType: 'none'
+      link: '/pages/index/index',
+      linkType: 'switchTab'
     },
     {
       title: '积分兑鲜花蛋糕',
@@ -26,9 +26,16 @@ const PACK = {
   ],
   stall: [
     {
+      title: '地摊数字化',
+      sub: '扫码点餐 · 积分划拨',
+      image: HOST + '/1ef8e0176023fed0.webp',
+      link: '/merchant/purchase/purchase',
+      linkType: 'navigate'
+    },
+    {
       title: '门店采购获额度',
       sub: '向供货商进货 · 划拨给顾客',
-      image: HOST + '/1ef8e0176023fed0.webp',
+      image: HOST + '/8e81329f825d6afd.webp',
       link: '/merchant/purchase/purchase',
       linkType: 'navigate'
     }
@@ -40,6 +47,13 @@ const PACK = {
       image: HOST + '/2b04f7adc3fccb07.webp',
       link: '/merchant/goods/goods',
       linkType: 'navigate'
+    },
+    {
+      title: '门店数字化',
+      sub: '积分核销 · 现金价双轨',
+      image: HOST + '/8e81329f825d6afd.webp',
+      link: '/merchant/orders/orders',
+      linkType: 'navigate'
     }
   ],
   supply: [
@@ -48,6 +62,13 @@ const PACK = {
       sub: '餐饮 · 鲜花 · 蛋糕 · 百货',
       image: HOST + '/4fab0609b9f304b3.webp',
       link: '/merchant/customers/customers',
+      linkType: 'navigate'
+    },
+    {
+      title: '需求大厅',
+      sub: '接单报价 · 发货履约',
+      image: HOST + '/8e81329f825d6afd.webp',
+      link: '/merchant/needs/needs',
       linkType: 'navigate'
     }
   ],

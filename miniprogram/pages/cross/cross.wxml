@@ -1,11 +1,14 @@
 <view class="page cross page--flush">
-  <view class="hero-band">
-    <text class="hero-band__title">异业兑换</text>
-    <text class="hero-band__sub">积分 {{points}} · 约 ¥{{cashValue}} 可抵现</text>
+  <view class="cross-hero">
+    <page-nav title="分类兑换" tone="flush" flush="{{true}}" />
+    <view class="cross-hero__copy">
+      <text class="cross-hero__title">异业兑换</text>
+      <text class="cross-hero__sub">积分 {{points}} · 约 ¥{{cashValue}} 可抵现</text>
+    </view>
   </view>
 
   <view class="cross-body">
-    <ad-banner role="consumer" height="240" />
+    <ad-banner role="consumer" height="240" force="{{true}}" />
 
     <text class="cross-tip">积分够就兑 · 不够可按门店现金价全额支付</text>
 

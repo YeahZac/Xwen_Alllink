@@ -62,7 +62,7 @@ Page({
     this.setData({
       points: data.points,
       cashValue: Number(data.cashValue || 0).toFixed(2),
-      cashRateText: `1 积分 = ¥${data.cashRate || store.getCashRate()}`,
+      cashRateText: `1 积分 = ¥${Number(data.cashRate != null ? data.cashRate : store.getCashRate()).toFixed(2)}`,
       loading: false,
       ledger: mapLedger(data.ledger)
     })

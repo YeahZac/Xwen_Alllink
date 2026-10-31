@@ -1,123 +1,86 @@
-<view class="page mine">
-  <view wx:if="{{!loggedIn}}" class="profile-card" bindtap="goLogin">
-    <view class="avatar">万</view>
-    <view class="profile__info">
-      <text class="profile__name">点击登录</text>
-      <text class="profile__role">登录后查看订单、积分与资料</text>
-    </view>
-    <text class="m-row__arrow">›</text>
-  </view>
-  <view wx:else class="profile-card">
-    <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
-      <image wx:if="{{coverUrl}}" class="avatar avatar--image" src="{{coverUrl}}" mode="aspectFill" />
-      <view wx:else class="avatar">万</view>
-    </button>
-    <view class="profile__info">
-      <input
-        class="profile__name-input"
-        type="nickname"
-        placeholder="填写昵称"
-        value="{{name}}"
-        bindblur="onNicknameBlur"
-      />
-      <text class="profile__role ellipsis-1">{{roleLabel}}{{phone ? ' · ' + phone : ' · 未绑定手机'}}{{genderText ? ' · ' + genderText : ''}}</text>
-      <text class="profile__hint">点头像、昵称、性别即可修改</text>
-    </view>
-  </view>
+<view class="page mine page--flush">
+  <page-nav title="我的" tone="solid" />
 
-  <ad-banner role="consumer" height="220" />
+  <view class="mine-shell">
+    <view wx:if="{{!loggedIn}}" class="profile-card" bindtap="goLogin">
+      <view class="avatar">万</view>
+      <view class="profile__info">
+        <text class="profile__name">点击登录</text>
+        <text class="profile__role">登录后查看订单、积分与资料</text>
+      </view>
+      <text class="m-row__arrow">›</text>
+    </view>
+    <view wx:else class="profile-card">
+      <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+        <image wx:if="{{coverUrl}}" class="avatar avatar--image" src="{{coverUrl}}" mode="aspectFill" />
+        <view wx:else class="avatar">万</view>
+      </button>
+      <view class="profile__info">
+        <input
+          class="profile__name-input"
+          type="nickname"
+          placeholder="填写昵称"
+          value="{{name}}"
+          bindblur="onNicknameBlur"
+        />
+        <text class="profile__role ellipsis-1">{{roleLabel || '消费者'}} · 万业互联云</text>
+      </view>
+    </view>
 
-  <view class="stats-card">
-    <view class="stat" bindtap="goPoints">
-      <text class="stat__n">{{points}}</text>
-      <text class="stat__l">积分</text>
-    </view>
-    <view class="stat" bindtap="goOrders">
-      <text class="stat__n">{{orderCount}}</text>
-      <text class="stat__l">订单</text>
-    </view>
-    <view class="stat" bindtap="goRecommend">
-      <text class="stat__n">荐</text>
-      <text class="stat__l">推荐</text>
-    </view>
-  </view>
+    <ad-banner role="consumer" height="220" force="{{true}}" />
 
-  <view class="m-list">
-    <picker mode="selector" range="{{genderOptions}}" value="{{gender}}" bindchange="onGenderChange">
-      <view class="m-row">
+    <view class="stats-card">
+      <view class="stat" bindtap="goPoints">
+        <text class="stat__n">{{points}}</text>
+        <text class="stat__l">积分</text>
+      </view>
+      <view class="stat" bindtap="goOrders">
+        <text class="stat__n">{{orderCount}}</text>
+        <text class="stat__l">订单</text>
+      </view>
+      <view class="stat" bindtap="goRecommend">
+        <text class="stat__n">荐</text>
+        <text class="stat__l">推荐</text>
+      </view>
+    </view>
+
+    <view class="m-list">
+      <view class="m-row" bindtap="goOrders">
         <view class="m-row__main">
-          <text class="m-row__title">性别</text>
-          <text class="m-row__sub">{{genderText || '不展示，可随时修改'}}</text>
+          <text class="m-row__title">我的订单</text>
         </view>
         <text class="m-row__arrow">›</text>
       </view>
-    </picker>
-    <view class="m-row m-row--phone">
-      <view class="m-row__main">
-        <text class="m-row__title">{{phone ? '更换手机号' : '授权手机号'}}</text>
-        <text class="m-row__sub">{{phone ? phone : '用于订单通知与账号保护'}}</text>
+      <view class="m-row" bindtap="goRecommend">
+        <view class="m-row__main">
+          <text class="m-row__title">推荐有奖</text>
+        </view>
+        <text class="m-row__arrow">›</text>
       </view>
-      <text class="m-row__arrow">›</text>
-      <button
-        class="m-row__hit"
-        open-type="getPhoneNumber"
-        bindgetphonenumber="onGetPhone"
-        hover-class="none"
-      ></button>
-    </view>
-    <view class="m-row" bindtap="goOrders">
-      <view class="m-row__main">
-        <text class="m-row__title">我的订单</text>
+      <view class="m-row" bindtap="goApply">
+        <view class="m-row__main">
+          <text class="m-row__title">申请入驻开店</text>
+        </view>
+        <text class="m-row__arrow">›</text>
       </view>
-      <text class="m-row__arrow">›</text>
-    </view>
-    <view class="m-row" bindtap="goRecommend">
-      <view class="m-row__main">
-        <text class="m-row__title">推荐有奖</text>
+      <view class="m-row" bindtap="goSupplyNeed">
+        <view class="m-row__main">
+          <text class="m-row__title">原材料供应需求</text>
+        </view>
+        <text class="m-row__arrow">›</text>
       </view>
-      <text class="m-row__arrow">›</text>
-    </view>
-    <view class="m-row" bindtap="goApply">
-      <view class="m-row__main">
-        <text class="m-row__title">申请入驻开店</text>
+      <view class="m-row" bindtap="onComplaint">
+        <view class="m-row__main">
+          <text class="m-row__title">投诉与反馈</text>
+        </view>
+        <text class="m-row__arrow">›</text>
       </view>
-      <text class="m-row__arrow">›</text>
-    </view>
-    <view class="m-row" bindtap="goSupplyNeed">
-      <view class="m-row__main">
-        <text class="m-row__title">原材料供应需求</text>
+      <view wx:if="{{loggedIn}}" class="m-row" bindtap="onLogout">
+        <view class="m-row__main">
+          <text class="m-row__title m-row__title--muted">退出登录</text>
+        </view>
+        <text class="m-row__arrow">›</text>
       </view>
-      <text class="m-row__arrow">›</text>
-    </view>
-    <view class="m-row" bindtap="openLegalDoc" data-key="user">
-      <view class="m-row__main">
-        <text class="m-row__title">用户服务协议</text>
-      </view>
-      <text class="m-row__arrow">›</text>
-    </view>
-    <view class="m-row" bindtap="openLegalDoc" data-key="merchant">
-      <view class="m-row__main">
-        <text class="m-row__title">商户入驻平台协议</text>
-      </view>
-      <text class="m-row__arrow">›</text>
-    </view>
-    <view class="m-row" bindtap="openLegalDoc" data-key="dispute">
-      <view class="m-row__main">
-        <text class="m-row__title">消费者权益保障措施说明</text>
-      </view>
-      <text class="m-row__arrow">›</text>
-    </view>
-    <view class="m-row" bindtap="onComplaint">
-      <view class="m-row__main">
-        <text class="m-row__title">投诉与反馈</text>
-      </view>
-      <text class="m-row__arrow">›</text>
-    </view>
-    <view wx:if="{{loggedIn}}" class="m-row" bindtap="onLogout">
-      <view class="m-row__main">
-        <text class="m-row__title m-row__title--muted">退出登录</text>
-      </view>
-      <text class="m-row__arrow">›</text>
     </view>
   </view>
 </view>

@@ -1,6 +1,8 @@
 {
-  "navigationBarTitleText": "分类兑换",
+  "navigationStyle": "custom",
+  "navigationBarTextStyle": "white",
   "usingComponents": {
+    "page-nav": "/components/page-nav/page-nav",
     "ad-banner": "/components/ad-banner/ad-banner"
   }
 }

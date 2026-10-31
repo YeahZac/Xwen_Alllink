@@ -1,3 +1,13 @@
+.mine.page--flush {
+  padding: 0;
+  padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom));
+  background: var(--color-bg);
+}
+
+.mine-shell {
+  padding: var(--space-md) var(--space-page) var(--space-md);
+}
+
 .mine .profile-card {
   display: flex;
   align-items: center;
@@ -66,13 +76,6 @@
   color: var(--color-text-muted);
 }
 
-.profile__hint {
-  display: block;
-  margin-top: 4rpx;
-  font-size: var(--font-tiny);
-  color: var(--color-text-muted);
-}
-
 .stats-card {
   display: flex;
   margin: var(--space-md) 0;
@@ -113,30 +116,4 @@
   font-weight: 700;
   letter-spacing: var(--tracking-label);
   color: var(--color-text-muted);
-}
-
-.mine picker {
-  display: block;
-  width: 100%;
-}
-
-.m-row--phone {
-  position: relative;
-}
-
-.m-row__hit {
-  position: absolute;
-  left: 0;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 100% !important;
-  height: 100% !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  opacity: 0;
-}
-
-.m-row__hit::after {
-  display: none;
 }

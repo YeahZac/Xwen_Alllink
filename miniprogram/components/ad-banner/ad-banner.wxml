@@ -1,12 +1,12 @@
-<view class="ad-banner page-block" wx:if="{{list.length}}">
+<view class="ad-banner page-block" wx:if="{{list.length || force}}">
   <swiper
     class="ad-banner__swiper"
     style="height: {{height}}rpx"
     indicator-dots="{{list.length > 1}}"
-    indicator-color="rgba(255,255,255,0.4)"
+    indicator-color="rgba(255,255,255,0.45)"
     indicator-active-color="#ffffff"
-    autoplay
-    circular
+    autoplay="{{list.length > 1}}"
+    circular="{{list.length > 1}}"
     interval="4500"
     bindchange="onChange"
   >
@@ -20,7 +20,7 @@
           binderror="onImgError"
           data-index="{{index}}"
         />
-        <view wx:else class="ad-banner__fallback cover-fallback"></view>
+        <view wx:else class="ad-banner__fallback"></view>
         <view class="ad-banner__mask">
           <text class="ad-banner__title ellipsis-1">{{item.title}}</text>
           <text class="ad-banner__sub ellipsis-1">{{item.sub}}</text>

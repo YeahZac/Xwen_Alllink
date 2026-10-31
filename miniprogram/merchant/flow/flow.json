@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "交易流水"
+  "navigationBarTitleText": "交易流水",
+  "navigationBarBackgroundColor": "#FF4D4F",
+  "navigationBarTextStyle": "white"
 }

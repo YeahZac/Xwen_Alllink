@@ -1,75 +1,59 @@
-<!-- 商户工作台 · cross-final / ok-merchant 风格 -->
-<view class="page m-home">
-  <view class="shop-card">
-    <text class="shop-card__name">{{shopName}}</text>
-    <text class="shop-card__meta ellipsis-1">{{userName}} · {{roleName}} · 万业互联云</text>
-    <text class="shop-card__tags ellipsis-1">{{heroMeta}}</text>
-    <view class="kpi">
-      <view class="kpi__cell">
-        <text class="kpi__v ellipsis-1">{{kpi.a}}</text>
-        <text class="kpi__l">{{kpi.aLabel}}</text>
-      </view>
-      <view class="kpi__cell">
-        <text class="kpi__v ellipsis-1">{{kpi.b}}</text>
-        <text class="kpi__l">{{kpi.bLabel}}</text>
-      </view>
-      <view class="kpi__cell">
-        <text class="kpi__v ellipsis-1">{{kpi.c}}</text>
-        <text class="kpi__l">{{kpi.cLabel}}</text>
+<!-- 商户工作台 · 对齐 ok-merchant.jpg -->
+<view class="page m-home page--flush">
+  <page-nav title="{{navTitle}}" tone="solid" show-home="{{true}}" home-url="/pages/index/index" />
+
+  <view class="m-home-shell">
+    <view class="shop-card">
+      <text class="shop-card__name">{{shopName}}</text>
+      <text class="shop-card__meta ellipsis-1">{{userName}} · {{roleName}} · 万业互联云</text>
+      <text class="shop-card__tags ellipsis-1">{{heroMeta}}</text>
+      <view class="kpi">
+        <view class="kpi__cell">
+          <text class="kpi__v ellipsis-1">{{kpi.a}}</text>
+          <text class="kpi__l">{{kpi.aLabel}}</text>
+        </view>
+        <view class="kpi__cell">
+          <text class="kpi__v ellipsis-1">{{kpi.b}}</text>
+          <text class="kpi__l">{{kpi.bLabel}}</text>
+        </view>
+        <view class="kpi__cell">
+          <text class="kpi__v ellipsis-1">{{kpi.c}}</text>
+          <text class="kpi__l">{{kpi.cLabel}}</text>
+        </view>
       </view>
     </view>
-  </view>
 
-  <view wx:if="{{loadError}}" class="status-strip status-strip--warn">
-    <text>{{loadError}}，功能入口仍可使用</text>
-  </view>
-  <view wx:if="{{feeHint}}" class="status-strip">
-    <text>{{feeHint}}</text>
-  </view>
-  <view class="status-strip {{shopOpen ? '' : 'status-strip--warn'}}" bindtap="onToggleOpen">
-    <text>{{shopOpen ? '营业中 · 点此歇业' : '歇业中 · 点此开业'}}</text>
-  </view>
-
-  <ad-banner role="{{role}}" height="240" />
-
-  <view class="menu-grid">
-    <view
-      wx:for="{{menus}}"
-      wx:key="id"
-      class="menu-tile"
-      bindtap="go"
-      data-url="{{item.url}}"
-    >
-      <text class="menu-tile__title">{{item.title}}</text>
-      <text class="menu-tile__sub">{{item.sub}}</text>
+    <view wx:if="{{loadError}}" class="status-strip status-strip--warn">
+      <text>{{loadError}}，功能入口仍可使用</text>
     </view>
-  </view>
+    <view wx:if="{{feeHint}}" class="status-strip">
+      <text>{{feeHint}}</text>
+    </view>
+    <view class="status-strip {{shopOpen ? '' : 'status-strip--warn'}}" bindtap="onToggleOpen">
+      <text>{{shopOpen ? '营业中 · 点此歇业' : '歇业中 · 点此开业'}}</text>
+    </view>
 
-  <view class="action-stack">
-    <view wx:if="{{role !== 'supply'}}" class="btn-outline-primary" bindtap="goAssets">{{assetsHint}}</view>
-    <view wx:if="{{role === 'stall'}}" class="btn-outline-primary" bindtap="onQr">摊位码</view>
-  </view>
+    <ad-banner role="{{role}}" height="240" force="{{true}}" />
 
-  <view class="m-list legal-list">
-    <view class="m-row" bindtap="openLegalDoc" data-key="user">
-      <view class="m-row__main">
-        <text class="m-row__title">用户服务协议</text>
+    <view class="menu-grid">
+      <view
+        wx:for="{{menus}}"
+        wx:key="id"
+        class="menu-tile"
+        bindtap="go"
+        data-url="{{item.url}}"
+      >
+        <text class="menu-tile__title">{{item.title}}</text>
+        <text class="menu-tile__sub">{{item.sub}}</text>
       </view>
-      <text class="m-row__arrow">›</text>
     </view>
-    <view class="m-row" bindtap="openLegalDoc" data-key="merchant">
-      <view class="m-row__main">
-        <text class="m-row__title">商户入驻平台协议</text>
-      </view>
-      <text class="m-row__arrow">›</text>
-    </view>
-    <view class="m-row" bindtap="openLegalDoc" data-key="dispute">
-      <view class="m-row__main">
-        <text class="m-row__title">消费者权益保障措施说明</text>
-      </view>
-      <text class="m-row__arrow">›</text>
-    </view>
-  </view>
 
-  <view class="btn-gradient logout" bindtap="onLogout">退出登录</view>
+    <view class="action-stack">
+      <view wx:if="{{role !== 'supply'}}" class="btn-outline-primary" bindtap="goAssets">{{assetsHint}}</view>
+      <view wx:if="{{role === 'stall'}}" class="btn-outline-primary" bindtap="onQr">摊位码</view>
+      <view wx:if="{{role === 'cross'}}" class="btn-outline-primary" bindtap="onQr">门店码</view>
+    </view>
+
+    <view class="btn-gradient logout" bindtap="onLogout">退出登录</view>
+  </view>
 </view>

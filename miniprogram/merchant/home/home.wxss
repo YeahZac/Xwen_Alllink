@@ -1,5 +1,11 @@
-.m-home {
+.m-home.page--flush {
+  padding: 0;
   padding-bottom: calc(var(--space-xl) + env(safe-area-inset-bottom));
+  background: var(--color-bg);
+}
+
+.m-home-shell {
+  padding: var(--space-md) var(--space-page) var(--space-md);
 }
 
 .shop-card {
@@ -48,7 +54,7 @@
 
 .kpi__v {
   display: block;
-  font-size: var(--font-subtitle);
+  font-size: 40rpx;
   font-weight: 800;
   color: var(--color-primary);
   line-height: 1.25;
@@ -96,10 +102,6 @@
 
 .action-stack .btn-outline-primary {
   width: 100%;
-}
-
-.legal-list {
-  margin: var(--space-md) 0;
 }
 
 .logout {

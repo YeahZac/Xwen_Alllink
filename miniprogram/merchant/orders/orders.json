@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "订单中心"
+  "navigationBarTitleText": "订单中心",
+  "navigationBarBackgroundColor": "#FF4D4F",
+  "navigationBarTextStyle": "white"
 }

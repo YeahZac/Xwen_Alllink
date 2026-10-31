@@ -4,9 +4,10 @@
 }
 
 .ad-banner__swiper {
-  border-radius: 20rpx;
+  border-radius: 24rpx;
   overflow: hidden;
-  background: #1C1F26;
+  background: #2a1216;
+  box-shadow: 0 8rpx 24rpx rgba(31, 35, 41, 0.08);
 }
 
 .ad-banner__slide {
@@ -24,22 +25,27 @@
 }
 
 .ad-banner__fallback {
-  background: linear-gradient(145deg, #9B1530 0%, #C41E3A 100%);
+  background: linear-gradient(120deg, #ff8a5c 0%, #ff4d4f 48%, #c41e3a 100%);
 }
 
 .ad-banner__mask {
   position: absolute;
   left: 0;
-  right: 0;
+  top: 0;
   bottom: 0;
-  padding: var(--space-section) var(--space-md) var(--space-md);
-  background: linear-gradient(transparent, rgba(18, 20, 26, 0.76));
+  width: 62%;
+  padding: var(--space-lg) var(--space-md);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background: linear-gradient(90deg, rgba(18, 20, 26, 0.72) 0%, rgba(18, 20, 26, 0.28) 70%, transparent 100%);
   color: #fff;
   pointer-events: none;
+  box-sizing: border-box;
 }
 
 .ad-banner__title {
-  font-size: var(--font-subtitle);
+  font-size: 36rpx;
   font-weight: 800;
   line-height: var(--lh-snug);
   letter-spacing: var(--tracking-display);
@@ -47,8 +53,8 @@
 
 .ad-banner__sub {
   display: block;
-  margin-top: var(--space-2);
-  font-size: var(--font-small);
-  color: rgba(255, 255, 255, 0.88);
+  margin-top: 8rpx;
+  font-size: var(--font-caption);
+  color: rgba(255, 255, 255, 0.92);
   line-height: var(--lh-snug);
 }
