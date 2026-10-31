@@ -7,6 +7,14 @@
         "value": "miniprogram/assets/covers"
       },
       {
+        "type": "folder",
+        "value": "miniprogram/assets/banners"
+      },
+      {
+        "type": "folder",
+        "value": "miniprogram/assets/legal"
+      },
+      {
         "type": "file",
         "value": "miniprogram/utils/mock.js"
       },

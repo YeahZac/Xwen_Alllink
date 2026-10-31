@@ -1,7 +1,8 @@
 /**
  * 平台协议：全程在小程序内用微信 PDF 阅读器打开（不用 web-view，避免业务域名拦截）
- * 1) 代码包 assets/legal/*.pdf → 复制到用户目录 → openDocument
- * 2) 失败则经云托管 callContainer 拉取 /legal/*.pdf 再打开
+ *
+ * PDF 不进主包（约 1MB，会撑破 2MB 编译上限），统一经云托管 callContainer 拉取 /legal/*.pdf。
+ * 隐私政策为小程序内文页面。
  */
 const config = require('./config')
 
@@ -13,7 +14,7 @@ const DOCS = [
     title: '用户服务协议',
     short: '《用户服务协议》',
     file: 'user-service-agreement.pdf',
-    packagePath: 'assets/legal/user-service-agreement.pdf',
+    packagePath: '',
     desc: '万业互联云平台用户服务协议'
   },
   {
@@ -21,7 +22,7 @@ const DOCS = [
     title: '商户入驻平台协议',
     short: '《商户入驻平台协议》',
     file: 'merchant-onboarding-agreement.pdf',
-    packagePath: 'assets/legal/merchant-onboarding-agreement.pdf',
+    packagePath: '',
     desc: '万业互联云商户入驻服务协议'
   },
   {
@@ -29,7 +30,7 @@ const DOCS = [
     title: '消费者权益保障措施说明',
     short: '《消费者权益保障措施说明》',
     file: 'transaction-dispute-resolution.pdf',
-    packagePath: 'assets/legal/transaction-dispute-resolution.pdf',
+    packagePath: '',
     desc: '万业互联云平台交易纠纷处理机制说明'
   },
   {
@@ -214,8 +215,9 @@ function openDoc(keyOrDoc) {
   }
 
   wx.showLoading({ title: '打开协议…', mask: true })
-  return openFromPackage(doc)
-    .then((ok) => (ok ? true : openFromCloud(doc)))
+  // 主包已忽略 assets/legal，优先云托管；本地若仍有文件则作兜底
+  return openFromCloud(doc)
+    .then((ok) => (ok ? true : openFromPackage(doc)))
     .then((ok) => {
       wx.hideLoading()
       if (!ok) {
