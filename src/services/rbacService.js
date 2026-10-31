@@ -15,6 +15,7 @@ const PAGE_CATALOG = [
   { pageKey: 'stores_cross', pageName: '异业门店', groupName: '用户与门店', sortOrder: 35 },
   { pageKey: 'stores_supply', pageName: '供应链', groupName: '用户与门店', sortOrder: 40 },
   { pageKey: 'applies', pageName: '入驻审核', groupName: '用户与门店', sortOrder: 45 },
+  { pageKey: 'cities', pageName: '经营城市', groupName: '用户与门店', sortOrder: 48 },
   { pageKey: 'orders', pageName: '订单中心', groupName: '交易运营', sortOrder: 50 },
   { pageKey: 'points', pageName: '积分与额度', groupName: '交易运营', sortOrder: 55 },
   { pageKey: 'settlements', pageName: '结算抽成', groupName: '交易运营', sortOrder: 60 },

@@ -1,5 +1,6 @@
 const { query, withTransaction } = require('../utils/db')
 const { HttpError } = require('../utils/response')
+const { parsePaging, pageResult } = require('../utils/paging')
 const { enrichScreen } = require('./screenSim')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链', consumer: 'C端用户' }
@@ -142,73 +143,133 @@ async function trackVisit(body = {}) {
   return { ok: true }
 }
 
-/** 用户总览：C端 + 商户身份 */
-async function listAllIdentities({ role, q, limit = 200 } = {}) {
-  const lim = Math.min(Number(limit) || 200, 500)
-  const rows = []
+function mapMerchantIdentity(m, pickCoverFromLicenses, parseMaybeJson) {
+  const materials = parseMaybeJson(m.materials) || m.materials || {}
+  const coverUrl = m.coverUrl || pickCoverFromLicenses(materials) || ''
+  return {
+    id: m.merchantId,
+    identity: m.identity,
+    identityLabel: m.identityLabel,
+    name: m.name,
+    code: m.code,
+    phone: m.phone,
+    points: null,
+    status: m.status,
+    deletedAt: m.deletedAt,
+    createdAt: m.createdAt,
+    merchantId: m.merchantId,
+    city: m.city,
+    materials,
+    coverUrl,
+    avatarUrl: coverUrl,
+    address: m.address,
+    contactName: m.contactName
+  }
+}
+
+/** 用户总览：C端 + 商户身份（分页） */
+async function listAllIdentities({ role, q, page, pageSize, limit } = {}) {
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
   const { pickCoverFromLicenses, parseMaybeJson } = require('../utils/mediaPick')
+  const wantUsers = !role || role === 'consumer' || role === 'all'
+  const wantMerchants = !role || role === 'all' || ['stall', 'cross', 'supply'].includes(role)
+  const onlyUsers = role === 'consumer'
+  const onlyMerchants = ['stall', 'cross', 'supply'].includes(role)
 
-  if (!role || role === 'consumer' || role === 'all') {
-    let sql = `SELECT u.id, 'consumer' AS identity, 'C端用户' AS identityLabel,
-                      u.nickname AS name, u.invite_code AS code, u.phone, u.points_balance AS points,
-                      u.status, u.deleted_at AS deletedAt, u.created_at AS createdAt,
-                      u.avatar_url AS avatarUrl,
-                      NULL AS merchantId, NULL AS city, NULL AS materials, NULL AS coverUrl
-               FROM users u WHERE u.deleted_at IS NULL`
+  if (onlyUsers) {
+    let where = ` WHERE u.deleted_at IS NULL`
     const params = {}
     if (q) {
-      sql += ` AND (u.nickname LIKE :q OR u.invite_code LIKE :q OR u.phone LIKE :q)`
+      where += ` AND (u.nickname LIKE :q OR u.invite_code LIKE :q OR u.phone LIKE :q)`
       params.q = `%${q}%`
     }
-    sql += ` ORDER BY u.id DESC LIMIT ${lim}`
-    rows.push(...(await query(sql, params)))
+    const countRows = await query(`SELECT COUNT(*) AS c FROM users u${where}`, params)
+    const rows = await query(
+      `SELECT u.id, 'consumer' AS identity, 'C端用户' AS identityLabel,
+              u.nickname AS name, u.invite_code AS code, u.phone, u.points_balance AS points,
+              u.status, u.deleted_at AS deletedAt, u.created_at AS createdAt,
+              u.avatar_url AS avatarUrl,
+              NULL AS merchantId, NULL AS city, NULL AS materials, NULL AS coverUrl
+       FROM users u${where}
+       ORDER BY u.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
+    return pageResult(rows, Number(countRows[0]?.c) || 0, paging)
   }
 
-  if (!role || role === 'all' || ['stall', 'cross', 'supply'].includes(role)) {
-    let sql = `SELECT m.id AS merchantId, m.role AS identity,
-                      CASE m.role WHEN 'stall' THEN '地摊' WHEN 'cross' THEN '异业' ELSE '供应链' END AS identityLabel,
-                      m.name, m.invite_code AS code, m.contact_phone AS phone, NULL AS points,
-                      m.status, m.deleted_at AS deletedAt, m.created_at AS createdAt,
-                      m.city, m.materials_json AS materials, m.cover_url AS coverUrl,
-                      m.address, m.contact_name AS contactName
-               FROM merchants m WHERE m.deleted_at IS NULL`
-    const params = {}
-    if (role && role !== 'all') {
-      sql += ` AND m.role=:role`
-      params.role = role
-    }
+  if (onlyMerchants) {
+    let where = ` WHERE m.deleted_at IS NULL AND m.role=:role`
+    const params = { role }
     if (q) {
-      sql += ` AND (m.name LIKE :q OR m.invite_code LIKE :q OR m.contact_phone LIKE :q)`
+      where += ` AND (m.name LIKE :q OR m.invite_code LIKE :q OR m.contact_phone LIKE :q)`
       params.q = `%${q}%`
     }
-    sql += ` ORDER BY m.id DESC LIMIT ${lim}`
-    const merchants = await query(sql, params)
-    for (const m of merchants) {
-      const materials = parseMaybeJson(m.materials) || m.materials || {}
-      const coverUrl = m.coverUrl || pickCoverFromLicenses(materials) || ''
-      rows.push({
-        id: m.merchantId,
-        identity: m.identity,
-        identityLabel: m.identityLabel,
-        name: m.name,
-        code: m.code,
-        phone: m.phone,
-        points: null,
-        status: m.status,
-        deletedAt: m.deletedAt,
-        createdAt: m.createdAt,
-        merchantId: m.merchantId,
-        city: m.city,
-        materials,
-        coverUrl,
-        avatarUrl: coverUrl,
-        address: m.address,
-        contactName: m.contactName
-      })
-    }
+    const countRows = await query(`SELECT COUNT(*) AS c FROM merchants m${where}`, params)
+    const merchants = await query(
+      `SELECT m.id AS merchantId, m.role AS identity,
+              CASE m.role WHEN 'stall' THEN '地摊' WHEN 'cross' THEN '异业' ELSE '供应链' END AS identityLabel,
+              m.name, m.invite_code AS code, m.contact_phone AS phone, NULL AS points,
+              m.status, m.deleted_at AS deletedAt, m.created_at AS createdAt,
+              m.city, m.materials_json AS materials, m.cover_url AS coverUrl,
+              m.address, m.contact_name AS contactName
+       FROM merchants m${where}
+       ORDER BY m.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
+    const list = merchants.map((m) => mapMerchantIdentity(m, pickCoverFromLicenses, parseMaybeJson))
+    return pageResult(list, Number(countRows[0]?.c) || 0, paging)
   }
 
-  return rows
+  // role=all：两侧各取 offset+pageSize 再合并切片，保证翻页可用
+  const fetchLimit = paging.offset + paging.pageSize
+  let userWhere = ` WHERE u.deleted_at IS NULL`
+  let merchantWhere = ` WHERE m.deleted_at IS NULL`
+  const userParams = {}
+  const merchantParams = {}
+  if (q) {
+    userWhere += ` AND (u.nickname LIKE :q OR u.invite_code LIKE :q OR u.phone LIKE :q)`
+    merchantWhere += ` AND (m.name LIKE :q OR m.invite_code LIKE :q OR m.contact_phone LIKE :q)`
+    userParams.q = `%${q}%`
+    merchantParams.q = `%${q}%`
+  }
+  const [userCountRows, merchantCountRows, users, merchants] = await Promise.all([
+    wantUsers ? query(`SELECT COUNT(*) AS c FROM users u${userWhere}`, userParams) : Promise.resolve([{ c: 0 }]),
+    wantMerchants
+      ? query(`SELECT COUNT(*) AS c FROM merchants m${merchantWhere}`, merchantParams)
+      : Promise.resolve([{ c: 0 }]),
+    wantUsers
+      ? query(
+          `SELECT u.id, 'consumer' AS identity, 'C端用户' AS identityLabel,
+                  u.nickname AS name, u.invite_code AS code, u.phone, u.points_balance AS points,
+                  u.status, u.deleted_at AS deletedAt, u.created_at AS createdAt,
+                  u.avatar_url AS avatarUrl,
+                  NULL AS merchantId, NULL AS city, NULL AS materials, NULL AS coverUrl
+           FROM users u${userWhere}
+           ORDER BY u.id DESC LIMIT ${fetchLimit}`,
+          userParams
+        )
+      : Promise.resolve([]),
+    wantMerchants
+      ? query(
+          `SELECT m.id AS merchantId, m.role AS identity,
+                  CASE m.role WHEN 'stall' THEN '地摊' WHEN 'cross' THEN '异业' ELSE '供应链' END AS identityLabel,
+                  m.name, m.invite_code AS code, m.contact_phone AS phone, NULL AS points,
+                  m.status, m.deleted_at AS deletedAt, m.created_at AS createdAt,
+                  m.city, m.materials_json AS materials, m.cover_url AS coverUrl,
+                  m.address, m.contact_name AS contactName
+           FROM merchants m${merchantWhere}
+           ORDER BY m.id DESC LIMIT ${fetchLimit}`,
+          merchantParams
+        )
+      : Promise.resolve([])
+  ])
+  const merged = [
+    ...users,
+    ...merchants.map((m) => mapMerchantIdentity(m, pickCoverFromLicenses, parseMaybeJson))
+  ].sort((a, b) => Number(b.id) - Number(a.id))
+  const total = (Number(userCountRows[0]?.c) || 0) + (Number(merchantCountRows[0]?.c) || 0)
+  const list = merged.slice(paging.offset, paging.offset + paging.pageSize)
+  return pageResult(list, total, paging)
 }
 
 async function getStoreDetail(merchantId) {
@@ -473,49 +534,74 @@ async function setUserStatus(id, status) {
   return { id: Number(id), status: Number(status) }
 }
 
-/** 商品 SKU 列表（三类） */
-async function listSkus({ type, merchantId, shopName, includeDeleted } = {}) {
+function mapSkuRow(g, t, typeLabel) {
+  return {
+    id: g.id,
+    goodsType: t,
+    goodsTypeLabel: typeLabel[t] || t,
+    merchantId: g.merchant_id,
+    shopName: g.shopName,
+    name: g.name,
+    sku: g.sku_code,
+    price: g.price != null ? g.price : g.cash_price,
+    pointsNeed: g.points_need,
+    pointsGrant: g.points_grant,
+    stock: g.stock,
+    sales: g.sales_count || 0,
+    onSale: g.on_sale != null ? g.on_sale : g.status,
+    imageUrl: g.image_url,
+    deletedAt: g.deleted_at
+  }
+}
+
+/** 商品 SKU 列表（三类，分页） */
+async function listSkus({ type, merchantId, shopName, includeDeleted, page, pageSize, limit } = {}) {
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
   const types = type ? [type] : ['stall', 'cross', 'supply']
   const typeLabel = { stall: '地摊', cross: '异业门店', supply: '供应链门店' }
-  const out = []
-  for (const t of types) {
+
+  async function queryType(t, lim, off) {
     const table = t === 'stall' ? 'stall_goods' : t === 'cross' ? 'cross_goods' : 'supply_goods'
-    let sql = `SELECT g.*, m.name AS shopName, '${t}' AS goodsType
-               FROM ${table} g JOIN merchants m ON m.id=g.merchant_id
-               WHERE 1=1`
+    let where = ` WHERE 1=1`
     const params = {}
-    if (!includeDeleted) sql += ` AND g.deleted_at IS NULL`
+    if (!includeDeleted) where += ` AND g.deleted_at IS NULL`
     if (merchantId) {
-      sql += ` AND g.merchant_id=:mid`
+      where += ` AND g.merchant_id=:mid`
       params.mid = Number(merchantId)
     }
     if (shopName && String(shopName).trim()) {
-      sql += ` AND m.name LIKE :shopName`
+      where += ` AND m.name LIKE :shopName`
       params.shopName = `%${String(shopName).trim()}%`
     }
-    sql += ` ORDER BY g.id DESC LIMIT 200`
-    const rows = await query(sql, params)
-    for (const g of rows) {
-      out.push({
-        id: g.id,
-        goodsType: t,
-        goodsTypeLabel: typeLabel[t] || t,
-        merchantId: g.merchant_id,
-        shopName: g.shopName,
-        name: g.name,
-        sku: g.sku_code,
-        price: g.price != null ? g.price : g.cash_price,
-        pointsNeed: g.points_need,
-        pointsGrant: g.points_grant,
-        stock: g.stock,
-        sales: g.sales_count || 0,
-        onSale: g.on_sale != null ? g.on_sale : g.status,
-        imageUrl: g.image_url,
-        deletedAt: g.deleted_at
-      })
+    const countRows = await query(
+      `SELECT COUNT(*) AS c FROM ${table} g JOIN merchants m ON m.id=g.merchant_id${where}`,
+      params
+    )
+    const rows = await query(
+      `SELECT g.*, m.name AS shopName, '${t}' AS goodsType
+       FROM ${table} g JOIN merchants m ON m.id=g.merchant_id${where}
+       ORDER BY g.id DESC LIMIT ${lim} OFFSET ${off}`,
+      params
+    )
+    return {
+      total: Number(countRows[0]?.c) || 0,
+      list: rows.map((g) => mapSkuRow(g, t, typeLabel))
     }
   }
-  return out
+
+  if (types.length === 1) {
+    const result = await queryType(types[0], paging.limit, paging.offset)
+    return pageResult(result.list, result.total, paging)
+  }
+
+  const fetchLimit = paging.offset + paging.pageSize
+  const parts = await Promise.all(types.map((t) => queryType(t, fetchLimit, 0)))
+  const total = parts.reduce((s, p) => s + p.total, 0)
+  const merged = parts
+    .flatMap((p) => p.list)
+    .sort((a, b) => Number(b.id) - Number(a.id))
+    .slice(paging.offset, paging.offset + paging.pageSize)
+  return pageResult(merged, total, paging)
 }
 
 async function setGoodsOpen(type, id, open) {
@@ -557,13 +643,14 @@ async function saveSku(type, body) {
   } else if (type === 'cross') {
     await query(
       `UPDATE cross_goods SET name=:n, sku_code=:sku, points_need=:pn, cash_price=:cp,
-       sales_count=:sales, image_url=:img, on_sale=:onSale WHERE id=:id`,
+       stock=:s, sales_count=:sales, image_url=:img, on_sale=:onSale WHERE id=:id`,
       {
         id: body.id,
         n: body.name,
         sku: body.sku || null,
         pn: Number(body.pointsNeed) || 0,
         cp: Number(body.price || body.cashPrice) || 0,
+        s: Number(body.stock) || 0,
         sales: Number(body.sales) || 0,
         img: body.imageUrl || null,
         onSale: body.onSale === 0 ? 0 : 1

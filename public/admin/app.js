@@ -24,7 +24,8 @@ const NAV_GROUPS = [
       { id: 'stores_stall', label: '地摊门店' },
       { id: 'stores_cross', label: '异业门店' },
       { id: 'stores_supply', label: '供应链' },
-      { id: 'applies', label: '入驻审核' }
+      { id: 'applies', label: '入驻审核' },
+      { id: 'cities', label: '经营城市' }
     ]
   },
   {
@@ -206,6 +207,7 @@ function go(page) {
     stores_cross: () => renderStores('cross'),
     stores_supply: () => renderStores('supply'),
     applies: renderApplies,
+    cities: renderCities,
     merchants: () => renderStores(''),
     users: () => renderIdentities('consumer'),
     goods_sku: renderGoodsSku,
@@ -302,6 +304,43 @@ function table(headers, rowsHtml) {
   return `<div class="table-wrap"><table><thead><tr>${headers
     .map((h) => `<th>${h}</th>`)
     .join('')}</tr></thead><tbody>${rowsHtml || `<tr><td colspan="${headers.length}" class="empty">暂无数据</td></tr>`}</tbody></table></div>`
+}
+
+function unwrapList(data) {
+  if (Array.isArray(data)) {
+    return { list: data, total: data.length, page: 1, pageSize: data.length || 20 }
+  }
+  return {
+    list: Array.isArray(data?.list) ? data.list : [],
+    total: Number(data?.total) || 0,
+    page: Number(data?.page) || 1,
+    pageSize: Number(data?.pageSize) || 20
+  }
+}
+
+function pagerHtml({ page, pageSize, total }, id = 'listPager') {
+  const pages = Math.max(1, Math.ceil((Number(total) || 0) / (Number(pageSize) || 20)))
+  const p = Math.min(Math.max(1, Number(page) || 1), pages)
+  return `<div class="pager" id="${id}" data-page="${p}" data-pages="${pages}">
+    <span class="muted">共 ${Number(total) || 0} 条 · 第 ${p}/${pages} 页</span>
+    <button type="button" class="btn sm" data-pager="prev" ${p <= 1 ? 'disabled' : ''}>上一页</button>
+    <button type="button" class="btn sm" data-pager="next" ${p >= pages ? 'disabled' : ''}>下一页</button>
+  </div>`
+}
+
+function bindPager(pagerEl, pageState, onChange) {
+  if (!pagerEl) return
+  pagerEl.querySelectorAll('[data-pager]').forEach((btn) => {
+    btn.onclick = () => {
+      const pages = Number(pagerEl.dataset.pages) || 1
+      let next = Number(pageState.page) || 1
+      if (btn.dataset.pager === 'prev') next = Math.max(1, next - 1)
+      else next = Math.min(pages, next + 1)
+      if (next === Number(pageState.page)) return
+      pageState.page = next
+      onChange()
+    }
+  })
 }
 
 function openModal(title, bodyHtml, onSave, wide) {
@@ -461,6 +500,7 @@ async function renderIdentities(role) {
         ? `stores_${role}`
         : 'users_all'
   )
+  const pageState = { page: 1, pageSize: 20 }
   content().innerHTML = `
     <div class="toolbar">
       <input id="fq" placeholder="昵称/邀请码/手机/店名" />
@@ -469,16 +509,23 @@ async function renderIdentities(role) {
     <div id="list"></div>`
   const load = async () => {
     const q = $('fq').value.trim()
-    const rows = await api(
-      `/admin/ops/identities?role=${encodeURIComponent(role)}&limit=300${q ? `&q=${encodeURIComponent(q)}` : ''}`
+    const data = unwrapList(
+      await api(
+        `/admin/ops/identities?role=${encodeURIComponent(role)}&page=${pageState.page}&pageSize=${pageState.pageSize}${
+          q ? `&q=${encodeURIComponent(q)}` : ''
+        }`
+      )
     )
-    $('list').innerHTML = table(
-      ['预览', '身份', '名称', '账号/邀请码', '电话', '积分/城市', '状态', '注册', '操作'],
-      rows
-        .map((r) => {
-          const isStore = !!r.merchantId
-          const preview = thumb(r.coverUrl || r.avatarUrl)
-          return `<tr>
+    pageState.page = data.page
+    const rows = data.list
+    $('list').innerHTML =
+      table(
+        ['预览', '身份', '名称', '账号/邀请码', '电话', '积分/城市', '状态', '注册', '操作'],
+        rows
+          .map((r) => {
+            const isStore = !!r.merchantId
+            const preview = thumb(r.coverUrl || r.avatarUrl)
+            return `<tr>
           <td>${preview}</td>
           <td><span class="badge">${esc(r.identityLabel)}</span></td>
           <td>${esc(r.name)}</td><td><code>${esc(r.code)}</code></td>
@@ -507,9 +554,10 @@ async function renderIdentities(role) {
                   }`
             }
           </td></tr>`
-        })
-        .join('')
-    )
+          })
+          .join('')
+      ) + pagerHtml(data)
+    bindPager($('listPager'), pageState, () => runAction(load))
     bindThumbs($('list'))
     $('list').querySelectorAll('[data-store]').forEach((b) => {
       b.onclick = () => runAction(() => showStoreDetail(Number(b.dataset.store), load))
@@ -605,7 +653,10 @@ async function renderIdentities(role) {
         })
     })
   }
-  $('btnReload').onclick = () => runAction(load)
+  $('btnReload').onclick = () => {
+    pageState.page = 1
+    runAction(load)
+  }
   await load()
 }
 
@@ -878,6 +929,7 @@ async function showStoreDetail(id, listReload) {
 
 async function renderGoodsSku() {
   const editable = canEdit('goods_sku')
+  const pageState = { page: 1, pageSize: 20 }
   content().innerHTML = `
     <div class="toolbar">
       <label for="gType">供应商类型</label>
@@ -901,14 +953,14 @@ async function renderGoodsSku() {
     let shops = []
     try {
       if (type) {
-        shops = await api(`/admin/ops/identities?role=${type}&limit=200`)
+        shops = unwrapList(await api(`/admin/ops/identities?role=${type}&pageSize=100`)).list
       } else {
         const [stall, cross, supply] = await Promise.all([
-          api('/admin/ops/identities?role=stall&limit=100'),
-          api('/admin/ops/identities?role=cross&limit=100'),
-          api('/admin/ops/identities?role=supply&limit=100')
+          api('/admin/ops/identities?role=stall&pageSize=100'),
+          api('/admin/ops/identities?role=cross&pageSize=100'),
+          api('/admin/ops/identities?role=supply&pageSize=100')
         ])
-        shops = [...stall, ...cross, ...supply]
+        shops = [...unwrapList(stall).list, ...unwrapList(cross).list, ...unwrapList(supply).list]
       }
     } catch (_) {
       shops = []
@@ -930,17 +982,22 @@ async function renderGoodsSku() {
     const type = $('gType').value
     const merchantId = $('gShop').value
     const shopName = ($('gShopName').value || '').trim()
-    const qs = new URLSearchParams()
+    const qs = new URLSearchParams({
+      page: String(pageState.page),
+      pageSize: String(pageState.pageSize)
+    })
     if (type) qs.set('type', type)
     if (merchantId) qs.set('merchantId', merchantId)
     if (shopName) qs.set('shopName', shopName)
-    const q = qs.toString()
-    const rows = await api(`/admin/ops/skus${q ? `?${q}` : ''}`)
-    $('list').innerHTML = table(
-      ['预览', '供应商类型', '店铺名称', 'SKU', '品名', '价格', '销量', '库存', '上架', '操作'],
-      rows
-        .map(
-          (g) => `<tr>
+    const data = unwrapList(await api(`/admin/ops/skus?${qs}`))
+    pageState.page = data.page
+    const rows = data.list
+    $('list').innerHTML =
+      table(
+        ['预览', '供应商类型', '店铺名称', 'SKU', '品名', '价格', '销量', '库存', '上架', '操作'],
+        rows
+          .map(
+            (g) => `<tr>
         <td>${thumb(g.imageUrl)}</td>
         <td>${esc(g.goodsTypeLabel || g.goodsType)}</td><td>${esc(g.shopName)}</td>
         <td><code>${esc(g.sku)}</code></td><td>${esc(g.name)}</td>
@@ -955,9 +1012,10 @@ async function renderGoodsSku() {
               : '-'
           }
         </td></tr>`
-        )
-        .join('')
-    )
+          )
+          .join('')
+      ) + pagerHtml(data)
+    bindPager($('listPager'), pageState, () => runAction(load))
     bindThumbs($('list'))
     $('list').querySelectorAll('[data-edit]').forEach((b) => {
       b.onclick = () => {
@@ -1017,21 +1075,33 @@ async function renderGoodsSku() {
         })
     })
   }
-  $('btnReload').onclick = () => runAction(load)
+  $('btnReload').onclick = () => {
+    pageState.page = 1
+    runAction(load)
+  }
   $('gType').onchange = () =>
     runAction(async () => {
+      pageState.page = 1
       await refreshShops()
       await load()
     })
-  $('gShop').onchange = () => runAction(load)
+  $('gShop').onchange = () => {
+    pageState.page = 1
+    runAction(load)
+  }
   $('gShopName').onkeydown = (e) => {
-    if (e.key === 'Enter') runAction(load)
+    if (e.key === 'Enter') {
+      pageState.page = 1
+      runAction(load)
+    }
   }
   await refreshShops()
   await load()
 }
 
 async function renderApplies() {
+  const editable = canEdit('applies')
+  const pageState = { page: 1, pageSize: 20 }
   content().innerHTML = `
     <div class="toolbar">
       <select id="fStatus">
@@ -1045,12 +1115,17 @@ async function renderApplies() {
     <div id="list"></div>`
   const load = async () => {
     const status = $('fStatus').value
-    const rows = await api(`/admin/applies${status ? `?status=${status}` : ''}`)
-    $('list').innerHTML = table(
-      ['证照预览', '单号', '角色', '店名', '联系人', '城市', '证照数', '状态', '时间', '操作'],
-      rows
-        .map(
-          (r) => `<tr>
+    const qs = new URLSearchParams({ page: String(pageState.page), pageSize: String(pageState.pageSize) })
+    if (status) qs.set('status', status)
+    const data = unwrapList(await api(`/admin/applies?${qs}`))
+    pageState.page = data.page
+    const rows = data.list
+    $('list').innerHTML =
+      table(
+        ['证照预览', '单号', '角色', '店名', '联系人', '城市', '证照数', '状态', '时间', '操作'],
+        rows
+          .map(
+            (r) => `<tr>
         <td>${thumb(r.licensePreview)}</td>
         <td>${esc(r.applyNo)}</td><td>${esc(r.roleLabel)}</td>
         <td>${esc(r.shopName)}</td><td>${esc(r.contactName)} ${esc(r.contactPhone)}</td>
@@ -1058,31 +1133,41 @@ async function renderApplies() {
         <td class="actions">
           <button class="btn sm" data-detail="${r.id}">详情审核</button>
           ${
-            r.status === 'pending'
+            r.status === 'pending' && editable
               ? `<button class="btn ok sm" data-ok="${r.id}">通过</button>
                  <button class="btn danger sm" data-no="${r.id}">驳回</button>`
               : ''
           }
         </td></tr>`
-        )
-        .join('')
-    )
+          )
+          .join('')
+      ) + pagerHtml(data)
+    bindPager($('listPager'), pageState, () => runAction(load))
     bindThumbs($('list'))
     $('list').querySelectorAll('[data-detail]').forEach((b) => {
       b.onclick = () => showApplyDetail(Number(b.dataset.detail), load)
     })
     $('list').querySelectorAll('[data-ok]').forEach((b) => {
       b.onclick = async () => {
+        const remark = prompt('通过备注（可留空）', '')
+        if (remark === null) return
         if (!confirm('确认通过该入驻申请？')) return
-        const res = await api(`/admin/apply/${b.dataset.ok}/approve`, { method: 'POST', body: '{}' })
+        const res = await api(`/admin/apply/${b.dataset.ok}/approve`, {
+          method: 'POST',
+          body: JSON.stringify({ remark })
+        })
         alert(`已通过，商户 ID ${res.merchantId || '-'} 已写入门店列表（按角色查看地摊/异业/供应链）`)
         load()
       }
     })
     $('list').querySelectorAll('[data-no]').forEach((b) => {
       b.onclick = async () => {
-        const reason = prompt('驳回原因', '资料不完整')
+        const reason = prompt('驳回原因（必填）', '资料不完整')
         if (reason === null) return
+        if (!String(reason).trim()) {
+          alert('请填写驳回原因')
+          return
+        }
         await api(`/admin/apply/${b.dataset.no}/reject`, {
           method: 'POST',
           body: JSON.stringify({ reason })
@@ -1091,26 +1176,30 @@ async function renderApplies() {
       }
     })
   }
-  $('btnReload').onclick = load
-  $('fStatus').onchange = load
+  $('btnReload').onclick = () => {
+    pageState.page = 1
+    load()
+  }
+  $('fStatus').onchange = () => {
+    pageState.page = 1
+    load()
+  }
   await load()
 }
 
 async function showApplyDetail(id, reload) {
   const r = await api(`/admin/applies/${id}`)
   const licenses = r.licenses || {}
-  const licenseHtml = Object.keys(licenses).length
-    ? `<div class="thumb-grid">${Object.entries(licenses)
+  const licenseEntries = Object.entries(licenses).filter(([k]) => k !== 'adminRemark')
+  const licenseHtml = licenseEntries.length
+    ? `<div class="thumb-grid">${licenseEntries
         .map(([k, v]) => {
           const url = typeof v === 'string' ? v : v?.url || ''
           return `<div class="thumb-card"><div class="muted">${esc(LICENSE_LABELS[k] || k)}</div>${thumb(url, 'thumb lg')}</div>`
         })
         .join('')}</div>`
     : '<p class="muted">未上传证照</p>'
-  const actions =
-    r.status === 'pending' && canEdit('applies')
-      ? async () => {}
-      : null
+  const canReview = r.status === 'pending' && canEdit('applies')
   openModal(
     `入驻审核 · ${r.shopName}`,
     `<p>${esc(r.roleLabel)} · ${badge(r.status)} · ${esc(r.applyNo)}</p>
@@ -1118,9 +1207,10 @@ async function showApplyDetail(id, reload) {
      <p>联系人 ${esc(r.contactName)} ${esc(r.contactPhone)}</p>
      <p class="muted">${esc(r.city)} ${esc(r.address)}</p>
      ${r.rejectReason ? `<p class="err">驳回：${esc(r.rejectReason)}</p>` : ''}
+     ${licenses.adminRemark ? `<p class="muted">审核备注：${esc(licenses.adminRemark)}</p>` : ''}
      <h4>证照资料（点击放大）</h4>${licenseHtml}
      ${
-       r.status === 'pending'
+       canReview
          ? `<div class="toolbar" style="margin-top:12px">
               <button class="btn ok" id="applyOk">通过</button>
               <button class="btn danger" id="applyNo">驳回</button>
@@ -1130,13 +1220,17 @@ async function showApplyDetail(id, reload) {
     null,
     true
   )
-  void actions
   const okBtn = document.getElementById('applyOk')
   const noBtn = document.getElementById('applyNo')
   if (okBtn) {
     okBtn.onclick = async () => {
+      const remark = prompt('通过备注（可留空）', '')
+      if (remark === null) return
       if (!confirm('确认通过？')) return
-      const res = await api(`/admin/apply/${id}/approve`, { method: 'POST', body: '{}' })
+      const res = await api(`/admin/apply/${id}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ remark })
+      })
       alert(`已通过，商户 ID ${res.merchantId || '-'} 已写入门店列表`)
       closeModal()
       if (reload) reload()
@@ -1144,13 +1238,123 @@ async function showApplyDetail(id, reload) {
   }
   if (noBtn) {
     noBtn.onclick = async () => {
-      const reason = prompt('驳回原因', '资料不完整')
+      const reason = prompt('驳回原因（必填）', '资料不完整')
       if (reason === null) return
+      if (!String(reason).trim()) {
+        alert('请填写驳回原因')
+        return
+      }
       await api(`/admin/apply/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) })
       closeModal()
       if (reload) reload()
     }
   }
+}
+
+async function renderCities() {
+  const editable = canEdit('cities')
+  const pageState = { page: 1, pageSize: 20 }
+  content().innerHTML = `
+    <div class="toolbar">
+      <select id="fCityStatus">
+        <option value="">全部</option>
+        <option value="1">已开通</option>
+        <option value="0">已关闭</option>
+      </select>
+      <button class="btn" id="btnReload">刷新</button>
+      ${editable ? '<button class="btn primary" id="btnOpenCity">开通/更新城市</button>' : ''}
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const status = $('fCityStatus').value
+    const qs = new URLSearchParams({ page: String(pageState.page), pageSize: String(pageState.pageSize) })
+    if (status !== '') qs.set('status', status)
+    const data = unwrapList(await api(`/admin/cities?${qs}`))
+    pageState.page = data.page
+    $('list').innerHTML =
+      table(
+        ['ID', '城市', '省份', '状态', '开通时间', '在营门店', '有坐标', '备注', '操作'],
+        data.list
+          .map(
+            (r) => `<tr>
+        <td>${r.id}</td>
+        <td>${esc(r.name)}</td>
+        <td>${esc(r.province || '-')}</td>
+        <td>${Number(r.status) === 1 ? badge('open') : badge('closed')}</td>
+        <td>${fmtTime(r.openedAt)}</td>
+        <td>${r.merchantCount ?? 0}</td>
+        <td>${r.geoCount ?? 0}</td>
+        <td>${esc(r.remark || '-')}</td>
+        <td class="actions">
+          ${
+            editable
+              ? `<button class="btn sm" data-edit='${encodeURIComponent(JSON.stringify(r))}'>编辑</button>
+                 ${
+                   Number(r.status) === 1
+                     ? `<button class="btn danger sm" data-close="${r.id}" data-name="${encodeURIComponent(r.name || '')}">关城</button>`
+                     : `<button class="btn ok sm" data-reopen='${encodeURIComponent(JSON.stringify(r))}'>重新开通</button>`
+                 }`
+              : '-'
+          }
+        </td></tr>`
+          )
+          .join('')
+      ) + pagerHtml(data)
+    bindPager($('listPager'), pageState, () => runAction(load))
+    const openEditor = (row = {}) => {
+      openModal(
+        row.id ? '编辑经营城市' : '开通经营城市',
+        field('name', '城市名', row.name || '') +
+          field('province', '省份', row.province || '') +
+          field('remark', '备注', row.remark || '') +
+          `<label>状态<select name="status"><option value="1" ${Number(row.status) !== 0 ? 'selected' : ''}>开通</option><option value="0" ${Number(row.status) === 0 ? 'selected' : ''}>关闭</option></select></label>`,
+        async () => {
+          const name = formVal('name').trim()
+          if (!name) throw new Error('请填写城市名')
+          await api('/admin/cities', {
+            method: 'POST',
+            body: JSON.stringify({
+              name,
+              province: formVal('province').trim() || null,
+              remark: formVal('remark').trim() || null,
+              status: Number(formVal('status'))
+            })
+          })
+          load()
+        }
+      )
+    }
+    const btnOpen = $('btnOpenCity')
+    if (btnOpen) btnOpen.onclick = () => openEditor({})
+    $('list').querySelectorAll('[data-edit]').forEach((b) => {
+      b.onclick = () => openEditor(JSON.parse(decodeURIComponent(b.dataset.edit)))
+    })
+    $('list').querySelectorAll('[data-reopen]').forEach((b) => {
+      b.onclick = () => {
+        const row = JSON.parse(decodeURIComponent(b.dataset.reopen))
+        openEditor({ ...row, status: 1 })
+      }
+    })
+    $('list').querySelectorAll('[data-close]').forEach((b) => {
+      b.onclick = () =>
+        runAction(async () => {
+          const cityName = decodeURIComponent(b.dataset.name || '')
+          if (!confirm(`确认关闭经营城市「${cityName}」？在营门店将无法新开城入驻。`)) return
+          const res = await api(`/admin/cities/${b.dataset.close}/close`, { method: 'POST', body: '{}' })
+          alert(`已关城。当前仍有 ${res.activeMerchants ?? 0} 家在营门店归属该城市。`)
+          load()
+        })
+    })
+  }
+  $('btnReload').onclick = () => {
+    pageState.page = 1
+    runAction(load)
+  }
+  $('fCityStatus').onchange = () => {
+    pageState.page = 1
+    runAction(load)
+  }
+  await load()
 }
 
 async function renderMerchants() {
@@ -1320,6 +1524,8 @@ async function renderUsers() {
 }
 
 async function renderGoods() {
+  const editable = canEdit('goods')
+  const pageState = { page: 1, pageSize: 20 }
   content().innerHTML = `
     <div class="toolbar">
       <select id="gType">
@@ -1328,58 +1534,77 @@ async function renderGoods() {
         <option value="supply">供应链货品</option>
       </select>
       <button class="btn" id="btnReload">刷新</button>
-      <button class="btn primary" id="btnAdd">新建</button>
+      ${editable ? '<button class="btn primary" id="btnAdd">新建</button>' : ''}
     </div>
     <div id="list"></div>`
   const load = async () => {
     const type = $('gType').value
-    const rows = await api(`/admin/goods/${type}`)
+    const data = unwrapList(
+      await api(`/admin/goods/${type}?page=${pageState.page}&pageSize=${pageState.pageSize}`)
+    )
+    pageState.page = data.page
+    const rows = data.list
+    const delBtn = (g) =>
+      editable
+        ? `<button class="btn danger sm" data-del="${type}:${g.id}">删除</button>`
+        : ''
     if (type === 'stall') {
-      $('list').innerHTML = table(
-        ['预览', 'ID', '店名', '品名', '价', '积分', '分类', '库存', '上架', '操作'],
-        rows
-          .map(
-            (g) => `<tr>
+      $('list').innerHTML =
+        table(
+          ['预览', 'ID', '店名', '品名', '价', '积分', '分类', '库存', '上架', '操作'],
+          rows
+            .map(
+              (g) => `<tr>
           <td>${thumb(g.imageUrl)}</td>
           <td>${g.id}</td><td>${esc(g.shopName)}</td><td>${esc(g.name)}</td>
           <td>${g.price}</td><td>${g.pointsGrant}</td><td>${esc(g.category)}</td><td>${g.stock}</td>
           <td>${g.onSale}</td>
-          <td>
-            <button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button>
-            <button class="btn sm" data-opts="${g.id}" data-name="${esc(g.name)}">规格</button>
+          <td class="actions">
+            ${editable ? `<button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button>
+            <button class="btn sm" data-opts="${g.id}" data-name="${esc(g.name)}">规格</button>` : '-'}
+            ${delBtn(g)}
           </td></tr>`
-          )
-          .join('')
-      )
+            )
+            .join('')
+        ) + pagerHtml(data)
     } else if (type === 'cross') {
-      $('list').innerHTML = table(
-        ['预览', 'ID', '店名', '品名', '类目', '积分', '现金价', '上架', '操作'],
-        rows
-          .map(
-            (g) => `<tr>
+      $('list').innerHTML =
+        table(
+          ['预览', 'ID', '店名', '品名', '类目', '积分', '现金价', '库存', '上架', '操作'],
+          rows
+            .map(
+              (g) => `<tr>
           <td>${thumb(g.imageUrl)}</td>
           <td>${g.id}</td><td>${esc(g.shopName)}</td><td>${esc(g.name)}</td>
           <td>${esc(g.category || '')}</td>
-          <td>${g.pointsNeed}</td><td>${g.cashPrice}</td><td>${g.onSale}</td>
-          <td><button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button></td></tr>`
-          )
-          .join('')
-      )
+          <td>${g.pointsNeed}</td><td>${g.cashPrice}</td><td>${g.stock ?? '-'}</td><td>${g.onSale}</td>
+          <td class="actions">
+            ${editable ? `<button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button>` : '-'}
+            ${delBtn(g)}
+          </td></tr>`
+            )
+            .join('')
+        ) + pagerHtml(data)
     } else {
-      $('list').innerHTML = table(
-        ['预览', 'ID', '供应方', '品名', '类目', '价', '库存', '积分', '状态', '操作'],
-        rows
-          .map(
-            (g) => `<tr>
+      $('list').innerHTML =
+        table(
+          ['预览', 'ID', '供应方', '品名', '类目', '价', '库存', '积分', '状态', '操作'],
+          rows
+            .map(
+              (g) => `<tr>
           <td>${thumb(g.imageUrl)}</td>
           <td>${g.id}</td><td>${esc(g.vendor)}</td><td>${esc(g.name)}</td>
           <td>${esc(g.category || '')}</td>
           <td>${g.price}</td><td>${g.stock}</td><td>${g.pointsGrant}</td><td>${g.status}</td>
-          <td><button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button></td></tr>`
-          )
-          .join('')
-      )
+          <td class="actions">
+            ${editable ? `<button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button>` : '-'}
+            ${delBtn(g)}
+          </td></tr>`
+            )
+            .join('')
+        ) + pagerHtml(data)
     }
+    bindPager($('listPager'), pageState, () => runAction(load))
     bindThumbs($('list'))
     $('list').querySelectorAll('[data-edit]').forEach((b) => {
       b.onclick = () => editGoods(type, JSON.parse(decodeURIComponent(b.getAttribute('data-edit'))), load)
@@ -1387,10 +1612,26 @@ async function renderGoods() {
     $('list').querySelectorAll('[data-opts]').forEach((b) => {
       b.onclick = () => editStallOptions(Number(b.getAttribute('data-opts')), b.getAttribute('data-name'), load)
     })
+    $('list').querySelectorAll('[data-del]').forEach((b) => {
+      b.onclick = () =>
+        runAction(async () => {
+          if (!confirm('确认删除该商品？')) return
+          const [t, id] = b.dataset.del.split(':')
+          await api(`/admin/goods/${t}/${id}`, { method: 'DELETE' })
+          load()
+        })
+    })
   }
-  $('btnAdd').onclick = () => editGoods($('gType').value, null, load)
-  $('btnReload').onclick = load
-  $('gType').onchange = load
+  const btnAdd = $('btnAdd')
+  if (btnAdd) btnAdd.onclick = () => editGoods($('gType').value, null, load)
+  $('btnReload').onclick = () => {
+    pageState.page = 1
+    load()
+  }
+  $('gType').onchange = () => {
+    pageState.page = 1
+    load()
+  }
   await load()
 }
 
@@ -1716,6 +1957,7 @@ async function editStallOptions(goodsId, goodsName, reload) {
 }
 
 async function renderOrders() {
+  const pageState = { page: 1, pageSize: 20 }
   content().innerHTML = `
     <div class="toolbar">
       <select id="oType">
@@ -1728,53 +1970,67 @@ async function renderOrders() {
     <div id="list"></div>`
   const load = async () => {
     const type = $('oType').value
-    const rows = await api(`/admin/orders/${type}`)
+    const data = unwrapList(
+      await api(`/admin/orders/${type}?page=${pageState.page}&pageSize=${pageState.pageSize}`)
+    )
+    pageState.page = data.page
+    const rows = data.list
     if (type === 'consumer') {
-      $('list').innerHTML = table(
-        ['单号', '用户', '门店', '金额', '积分', '支付', '状态', '时间', '操作'],
-        rows
-          .map(
-            (o) => `<tr>
+      $('list').innerHTML =
+        table(
+          ['单号', '用户', '门店', '金额', '积分', '支付', '状态', '时间', '操作'],
+          rows
+            .map(
+              (o) => `<tr>
           <td>${esc(o.orderNo)}</td><td>${esc(o.userName)}</td><td>${esc(o.shopName)}</td>
           <td>${o.totalAmount}</td><td>${o.pointsAllocated}</td><td>${esc(o.payStatus)}</td>
           <td>${esc(o.orderStatus)}</td><td>${fmtTime(o.createdAt)}</td>
           <td><button class="btn sm" data-detail="${o.id}">详情</button></td></tr>`
-          )
-          .join('')
-      )
+            )
+            .join('')
+        ) + pagerHtml(data)
     } else if (type === 'cross') {
-      $('list').innerHTML = table(
-        ['单号', '用户', '门店', '商品', '方式', '积分', '现金', '状态', '时间', '操作'],
-        rows
-          .map(
-            (o) => `<tr>
+      $('list').innerHTML =
+        table(
+          ['单号', '用户', '门店', '商品', '方式', '积分', '现金', '状态', '时间', '操作'],
+          rows
+            .map(
+              (o) => `<tr>
           <td>${esc(o.orderNo)}</td><td>${esc(o.userName)}</td><td>${esc(o.shopName)}</td>
           <td>${esc(o.goodsName)}</td><td>${esc(o.payMode)}</td><td>${o.pointsSpend}</td>
           <td>${o.cashAmount}</td><td>${esc(o.status)}</td><td>${fmtTime(o.createdAt)}</td>
           <td><button class="btn sm" data-detail="${o.id}">详情</button></td></tr>`
-          )
-          .join('')
-      )
+            )
+            .join('')
+        ) + pagerHtml(data)
     } else {
-      $('list').innerHTML = table(
-        ['单号', '买方', '卖方', '金额', '积分', '履约', '状态', '时间', '操作'],
-        rows
-          .map(
-            (o) => `<tr>
+      $('list').innerHTML =
+        table(
+          ['单号', '买方', '卖方', '金额', '积分', '履约', '状态', '时间', '操作'],
+          rows
+            .map(
+              (o) => `<tr>
           <td>${esc(o.orderNo)}</td><td>${esc(o.buyerName)}</td><td>${esc(o.sellerName)}</td>
           <td>${o.totalAmount}</td><td>${o.pointsGrant}</td><td>${esc(o.fulfillType)}</td>
           <td>${esc(o.status)}</td><td>${fmtTime(o.createdAt)}</td>
           <td><button class="btn sm" data-detail="${o.id}">详情</button></td></tr>`
-          )
-          .join('')
-      )
+            )
+            .join('')
+        ) + pagerHtml(data)
     }
+    bindPager($('listPager'), pageState, () => runAction(load))
     $('list').querySelectorAll('[data-detail]').forEach((b) => {
       b.onclick = () => showOrderDetail(type, Number(b.dataset.detail))
     })
   }
-  $('btnReload').onclick = load
-  $('oType').onchange = load
+  $('btnReload').onclick = () => {
+    pageState.page = 1
+    load()
+  }
+  $('oType').onchange = () => {
+    pageState.page = 1
+    load()
+  }
   await load()
 }
 
@@ -2064,6 +2320,7 @@ async function renderConfigs() {
 
 async function renderWithdraws() {
   const editable = canEdit('withdraws')
+  const pageState = { page: 1, pageSize: 20 }
   content().innerHTML = `
     <div class="toolbar">
       <select id="fStatus">
@@ -2079,14 +2336,19 @@ async function renderWithdraws() {
     <div id="list"></div>`
   const load = async () => {
     const status = $('fStatus').value
-    const rows = await api(`/admin/withdraws${status ? `?status=${status}` : ''}`)
-    $('list').innerHTML = table(
-      ['ID', '单号', '商户', '账户', '金额', '状态', '时间', '操作'],
-      rows
-        .map(
-          (w) => `<tr>
+    const qs = new URLSearchParams({ page: String(pageState.page), pageSize: String(pageState.pageSize) })
+    if (status) qs.set('status', status)
+    const data = unwrapList(await api(`/admin/withdraws?${qs}`))
+    pageState.page = data.page
+    $('list').innerHTML =
+      table(
+        ['ID', '单号', '商户', '账户', '金额', '状态', '备注', '时间', '操作'],
+        data.list
+          .map(
+            (w) => `<tr>
         <td>${w.id}</td><td>${esc(w.requestNo)}</td><td>${esc(w.shopName)}</td>
         <td>${esc(w.accountType)}</td><td>${w.amount}</td><td>${badge(w.status)}</td>
+        <td style="max-width:160px;white-space:normal">${esc(w.remark || '-')}</td>
         <td>${fmtTime(w.createdAt)}</td>
         <td class="actions">${
           !editable
@@ -2098,15 +2360,34 @@ async function renderWithdraws() {
                 ? `<button class="btn primary sm" data-act="paid" data-id="${w.id}">已打款</button>`
                 : '-'
         }</td></tr>`
-        )
-        .join('')
-    )
+          )
+          .join('')
+      ) + pagerHtml(data)
+    bindPager($('listPager'), pageState, () => runAction(load))
     $('list').querySelectorAll('[data-act]').forEach((b) => {
       b.onclick = () =>
         runAction(async () => {
+          let remark = ''
+          if (b.dataset.act === 'reject') {
+            const input = prompt('驳回原因（必填）', '信息不完整')
+            if (input === null) return
+            if (!String(input).trim()) {
+              alert('请填写驳回原因')
+              return
+            }
+            remark = String(input).trim()
+          } else if (b.dataset.act === 'approve') {
+            const input = prompt('通过备注（可留空）', '')
+            if (input === null) return
+            remark = String(input).trim()
+          } else if (b.dataset.act === 'paid') {
+            const input = prompt('打款备注（可留空）', '已打款')
+            if (input === null) return
+            remark = String(input).trim() || '已打款'
+          }
           await api(`/admin/withdraws/${b.dataset.id}/review`, {
             method: 'POST',
-            body: JSON.stringify({ action: b.dataset.act })
+            body: JSON.stringify({ action: b.dataset.act, remark })
           })
           load()
         })
@@ -2133,13 +2414,20 @@ async function renderWithdraws() {
       )
     }
   }
-  $('btnReload').onclick = () => runAction(load)
-  $('fStatus').onchange = () => runAction(load)
+  $('btnReload').onclick = () => {
+    pageState.page = 1
+    runAction(load)
+  }
+  $('fStatus').onchange = () => {
+    pageState.page = 1
+    runAction(load)
+  }
   await load()
 }
 
 async function renderComplaints() {
   const editable = canEdit('complaints')
+  const pageState = { page: 1, pageSize: 20 }
   content().innerHTML = `
     <div class="toolbar">
       <select id="fStatus">
@@ -2153,43 +2441,64 @@ async function renderComplaints() {
     <div id="list"></div>`
   const load = async () => {
     const status = $('fStatus').value
-    const rows = await api(`/admin/complaints${status ? `?status=${status}` : ''}`)
-    $('list').innerHTML = table(
-      ['ID', '用户', '类型', '内容', '状态', '时间', '操作'],
-      rows
-        .map(
-          (c) => `<tr>
+    const qs = new URLSearchParams({ page: String(pageState.page), pageSize: String(pageState.pageSize) })
+    if (status) qs.set('status', status)
+    const data = unwrapList(await api(`/admin/complaints?${qs}`))
+    pageState.page = data.page
+    $('list').innerHTML =
+      table(
+        ['ID', '用户', '类型', '内容', '状态', '处理备注', '时间', '操作'],
+        data.list
+          .map(
+            (c) => `<tr>
         <td>${c.id}</td><td>${esc(c.userName)}</td><td>${esc(c.targetType)}</td>
-        <td style="max-width:280px;white-space:normal">${esc(c.content)}</td>
-        <td>${badge(c.status)}</td><td>${fmtTime(c.createdAt)}</td>
+        <td style="max-width:240px;white-space:normal">${esc(c.content)}</td>
+        <td>${badge(c.status)}</td>
+        <td style="max-width:160px;white-space:normal">${esc(c.handleRemark || '-')}</td>
+        <td>${fmtTime(c.createdAt)}</td>
         <td class="actions">
           ${
             editable
               ? `<button class="btn sm" data-id="${c.id}" data-s="processing">处理中</button>
-          <button class="btn ok sm" data-id="${c.id}" data-s="closed">关闭</button>`
+          <button class="btn ok sm" data-id="${c.id}" data-s="closed">关闭</button>
+          <button class="btn warn sm" data-id="${c.id}" data-s="open">重开</button>`
               : '-'
           }
         </td></tr>`
-        )
-        .join('')
-    )
+          )
+          .join('')
+      ) + pagerHtml(data)
+    bindPager($('listPager'), pageState, () => runAction(load))
     $('list').querySelectorAll('[data-s]').forEach((b) => {
       b.onclick = () =>
         runAction(async () => {
+          const handleRemark = prompt(
+            b.dataset.s === 'closed' ? '关闭备注（建议填写）' : '处理备注（可留空）',
+            ''
+          )
+          if (handleRemark === null) return
           await api(`/admin/complaints/${b.dataset.id}`, {
             method: 'PATCH',
-            body: JSON.stringify({ status: b.dataset.s })
+            body: JSON.stringify({ status: b.dataset.s, handleRemark })
           })
           load()
         })
     })
   }
-  $('btnReload').onclick = () => runAction(load)
-  $('fStatus').onchange = () => runAction(load)
+  $('btnReload').onclick = () => {
+    pageState.page = 1
+    runAction(load)
+  }
+  $('fStatus').onchange = () => {
+    pageState.page = 1
+    runAction(load)
+  }
   await load()
 }
 
 async function renderNeeds() {
+  const editable = canEdit('needs')
+  const pageState = { page: 1, pageSize: 20 }
   content().innerHTML = `
     <div class="toolbar">
       <select id="fStatus">
@@ -2203,26 +2512,56 @@ async function renderNeeds() {
     <div id="list"></div>`
   const load = async () => {
     const status = $('fStatus').value
-    const rows = await api(`/admin/supply-needs${status ? `?status=${status}` : ''}`)
-    $('list').innerHTML = table(
-      ['ID', '品名', '数量', '期望', '备注', '状态', '时间', '操作'],
-      rows
-        .map(
-          (n) => `<tr>
+    const qs = new URLSearchParams({ page: String(pageState.page), pageSize: String(pageState.pageSize) })
+    if (status) qs.set('status', status)
+    const data = unwrapList(await api(`/admin/supply-needs?${qs}`))
+    pageState.page = data.page
+    $('list').innerHTML =
+      table(
+        ['ID', '品名', '数量', '期望', '备注', '报价', '状态', '时间', '操作'],
+        data.list
+          .map(
+            (n) => `<tr>
         <td>${n.id}</td><td>${esc(n.goodsName)}</td><td>${esc(n.qtyText)}</td>
-        <td>${esc(n.expectTime)}</td><td style="max-width:200px;white-space:normal">${esc(n.note)}</td>
+        <td>${esc(n.expectTime)}</td><td style="max-width:160px;white-space:normal">${esc(n.note)}</td>
+        <td>${n.quotePrice != null ? esc(n.quotePrice) : '-'}${n.quoteNote ? `<div class="muted">${esc(n.quoteNote)}</div>` : ''}</td>
         <td>${badge(n.status)}</td><td>${fmtTime(n.createdAt)}</td>
         <td class="actions">
           ${
-            canEdit('needs')
-              ? `<button class="btn sm" data-id="${n.id}" data-s="quoted">已报价</button>
+            editable
+              ? `<button class="btn sm" data-quote="${n.id}" data-price="${n.quotePrice ?? ''}" data-note="${encodeURIComponent(n.quoteNote || '')}">报价</button>
           <button class="btn ok sm" data-id="${n.id}" data-s="closed">关闭</button>`
               : '-'
           }
         </td></tr>`
+          )
+          .join('')
+      ) + pagerHtml(data)
+    bindPager($('listPager'), pageState, () => runAction(load))
+    $('list').querySelectorAll('[data-quote]').forEach((b) => {
+      b.onclick = () => {
+        openModal(
+          '供应需求报价',
+          field('quoteAmount', '报价金额', b.dataset.price || '', 'number') +
+            field('quoteRemark', '报价说明', decodeURIComponent(b.dataset.note || '')),
+          async () => {
+            const quoteAmount = formVal('quoteAmount')
+            if (quoteAmount === '' || Number.isNaN(Number(quoteAmount))) {
+              throw new Error('请填写报价金额')
+            }
+            await api(`/admin/supply-needs/${b.dataset.quote}`, {
+              method: 'PATCH',
+              body: JSON.stringify({
+                status: 'quoted',
+                quoteAmount: Number(quoteAmount),
+                quoteRemark: formVal('quoteRemark')
+              })
+            })
+            load()
+          }
         )
-        .join('')
-    )
+      }
+    })
     $('list').querySelectorAll('[data-s]').forEach((b) => {
       b.onclick = () =>
         runAction(async () => {
@@ -2234,31 +2573,46 @@ async function renderNeeds() {
         })
     })
   }
-  $('btnReload').onclick = () => runAction(load)
-  $('fStatus').onchange = () => runAction(load)
+  $('btnReload').onclick = () => {
+    pageState.page = 1
+    runAction(load)
+  }
+  $('fStatus').onchange = () => {
+    pageState.page = 1
+    runAction(load)
+  }
   await load()
 }
 
 async function renderReferrals() {
+  const pageState = { page: 1, pageSize: 20 }
   content().innerHTML = `<div class="toolbar"><button class="btn" id="btnReload">刷新</button>
     <button class="btn" id="btnRules">去配置奖励</button></div><div id="list"></div>`
   const load = async () => {
-    const rows = await api('/admin/referrals')
-    $('list').innerHTML = table(
-      ['ID', '邀请人', '被邀请', '触发点', '奖励积分', '时间'],
-      rows
-        .map(
-          (r) => `<tr>
+    const data = unwrapList(
+      await api(`/admin/referrals?page=${pageState.page}&pageSize=${pageState.pageSize}`)
+    )
+    pageState.page = data.page
+    $('list').innerHTML =
+      table(
+        ['ID', '邀请人', '被邀请', '触发点', '奖励积分', '时间'],
+        data.list
+          .map(
+            (r) => `<tr>
         <td>${r.id}</td>
         <td>${esc(r.inviterName)} <code>${esc(r.inviterCode)}</code></td>
         <td>${esc(r.inviteeName || r.inviteeMerchantName || '—')} <code>${esc(r.inviteeCode || '')}</code></td>
         <td>${esc(r.triggerName || r.triggerType)}</td><td>${r.rewardPoints}</td><td>${fmtTime(r.createdAt)}</td></tr>`
-        )
-        .join('')
-    )
+          )
+          .join('')
+      ) + pagerHtml(data)
+    bindPager($('listPager'), pageState, () => runAction(load))
   }
   $('btnRules').onclick = () => go('referral_triggers')
-  $('btnReload').onclick = load
+  $('btnReload').onclick = () => {
+    pageState.page = 1
+    load()
+  }
   await load()
 }
 
@@ -2546,6 +2900,7 @@ async function renderSysAccounts() {
 
 async function renderSysMedia() {
   const editable = canEdit('sys_media')
+  const pageState = { page: 1, pageSize: 20 }
   content().innerHTML = `
     <div class="toolbar">
       <select id="fBiz">
@@ -2562,13 +2917,17 @@ async function renderSysMedia() {
     <div id="list"></div>`
   const load = async () => {
     const biz = $('fBiz').value
-    const rows = await api(`/admin/media${biz ? `?bizType=${biz}` : ''}`)
-    $('list').innerHTML = table(
-      ['预览', 'ID', '类型', '大小', '尺寸', 'URL', '时间', '操作'],
-      rows
-        .map((m) => {
-          const isImg = String(m.mime || '').startsWith('image/') || isImgUrl(m.fileUrl)
-          return `<tr>
+    const qs = new URLSearchParams({ page: String(pageState.page), pageSize: String(pageState.pageSize) })
+    if (biz) qs.set('bizType', biz)
+    const data = unwrapList(await api(`/admin/media?${qs}`))
+    pageState.page = data.page
+    $('list').innerHTML =
+      table(
+        ['预览', 'ID', '类型', '大小', '尺寸', 'URL', '时间', '操作'],
+        data.list
+          .map((m) => {
+            const isImg = String(m.mime || '').startsWith('image/') || isImgUrl(m.fileUrl)
+            return `<tr>
           <td>${isImg ? thumb(m.fileUrl) : '文件'}</td>
           <td>${m.id}</td><td>${esc(m.bizType)}</td>
           <td>${(m.size / 1024).toFixed(1)}KB</td>
@@ -2579,9 +2938,10 @@ async function renderSysMedia() {
             <button class="btn sm" data-copy="${esc(m.fileUrl)}">复制</button>
             ${editable ? `<button class="btn danger sm" data-del="${m.id}" data-key="${esc(m.fileKey)}">删除</button>` : ''}
           </td></tr>`
-        })
-        .join('')
-    )
+          })
+          .join('')
+      ) + pagerHtml(data)
+    bindPager($('listPager'), pageState, () => runAction(load))
     bindThumbs($('list'))
     $('list').querySelectorAll('[data-copy]').forEach((b) => {
       b.onclick = async () => {
@@ -2622,8 +2982,14 @@ async function renderSysMedia() {
       load()
     }
   }
-  $('btnReload').onclick = load
-  $('fBiz').onchange = load
+  $('btnReload').onclick = () => {
+    pageState.page = 1
+    load()
+  }
+  $('fBiz').onchange = () => {
+    pageState.page = 1
+    load()
+  }
   await load()
 }
 
