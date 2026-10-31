@@ -7,7 +7,7 @@
 .cross-hero {
   background: var(--gradient-header);
   color: #fff;
-  padding-bottom: 48rpx;
+  padding-bottom: 36rpx;
   position: relative;
   overflow: hidden;
 }
@@ -27,22 +27,13 @@
 .cross-hero__copy {
   position: relative;
   z-index: 1;
-  padding: 8rpx var(--space-page) 0;
-}
-
-.cross-hero__title {
-  display: block;
-  font-size: 48rpx;
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: 0.02em;
+  padding: 4rpx var(--space-page) 0;
 }
 
 .cross-hero__sub {
   display: block;
-  margin-top: 12rpx;
   font-size: var(--font-caption);
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.92);
   line-height: var(--lh-snug);
 }
 

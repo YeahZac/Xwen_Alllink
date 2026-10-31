@@ -2,7 +2,6 @@
   <view class="cross-hero">
     <page-nav title="分类兑换" tone="flush" flush="{{true}}" />
     <view class="cross-hero__copy">
-      <text class="cross-hero__title">异业兑换</text>
       <text class="cross-hero__sub">积分 {{points}} · 约 ¥{{cashValue}} 可抵现</text>
     </view>
   </view>
@@ -29,15 +28,15 @@
         class="store-tile"
         bindtap="openStore"
         data-id="{{item.id}}"
+        data-role="{{item.role}}"
       >
         <view class="store-tile__cover">
           <image wx:if="{{item.coverImage}}" class="cover-img" src="{{item.coverImage}}" mode="aspectFill" />
           <view wx:else class="cover-fallback">{{item.initial}}</view>
-          <text class="store-tile__badge">异业</text>
         </view>
         <view class="store-tile__body">
           <text class="store-tile__name ellipsis-1">{{item.name}}</text>
-          <text class="store-tile__meta ellipsis-1">{{item.metaText || '异业门店'}}</text>
+          <text class="store-tile__meta ellipsis-1">{{item.metaText || '附近门店'}}</text>
           <text class="store-tile__addr ellipsis-1">{{item.address || item.city || '附近'}}</text>
         </view>
       </view>
