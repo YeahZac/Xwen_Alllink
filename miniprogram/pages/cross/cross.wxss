@@ -63,3 +63,13 @@
 .cross .store-tile__cover {
   height: 240rpx;
 }
+
+/* 分类页强制不展示任何「异业」角标（含旧 store-card 样式残留） */
+.cross .store-tile__badge,
+.cross .store-card__badge {
+  display: none !important;
+}
+
+.cross-hero__title {
+  display: none !important;
+}
