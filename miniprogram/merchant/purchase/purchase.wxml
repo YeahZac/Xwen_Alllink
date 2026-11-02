@@ -41,7 +41,7 @@
       <view class="m-row__seal m-row__seal--red">采</view>
       <view class="m-row__main">
         <view class="row-between">
-          <text class="m-row__title ellipsis-1">{{item.name}}</text>
+          <text class="m-row__title">{{item.name}}</text>
           <text class="price"><text class="price__yen">¥</text>{{item.price}}</text>
         </view>
         <text class="m-row__sub">{{item.vendor}} · 库存 {{item.stock}}</text>

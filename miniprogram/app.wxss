@@ -1,5 +1,6 @@
 @import "./styles/tokens.wxss";
 @import "./styles/components.wxss";
+@import "./styles/role-kit.wxss";
 
 button {
   margin: 0;

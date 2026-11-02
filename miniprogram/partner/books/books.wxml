@@ -3,20 +3,25 @@
     <text class="m-page-head__title">内部账目</text>
     <text class="m-page-head__desc">佣金累计 · 不可自行把应付款标为已付</text>
   </view>
-  <view class="kpi-row">
-    <view class="kpi"><text class="kpi__v">{{stats.todayPts || 0}}</text><text class="kpi__l">今日</text></view>
-    <view class="kpi"><text class="kpi__v">{{stats.weekPts || 0}}</text><text class="kpi__l">本周</text></view>
-    <view class="kpi"><text class="kpi__v">{{stats.monthPts || 0}}</text><text class="kpi__l">本月</text></view>
-    <view class="kpi"><text class="kpi__v">{{stats.rewardedPoints || 0}}</text><text class="kpi__l">累计</text></view>
+  <view class="role-kpi-row">
+    <view class="role-kpi"><text class="role-kpi__v">{{stats.todayPts || 0}}</text><text class="role-kpi__l">今日</text></view>
+    <view class="role-kpi"><text class="role-kpi__v">{{stats.weekPts || 0}}</text><text class="role-kpi__l">本周</text></view>
+    <view class="role-kpi"><text class="role-kpi__v">{{stats.monthPts || 0}}</text><text class="role-kpi__l">本月</text></view>
+    <view class="role-kpi"><text class="role-kpi__v">{{stats.rewardedPoints || 0}}</text><text class="role-kpi__l">累计</text></view>
   </view>
   <view wx:if="{{loading}}" class="empty">加载中…</view>
   <view wx:elif="{{!records.length}}" class="empty">暂无流水</view>
-  <view class="row" wx:for="{{records}}" wx:key="id">
-    <view class="row__main">
-      <text class="row__t">{{item.name || '推广奖励'}}</text>
-      <text class="row__s">{{item.triggerName || ''}} · {{item.time || ''}}</text>
+  <view class="role-list" wx:else>
+    <view class="role-card" wx:for="{{records}}" wx:key="id">
+      <view class="role-card__seal">奖</view>
+      <view class="role-card__main">
+        <text class="role-card__title">{{item.name || '推广奖励'}}</text>
+        <text class="role-card__sub">{{item.triggerName || ''}} · {{item.time || ''}}</text>
+      </view>
+      <view class="role-card__side">
+        <text class="role-card__amt">+{{item.reward || 0}}</text>
+      </view>
     </view>
-    <text class="row__amt">+{{item.reward || 0}}</text>
   </view>
   <role-tabbar role="partner" active="books" />
 </view>

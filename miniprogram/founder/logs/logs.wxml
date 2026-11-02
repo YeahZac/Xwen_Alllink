@@ -5,15 +5,18 @@
   </view>
   <view wx:if="{{loading}}" class="empty">加载中…</view>
   <view wx:elif="{{!list.length}}" class="empty">暂无日志（部署后审核动作会写入）</view>
-  <view class="row" wx:for="{{list}}" wx:key="id">
-    <view class="row__main">
-      <text class="row__t">{{item.action}}</text>
-      <text class="row__s">
-        {{item.actorRole || ''}}#{{item.actorUserId || '—'}}
-        · {{item.targetType || ''}} {{item.targetId || ''}}
-        · {{item.createdAt || ''}}
-      </text>
-      <text wx:if="{{item.detail}}" class="row__d">{{item.detail}}</text>
+  <view class="role-list" wx:else>
+    <view class="role-card" wx:for="{{list}}" wx:key="id">
+      <view class="role-card__seal">志</view>
+      <view class="role-card__main">
+        <text class="role-card__title">{{item.action}}</text>
+        <text class="role-card__sub">
+          {{item.actorRole || ''}}#{{item.actorUserId || '—'}}
+          · {{item.targetType || ''}} {{item.targetId || ''}}
+          · {{item.createdAt || ''}}
+        </text>
+        <text wx:if="{{item.detail}}" class="role-card__sub">{{item.detail}}</text>
+      </view>
     </view>
   </view>
   <role-tabbar role="founder" active="logs" />

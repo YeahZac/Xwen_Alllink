@@ -5,10 +5,16 @@
   </view>
   <view wx:if="{{loading}}" class="empty">加载中…</view>
   <view wx:elif="{{!list.length}}" class="empty">暂无关联订单</view>
-  <view class="row" wx:for="{{list}}" wx:key="id">
-    <view class="row__main">
-      <text class="row__t">{{item.shopName || '门店'}} · {{item.orderNo || item.id}}</text>
-      <text class="row__s">{{item.statusText || item.status || ''}} · ¥{{item.amount || 0}} · {{item.createdAt || ''}}</text>
+  <view class="role-list" wx:else>
+    <view class="role-card" wx:for="{{list}}" wx:key="id">
+      <view class="role-card__seal">单</view>
+      <view class="role-card__main">
+        <text class="role-card__title">{{item.shopName || '门店'}} · {{item.orderNo || item.id}}</text>
+        <text class="role-card__sub">{{item.statusText || item.status || ''}} · {{item.createdAt || ''}}</text>
+      </view>
+      <view class="role-card__side">
+        <text class="role-card__amt">¥{{item.amount || 0}}</text>
+      </view>
     </view>
   </view>
   <role-tabbar role="partner" active="orders" />

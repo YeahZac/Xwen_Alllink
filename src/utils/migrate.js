@@ -192,6 +192,11 @@ async function ensureSchema() {
     console.warn('[schema] cdn media backfill', e.message)
   }
   try {
+    await runSqlStatements('31_apply_review_logs.sql', 'apply review logs')
+  } catch (e) {
+    console.warn('[schema] apply review logs', e.message)
+  }
+  try {
     await addColumn(
       'admin_accounts',
       'user_id',

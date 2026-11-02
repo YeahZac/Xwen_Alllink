@@ -19,8 +19,8 @@
     >
       <view class="m-row__seal m-row__seal--gold">{{item.name[0] || '客'}}</view>
       <view class="m-row__main">
-        <text class="m-row__title ellipsis-1">{{item.name}}</text>
-        <text class="m-row__sub ellipsis-1">{{item.sub}}</text>
+        <text class="m-row__title">{{item.name}}</text>
+        <text class="m-row__sub">{{item.sub}}</text>
       </view>
       <view class="m-row__side">
         <text class="muted">{{item.lastText}}</text>

@@ -62,9 +62,7 @@
     </view>
 
     <view class="auth-foot">
-      <text class="auth-foot__a" bindtap="goApply">商户入驻</text>
-      <text class="auth-foot__dot">·</text>
-      <text class="auth-foot__a" bindtap="queryApply">查询进度</text>
+      <text class="auth-foot__a" bindtap="queryApply">查询入驻进度</text>
     </view>
   </view>
 </view>

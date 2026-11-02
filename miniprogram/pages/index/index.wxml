@@ -61,10 +61,6 @@
         <image class="entry__img" src="/assets/icons/home-entry/entry-invite.png" mode="aspectFit" />
         <text class="entry__t">邀请</text>
       </view>
-      <view class="entry" bindtap="goApply">
-        <image class="entry__img" src="/assets/icons/home-entry/entry-shop.png" mode="aspectFit" />
-        <text class="entry__t">开店</text>
-      </view>
       <view class="entry" bindtap="goSupplyNeed">
         <image class="entry__img" src="/assets/icons/home-entry/entry-need.png" mode="aspectFit" />
         <text class="entry__t">需求</text>

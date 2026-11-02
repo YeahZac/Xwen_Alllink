@@ -5,19 +5,19 @@
   <view class="m-home-shell">
     <view class="shop-card">
       <text class="shop-card__name">{{shopName}}</text>
-      <text class="shop-card__meta ellipsis-1">{{userName}} · {{roleName}} · 商家端</text>
-      <text class="shop-card__tags ellipsis-1">{{heroMeta}}</text>
+      <text class="shop-card__meta">{{userName}} · {{roleName}} · 商家端</text>
+      <text class="shop-card__tags">{{heroMeta}}</text>
       <view class="kpi">
         <view class="kpi__cell">
-          <text class="kpi__v ellipsis-1">{{kpi.a}}</text>
+          <text class="kpi__v">{{kpi.a}}</text>
           <text class="kpi__l">{{kpi.aLabel}}</text>
         </view>
         <view class="kpi__cell">
-          <text class="kpi__v ellipsis-1">{{kpi.b}}</text>
+          <text class="kpi__v">{{kpi.b}}</text>
           <text class="kpi__l">{{kpi.bLabel}}</text>
         </view>
         <view class="kpi__cell">
-          <text class="kpi__v ellipsis-1">{{kpi.c}}</text>
+          <text class="kpi__v">{{kpi.c}}</text>
           <text class="kpi__l">{{kpi.cLabel}}</text>
         </view>
       </view>

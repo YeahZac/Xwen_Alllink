@@ -14,15 +14,15 @@
     <text class="empty-state__desc">产生收款、采购或核销后会显示在这里</text>
   </view>
 
-  <view class="m-list">
-    <view wx:for="{{list}}" wx:key="id" class="m-row">
-      <view class="m-row__seal">流</view>
-      <view class="m-row__main">
-        <text class="m-row__title ellipsis-1">{{item.title}}</text>
-        <text class="m-row__sub ellipsis-1">{{item.sub}}</text>
+  <view class="role-list" wx:else>
+    <view wx:for="{{list}}" wx:key="id" class="role-card">
+      <view class="role-card__seal">流</view>
+      <view class="role-card__main">
+        <text class="role-card__title">{{item.title}}</text>
+        <text class="role-card__sub">{{item.sub}}</text>
       </view>
-      <view class="m-row__side">
-        <text class="amt {{item.up ? 'amt--up' : 'amt--down'}}">{{item.amount}}</text>
+      <view class="role-card__side">
+        <text class="role-card__amt {{item.up ? 'amt--up' : 'amt--down'}}">{{item.amount}}</text>
       </view>
     </view>
   </view>

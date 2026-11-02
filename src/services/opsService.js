@@ -167,34 +167,98 @@ function mapMerchantIdentity(m, pickCoverFromLicenses, parseMaybeJson) {
   }
 }
 
-/** 用户总览：C端 + 商户身份（分页） */
+function mapUserIdentityRow(u) {
+  const isPartner = Number(u.isPartner || u.is_partner) === 1
+  const isFounder = Number(u.isFounder || u.is_founder) === 1
+  const isLead = Number(u.isLead || u.is_lead) === 1
+  let identity = 'consumer'
+  let identityLabel = 'C端用户'
+  if (isLead) {
+    identity = 'lead'
+    identityLabel = '负责人'
+  } else if (isFounder) {
+    identity = 'founder'
+    identityLabel = '创始人'
+  } else if (isPartner) {
+    identity = 'partner'
+    identityLabel = '合伙人'
+  }
+  return {
+    id: u.id,
+    identity,
+    identityLabel,
+    name: u.name || u.nickname,
+    code: u.code || u.invite_code,
+    phone: u.phone,
+    points: u.points != null ? u.points : u.points_balance,
+    status: u.status,
+    deletedAt: u.deletedAt || u.deleted_at,
+    createdAt: u.createdAt || u.created_at,
+    avatarUrl: u.avatarUrl || u.avatar_url,
+    merchantId: null,
+    city: null,
+    materials: null,
+    coverUrl: null,
+    isPartner,
+    isFounder,
+    isLead
+  }
+}
+
+/** 用户总览：C端 + 商户身份（分页）；支持 partner/founder/lead 筛选 */
 async function listAllIdentities({ role, q, page, pageSize, limit } = {}) {
   const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
   const { pickCoverFromLicenses, parseMaybeJson } = require('../utils/mediaPick')
-  const wantUsers = !role || role === 'consumer' || role === 'all'
+  const platformRoles = ['partner', 'founder', 'lead']
+  const wantUsers = !role || role === 'consumer' || role === 'all' || platformRoles.includes(role)
   const wantMerchants = !role || role === 'all' || ['stall', 'cross', 'supply'].includes(role)
-  const onlyUsers = role === 'consumer'
+  const onlyUsers = role === 'consumer' || platformRoles.includes(role)
   const onlyMerchants = ['stall', 'cross', 'supply'].includes(role)
 
   if (onlyUsers) {
     let where = ` WHERE u.deleted_at IS NULL`
     const params = {}
+    if (role === 'partner') where += ` AND IFNULL(u.is_partner,0)=1`
+    if (role === 'founder') where += ` AND IFNULL(u.is_founder,0)=1`
+    if (role === 'lead') where += ` AND IFNULL(u.is_lead,0)=1`
     if (q) {
       where += ` AND (u.nickname LIKE :q OR u.invite_code LIKE :q OR u.phone LIKE :q)`
       params.q = `%${q}%`
     }
-    const countRows = await query(`SELECT COUNT(*) AS c FROM users u${where}`, params)
-    const rows = await query(
-      `SELECT u.id, 'consumer' AS identity, 'C端用户' AS identityLabel,
-              u.nickname AS name, u.invite_code AS code, u.phone, u.points_balance AS points,
-              u.status, u.deleted_at AS deletedAt, u.created_at AS createdAt,
-              u.avatar_url AS avatarUrl,
-              NULL AS merchantId, NULL AS city, NULL AS materials, NULL AS coverUrl
-       FROM users u${where}
-       ORDER BY u.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
-      params
-    )
-    return pageResult(rows, Number(countRows[0]?.c) || 0, paging)
+    let countRows
+    let rows
+    try {
+      countRows = await query(`SELECT COUNT(*) AS c FROM users u${where}`, params)
+      rows = await query(
+        `SELECT u.id, u.nickname AS name, u.invite_code AS code, u.phone, u.points_balance AS points,
+                u.status, u.deleted_at AS deletedAt, u.created_at AS createdAt,
+                u.avatar_url AS avatarUrl,
+                IFNULL(u.is_partner,0) AS isPartner,
+                IFNULL(u.is_founder,0) AS isFounder,
+                IFNULL(u.is_lead,0) AS isLead
+         FROM users u${where}
+         ORDER BY u.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+        params
+      )
+    } catch (e) {
+      if (!/Unknown column.*is_(partner|founder|lead)/i.test(String(e.message || ''))) throw e
+      if (platformRoles.includes(role)) return pageResult([], 0, paging)
+      where = ` WHERE u.deleted_at IS NULL`
+      if (q) {
+        where += ` AND (u.nickname LIKE :q OR u.invite_code LIKE :q OR u.phone LIKE :q)`
+      }
+      countRows = await query(`SELECT COUNT(*) AS c FROM users u${where}`, params)
+      rows = await query(
+        `SELECT u.id, u.nickname AS name, u.invite_code AS code, u.phone, u.points_balance AS points,
+                u.status, u.deleted_at AS deletedAt, u.created_at AS createdAt,
+                u.avatar_url AS avatarUrl,
+                0 AS isPartner, 0 AS isFounder, 0 AS isLead
+         FROM users u${where}
+         ORDER BY u.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+        params
+      )
+    }
+    return pageResult(rows.map(mapUserIdentityRow), Number(countRows[0]?.c) || 0, paging)
   }
 
   if (onlyMerchants) {
@@ -239,15 +303,27 @@ async function listAllIdentities({ role, q, page, pageSize, limit } = {}) {
       : Promise.resolve([{ c: 0 }]),
     wantUsers
       ? query(
-          `SELECT u.id, 'consumer' AS identity, 'C端用户' AS identityLabel,
-                  u.nickname AS name, u.invite_code AS code, u.phone, u.points_balance AS points,
+          `SELECT u.id, u.nickname AS name, u.invite_code AS code, u.phone, u.points_balance AS points,
                   u.status, u.deleted_at AS deletedAt, u.created_at AS createdAt,
                   u.avatar_url AS avatarUrl,
-                  NULL AS merchantId, NULL AS city, NULL AS materials, NULL AS coverUrl
+                  IFNULL(u.is_partner,0) AS isPartner,
+                  IFNULL(u.is_founder,0) AS isFounder,
+                  IFNULL(u.is_lead,0) AS isLead
            FROM users u${userWhere}
            ORDER BY u.id DESC LIMIT ${fetchLimit}`,
           userParams
-        )
+        ).catch(async (e) => {
+          if (!/Unknown column.*is_(partner|founder|lead)/i.test(String(e.message || ''))) throw e
+          return query(
+            `SELECT u.id, u.nickname AS name, u.invite_code AS code, u.phone, u.points_balance AS points,
+                    u.status, u.deleted_at AS deletedAt, u.created_at AS createdAt,
+                    u.avatar_url AS avatarUrl,
+                    0 AS isPartner, 0 AS isFounder, 0 AS isLead
+             FROM users u${userWhere}
+             ORDER BY u.id DESC LIMIT ${fetchLimit}`,
+            userParams
+          )
+        })
       : Promise.resolve([]),
     wantMerchants
       ? query(
@@ -264,9 +340,9 @@ async function listAllIdentities({ role, q, page, pageSize, limit } = {}) {
       : Promise.resolve([])
   ])
   const merged = [
-    ...users,
+    ...users.map(mapUserIdentityRow),
     ...merchants.map((m) => mapMerchantIdentity(m, pickCoverFromLicenses, parseMaybeJson))
-  ].sort((a, b) => Number(b.id) - Number(a.id))
+  ].sort((a, b) => Number(b.id || b.merchantId || 0) - Number(a.id || a.merchantId || 0))
   const total = (Number(userCountRows[0]?.c) || 0) + (Number(merchantCountRows[0]?.c) || 0)
   const list = merged.slice(paging.offset, paging.offset + paging.pageSize)
   return pageResult(list, total, paging)

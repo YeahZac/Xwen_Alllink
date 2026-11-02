@@ -165,23 +165,45 @@ async function listPartnerApplies({ status } = {}) {
   }
   sql += ` ORDER BY id DESC LIMIT 100`
   try {
-    return await query(sql, params)
+    const rows = await query(sql, params)
+    const applyReviewLogService = require('./applyReviewLogService')
+    const logMap = await applyReviewLogService.listLogsBatch(
+      'partner',
+      rows.map((r) => r.id)
+    )
+    return rows.map((r) => ({
+      ...r,
+      reviewLogs: logMap[String(r.id)] || [],
+      lastReviewReason: (logMap[String(r.id)] || [])[0]?.reason || r.rejectReason || ''
+    }))
   } catch (e) {
     if (/partner_applications|doesn't exist/i.test(String(e.message || ''))) return []
     throw e
   }
 }
 
-async function approvePartnerApply(id, { reviewerId } = {}) {
+async function writePartnerReviewLog(payload) {
+  try {
+    const applyReviewLogService = require('./applyReviewLogService')
+    await applyReviewLogService.writeLog(payload)
+  } catch (e) {
+    console.warn('[partner] review log', e.message)
+  }
+}
+
+async function approvePartnerApply(id, { reviewerId, reviewerName } = {}) {
   const rows = await query(
     `SELECT id, user_id AS userId, status FROM partner_applications WHERE id=:id LIMIT 1`,
     { id: Number(id) }
   )
   if (!rows.length) throw new HttpError(404, '申请不存在')
-  if (rows[0].status !== 'pending') throw new HttpError(400, '申请已处理')
+  if (!['pending', 'rejected'].includes(rows[0].status)) {
+    throw new HttpError(400, '当前状态不可改为通过')
+  }
+  const fromStatus = rows[0].status
   await query(
     `UPDATE partner_applications
-     SET status='approved', reviewed_by=:rid, reviewed_at=NOW()
+     SET status='approved', reject_reason=NULL, reviewed_by=:rid, reviewed_at=NOW()
      WHERE id=:id`,
     { id: Number(id), rid: reviewerId || null }
   )
@@ -204,16 +226,28 @@ async function approvePartnerApply(id, { reviewerId } = {}) {
   } catch (e) {
     console.warn('[partner] provision ops account', e.message)
   }
-  return { ok: true, userId: rows[0].userId, opsAccount }
+  await writePartnerReviewLog({
+    applyType: 'partner',
+    applyId: Number(id),
+    fromStatus,
+    toStatus: 'approved',
+    reason: fromStatus === 'rejected' ? '改审为通过' : '审核通过',
+    reviewerId,
+    reviewerName
+  })
+  return { ok: true, userId: rows[0].userId, opsAccount, reopened: fromStatus === 'rejected' }
 }
 
-async function rejectPartnerApply(id, { reason, reviewerId } = {}) {
+async function rejectPartnerApply(id, { reason, reviewerId, reviewerName } = {}) {
   const rows = await query(
-    `SELECT id, status FROM partner_applications WHERE id=:id LIMIT 1`,
+    `SELECT id, user_id AS userId, status FROM partner_applications WHERE id=:id LIMIT 1`,
     { id: Number(id) }
   )
   if (!rows.length) throw new HttpError(404, '申请不存在')
-  if (rows[0].status !== 'pending') throw new HttpError(400, '申请已处理')
+  if (!['pending', 'approved'].includes(rows[0].status)) {
+    throw new HttpError(400, '当前状态不可改为驳回')
+  }
+  const fromStatus = rows[0].status
   const rejectReason = String(reason || '').trim() || '资料不完整'
   await query(
     `UPDATE partner_applications
@@ -221,7 +255,21 @@ async function rejectPartnerApply(id, { reason, reviewerId } = {}) {
      WHERE id=:id`,
     { id: Number(id), r: rejectReason, rid: reviewerId || null }
   )
-  return { ok: true }
+  if (fromStatus === 'approved' && rows[0].userId) {
+    try {
+      await query(`UPDATE users SET is_partner=0 WHERE id=:uid`, { uid: rows[0].userId })
+    } catch (_) {}
+  }
+  await writePartnerReviewLog({
+    applyType: 'partner',
+    applyId: Number(id),
+    fromStatus,
+    toStatus: 'rejected',
+    reason: rejectReason,
+    reviewerId,
+    reviewerName
+  })
+  return { ok: true, fromStatus }
 }
 
 async function listPartnerWithdraws({ status } = {}) {
@@ -525,20 +573,33 @@ async function listPlatformRoleApplies({ status, role } = {}) {
   }
   sql += ` ORDER BY id DESC LIMIT 100`
   try {
-    return await query(sql, params)
+    const rows = await query(sql, params)
+    const applyReviewLogService = require('./applyReviewLogService')
+    const logMap = await applyReviewLogService.listLogsBatch(
+      'platform_role',
+      rows.map((r) => r.id)
+    )
+    return rows.map((r) => ({
+      ...r,
+      reviewLogs: logMap[String(r.id)] || [],
+      lastReviewReason: (logMap[String(r.id)] || [])[0]?.reason || r.rejectReason || ''
+    }))
   } catch (_) {
     return []
   }
 }
 
-async function approvePlatformRoleApply(id, { reviewerId } = {}) {
+async function approvePlatformRoleApply(id, { reviewerId, reviewerName } = {}) {
   const rows = await query(
     `SELECT id, user_id AS userId, apply_role AS applyRole, status
      FROM platform_role_applications WHERE id=:id LIMIT 1`,
     { id: Number(id) }
   )
   if (!rows.length) throw new HttpError(404, '申请不存在')
-  if (rows[0].status !== 'pending') throw new HttpError(400, '申请已处理')
+  if (!['pending', 'rejected'].includes(rows[0].status)) {
+    throw new HttpError(400, '当前状态不可改为通过')
+  }
+  const fromStatus = rows[0].status
   const col = rows[0].applyRole === 'founder' ? 'is_founder' : 'is_lead'
   await query(`UPDATE users SET ${col}=1 WHERE id=:uid`, { uid: Number(rows[0].userId) })
   if (rows[0].applyRole === 'founder') {
@@ -548,7 +609,7 @@ async function approvePlatformRoleApply(id, { reviewerId } = {}) {
   }
   await query(
     `UPDATE platform_role_applications
-     SET status='approved', reviewed_by=:rid, reviewed_at=NOW() WHERE id=:id`,
+     SET status='approved', reject_reason=NULL, reviewed_by=:rid, reviewed_at=NOW() WHERE id=:id`,
     { id: Number(id), rid: reviewerId || null }
   )
   let opsAccount = null
@@ -563,23 +624,59 @@ async function approvePlatformRoleApply(id, { reviewerId } = {}) {
   } catch (e) {
     console.warn('[platform-role] provision ops account', e.message)
   }
-  return { ok: true, status: 'approved', applyRole: rows[0].applyRole, userId: rows[0].userId, opsAccount }
+  await writePartnerReviewLog({
+    applyType: 'platform_role',
+    applyId: Number(id),
+    fromStatus,
+    toStatus: 'approved',
+    reason: fromStatus === 'rejected' ? '改审为通过' : '审核通过',
+    reviewerId,
+    reviewerName
+  })
+  return {
+    ok: true,
+    status: 'approved',
+    applyRole: rows[0].applyRole,
+    userId: rows[0].userId,
+    opsAccount,
+    reopened: fromStatus === 'rejected'
+  }
 }
 
-async function rejectPlatformRoleApply(id, { reviewerId, reason } = {}) {
+async function rejectPlatformRoleApply(id, { reviewerId, reviewerName, reason } = {}) {
   const rows = await query(
-    `SELECT id, status FROM platform_role_applications WHERE id=:id LIMIT 1`,
+    `SELECT id, user_id AS userId, apply_role AS applyRole, status
+     FROM platform_role_applications WHERE id=:id LIMIT 1`,
     { id: Number(id) }
   )
   if (!rows.length) throw new HttpError(404, '申请不存在')
-  if (rows[0].status !== 'pending') throw new HttpError(400, '申请已处理')
+  if (!['pending', 'approved'].includes(rows[0].status)) {
+    throw new HttpError(400, '当前状态不可改为驳回')
+  }
+  const fromStatus = rows[0].status
+  const rejectReason = String(reason || '资料不完整').slice(0, 200)
   await query(
     `UPDATE platform_role_applications
      SET status='rejected', reject_reason=:r, reviewed_by=:rid, reviewed_at=NOW()
      WHERE id=:id`,
-    { id: Number(id), r: String(reason || '资料不完整').slice(0, 200), rid: reviewerId || null }
+    { id: Number(id), r: rejectReason, rid: reviewerId || null }
   )
-  return { ok: true, status: 'rejected' }
+  if (fromStatus === 'approved' && rows[0].userId) {
+    const col = rows[0].applyRole === 'founder' ? 'is_founder' : 'is_lead'
+    try {
+      await query(`UPDATE users SET ${col}=0 WHERE id=:uid`, { uid: Number(rows[0].userId) })
+    } catch (_) {}
+  }
+  await writePartnerReviewLog({
+    applyType: 'platform_role',
+    applyId: Number(id),
+    fromStatus,
+    toStatus: 'rejected',
+    reason: rejectReason,
+    reviewerId,
+    reviewerName
+  })
+  return { ok: true, status: 'rejected', fromStatus }
 }
 
 module.exports = {

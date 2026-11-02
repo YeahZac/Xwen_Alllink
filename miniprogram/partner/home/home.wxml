@@ -4,7 +4,7 @@
   <view class="m-home-shell">
     <view class="shop-card">
       <text class="shop-card__name">区域合伙人</text>
-      <text class="shop-card__meta ellipsis-1">{{name}} · 邀请码 {{shareCode || '—'}}</text>
+      <text class="shop-card__meta">{{name}} · 邀请码 {{shareCode || '—'}}</text>
       <text class="shop-card__tags">今日 / 本周 / 本月佣金（积分）</text>
       <view class="kpi">
         <view class="kpi__cell">

@@ -46,8 +46,8 @@
     <view wx:for="{{withdraws}}" wx:key="id" class="m-row">
       <view class="m-row__seal m-row__seal--gold">提</view>
       <view class="m-row__main">
-        <text class="m-row__title ellipsis-1">{{item.requestNo}} · {{item.amountText}}</text>
-        <text class="m-row__sub ellipsis-1">{{item.timeText}} · {{item.statusText}}</text>
+        <text class="m-row__title">{{item.requestNo}} · {{item.amountText}}</text>
+        <text class="m-row__sub">{{item.timeText}} · {{item.statusText}}</text>
       </view>
     </view>
   </view>

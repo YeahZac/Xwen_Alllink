@@ -17,6 +17,9 @@ async function dashboard() {
     users,
     merchants,
     pendingApplies,
+    pendingPartnerApplies,
+    pendingPartnerWithdraws,
+    pendingPlatformApplies,
     consumerOrders,
     crossOrders,
     purchaseOrders,
@@ -33,6 +36,9 @@ async function dashboard() {
       one('SELECT COUNT(*) c FROM merchants WHERE status=1')
     ),
     one(`SELECT COUNT(*) c FROM merchant_applications WHERE status='pending'`),
+    one(`SELECT COUNT(*) c FROM partner_applications WHERE status='pending'`).catch(() => 0),
+    one(`SELECT COUNT(*) c FROM partner_withdraw_requests WHERE status='pending'`).catch(() => 0),
+    one(`SELECT COUNT(*) c FROM platform_role_applications WHERE status='pending'`).catch(() => 0),
     one('SELECT COUNT(*) c FROM consumer_orders'),
     one('SELECT COUNT(*) c FROM cross_orders'),
     one('SELECT COUNT(*) c FROM purchase_orders'),
@@ -48,10 +54,24 @@ async function dashboard() {
     one(`SELECT COUNT(*) c FROM withdraw_requests WHERE status='pending'`)
   ])
   const rate = await getCashRate()
+  const partnerOpsPending = pendingPartnerApplies + pendingPartnerWithdraws
   return {
     users,
     merchants,
     pendingApplies,
+    pendingPartnerApplies,
+    pendingPartnerWithdraws,
+    pendingPlatformApplies,
+    partnerOpsPending,
+    identityFlagsPending: pendingPlatformApplies,
+    navBadges: {
+      applies: pendingApplies,
+      partner_ops: partnerOpsPending,
+      identity_flags: pendingPlatformApplies,
+      withdraws: pendingWithdraw,
+      complaints: openComplaints,
+      needs: openNeeds
+    },
     consumerOrders,
     crossOrders,
     purchaseOrders,

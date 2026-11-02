@@ -24,25 +24,27 @@
     <text class="empty-state__desc">切换上方分类或稍后再看</text>
   </view>
 
-  <view class="m-list">
+  <view class="role-list" wx:else>
     <view
       wx:for="{{list}}"
       wx:key="id"
-      class="m-row m-row--stack"
+      class="role-card role-card--stack"
       bindtap="onOpen"
       data-id="{{item.id}}"
     >
-      <view class="m-row__seal m-row__seal--red">单</view>
-      <view class="m-row__main">
-        <text class="m-row__title ellipsis-1">{{item.title}}</text>
-        <text class="m-row__sub ellipsis-1">{{item.sub}} · {{item.time}}</text>
+      <view class="role-card__seal">单</view>
+      <view class="role-card__main">
+        <text class="role-card__title">{{item.title}}</text>
+        <text class="role-card__sub">{{item.sub}} · {{item.time}}</text>
       </view>
-      <view class="m-row__side">
+      <view class="role-card__side">
         <text class="chip chip--soft">{{item.statusText}}</text>
-        <text class="price" wx:if="{{item.amount}}">{{item.amount}}</text>
+        <text class="role-card__amt" wx:if="{{item.amount}}">{{item.amount}}</text>
+      </view>
+      <view class="role-card__actions" wx:if="{{item.canShip || item.canConfirm || item.canComplete || item.canCancel}}">
         <button
           wx:if="{{item.canShip}}"
-          class="btn-primary"
+          class="btn-primary sm"
           size="mini"
           data-id="{{item.id}}"
           catchtap="onShip"
@@ -51,7 +53,7 @@
         >发货</button>
         <button
           wx:if="{{item.canConfirm}}"
-          class="btn-ghost"
+          class="btn-ghost sm"
           size="mini"
           data-id="{{item.id}}"
           catchtap="onConfirm"
@@ -60,7 +62,7 @@
         >确认收货</button>
         <button
           wx:if="{{item.canComplete}}"
-          class="btn-primary"
+          class="btn-primary sm"
           size="mini"
           data-id="{{item.id}}"
           catchtap="onComplete"
@@ -69,7 +71,7 @@
         >完成出餐</button>
         <button
           wx:if="{{item.canCancel}}"
-          class="btn-ghost"
+          class="btn-ghost sm"
           size="mini"
           data-id="{{item.id}}"
           catchtap="onCancel"

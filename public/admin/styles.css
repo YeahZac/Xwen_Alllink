@@ -163,6 +163,11 @@ label { display: block; font-size: 13px; color: var(--muted); }
   border-radius: 8px;
   cursor: pointer;
   font: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
 }
 .nav button.nav-item:hover { background: #f3f4f6; color: var(--text); }
 .nav button.nav-item.on {
@@ -170,6 +175,68 @@ label { display: block; font-size: 13px; color: var(--muted); }
   color: #c2410c;
   border-left: 3px solid var(--accent);
   font-weight: 600;
+}
+.nav-item__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-group__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.nav-dot {
+  flex-shrink: 0;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 0 2px #fff;
+}
+.nav-dot--group {
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  font-size: 10px;
+}
+.apply-log-row td {
+  background: #f8fafc;
+  padding: 0 !important;
+}
+.apply-log-panel {
+  padding: 12px 14px 16px;
+  border-top: 1px dashed var(--line);
+}
+.apply-log-panel h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.review-log {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.review-log__head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.review-log__reason {
+  margin-top: 4px;
+  color: #b91c1c;
+}
+.ellipsis {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .perm-toolbar {

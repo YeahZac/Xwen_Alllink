@@ -9,11 +9,14 @@
   </view>
   <view wx:if="{{loading}}" class="empty">加载中…</view>
   <view wx:elif="{{!list.length}}" class="empty">暂无数据</view>
-  <view class="row" wx:for="{{list}}" wx:key="id">
-    <view class="row__main">
-      <text class="row__t">{{item.nickname || '用户'}} · #{{item.id}}</text>
-      <text class="row__s">{{item.phone || '无手机'}} · 码 {{item.inviteCode || '—'}} · 积分 {{item.points}}</text>
-      <text class="row__tags">{{item.tags}}</text>
+  <view class="role-list" wx:else>
+    <view class="role-card" wx:for="{{list}}" wx:key="id">
+      <view class="role-card__seal">员</view>
+      <view class="role-card__main">
+        <text class="role-card__title">{{item.nickname || '用户'}} · #{{item.id}}</text>
+        <text class="role-card__sub">{{item.phone || '无手机'}} · 码 {{item.inviteCode || '—'}} · 积分 {{item.points}}</text>
+        <text class="role-card__sub role-card__tags">{{item.tags}}</text>
+      </view>
     </view>
   </view>
   <role-tabbar role="founder" active="members" />

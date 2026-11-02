@@ -5,11 +5,19 @@
   </view>
   <view wx:if="{{loading}}" class="empty">加载中…</view>
   <view wx:elif="{{!list.length}}" class="empty">暂无供货商</view>
-  <view class="row" wx:for="{{list}}" wx:key="id">
-    <image wx:if="{{item.coverImage}}" class="row__img" src="{{item.coverImage}}" mode="aspectFill" />
-    <view class="row__main">
-      <text class="row__t">{{item.name}}</text>
-      <text class="row__s">{{item.city || ''}} · {{item.distance || ''}}</text>
+  <view class="role-list" wx:else>
+    <view class="role-card" wx:for="{{list}}" wx:key="id">
+      <image
+        wx:if="{{item.coverImage}}"
+        class="role-card__cover"
+        src="{{item.coverImage}}"
+        mode="aspectFill"
+      />
+      <view wx:else class="role-card__seal">供</view>
+      <view class="role-card__main">
+        <text class="role-card__title">{{item.name}}</text>
+        <text class="role-card__sub">{{item.city || ''}} · {{item.distance || ''}}</text>
+      </view>
     </view>
   </view>
   <role-tabbar role="partner" active="supply" />

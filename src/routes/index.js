@@ -322,7 +322,8 @@ router.post(
       res.json(
         ok(
           await applyService.approveApply(Number(req.params.id), {
-            reviewerId: req.auth.userId,
+            reviewerId: req.auth.adminId || req.auth.userId,
+            reviewerName: req.auth.username || req.auth.name || '',
             remark: req.body?.remark
           })
         )
@@ -343,10 +344,24 @@ router.post(
         ok(
           await applyService.rejectApply(Number(req.params.id), {
             reason: req.body.reason,
-            reviewerId: req.auth.userId
+            reviewerId: req.auth.adminId || req.auth.userId,
+            reviewerName: req.auth.username || req.auth.name || ''
           })
         )
       )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get(
+  '/admin/applies/:id/logs',
+  ...adminOnly,
+  requirePage('applies'),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await applyService.listApplyReviewLogs(Number(req.params.id))))
     } catch (e) {
       next(e)
     }
@@ -792,7 +807,8 @@ router.post(
       res.json(
         ok(
           await partnerService.approvePlatformRoleApply(Number(req.params.id), {
-            reviewerId: req.auth.userId
+            reviewerId: req.auth.adminId || req.auth.userId,
+            reviewerName: req.auth.username || req.auth.name || ''
           })
         )
       )
@@ -811,7 +827,8 @@ router.post(
       res.json(
         ok(
           await partnerService.rejectPlatformRoleApply(Number(req.params.id), {
-            reviewerId: req.auth.userId,
+            reviewerId: req.auth.adminId || req.auth.userId,
+            reviewerName: req.auth.username || req.auth.name || '',
             reason: req.body?.reason
           })
         )
@@ -829,7 +846,12 @@ router.post(
   async (req, res, next) => {
     try {
       res.json(
-        ok(await partnerService.approvePartnerApply(Number(req.params.id), { reviewerId: req.auth.userId }))
+        ok(
+          await partnerService.approvePartnerApply(Number(req.params.id), {
+            reviewerId: req.auth.adminId || req.auth.userId,
+            reviewerName: req.auth.username || req.auth.name || ''
+          })
+        )
       )
     } catch (e) {
       next(e)
@@ -846,7 +868,8 @@ router.post(
       res.json(
         ok(
           await partnerService.rejectPartnerApply(Number(req.params.id), {
-            reviewerId: req.auth.userId,
+            reviewerId: req.auth.adminId || req.auth.userId,
+            reviewerName: req.auth.username || req.auth.name || '',
             reason: req.body?.reason
           })
         )

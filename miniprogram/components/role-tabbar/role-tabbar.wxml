@@ -7,6 +7,11 @@
     data-url="{{item.url}}"
     bindtap="onTap"
   >
+    <image
+      class="role-tab__icon"
+      src="{{active === item.id ? item.iconOn : item.icon}}"
+      mode="aspectFit"
+    />
     <text class="role-tab__t">{{item.title}}</text>
   </view>
 </view>

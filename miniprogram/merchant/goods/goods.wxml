@@ -16,26 +16,24 @@
     <text class="empty-state__desc">点上方「添加商品」完善信息后上架</text>
   </view>
 
-  <view class="m-list">
-    <view wx:for="{{list}}" wx:key="id" class="m-row m-row--stack">
-      <view class="m-row__seal m-row__seal--red">{{item.name[0] || '品'}}</view>
-      <view class="m-row__main">
+  <view class="role-list" wx:else>
+    <view wx:for="{{list}}" wx:key="id" class="role-card role-card--stack">
+      <view class="role-card__seal">{{item.name[0] || '品'}}</view>
+      <view class="role-card__main">
         <view class="goods-title">
-          <text class="m-row__title ellipsis-1">{{item.name}}</text>
+          <text class="role-card__title">{{item.name}}</text>
           <text class="chip {{role === 'supply' || item.status === '在售' || item.status === '上架' ? 'chip--soft' : 'chip--off'}}">{{item.status}}</text>
         </view>
-        <text class="m-row__sub ellipsis-1">{{item.line}}</text>
+        <text class="role-card__sub">{{item.line}}</text>
       </view>
-      <view class="m-row__side">
-        <view class="goods-actions">
-          <button class="btn-ghost" data-id="{{item.id}}" bindtap="onFullEdit">编辑</button>
-          <button class="btn-ghost" data-id="{{item.id}}" bindtap="onPrice">改价格</button>
-          <button class="btn-ghost" wx:if="{{role === 'cross'}}" data-id="{{item.id}}" bindtap="onPoints">改积分</button>
-          <button class="btn-ghost" wx:if="{{role === 'stall'}}" data-id="{{item.id}}" bindtap="onOptions">规格</button>
-          <button class="btn-ghost" data-id="{{item.id}}" bindtap="onEdit">
-            {{item.onSale ? '下架' : '上架'}}
-          </button>
-        </view>
+      <view class="role-card__actions">
+        <button class="btn-ghost sm" size="mini" data-id="{{item.id}}" bindtap="onFullEdit">编辑</button>
+        <button class="btn-ghost sm" size="mini" data-id="{{item.id}}" bindtap="onPrice">改价格</button>
+        <button class="btn-ghost sm" size="mini" wx:if="{{role === 'cross'}}" data-id="{{item.id}}" bindtap="onPoints">改积分</button>
+        <button class="btn-ghost sm" size="mini" wx:if="{{role === 'stall'}}" data-id="{{item.id}}" bindtap="onOptions">规格</button>
+        <button class="btn-ghost sm" size="mini" data-id="{{item.id}}" bindtap="onEdit">
+          {{item.onSale ? '下架' : '上架'}}
+        </button>
       </view>
     </view>
   </view>

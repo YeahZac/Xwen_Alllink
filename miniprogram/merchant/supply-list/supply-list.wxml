@@ -21,8 +21,8 @@
         <view wx:else class="cover-fallback" style="font-size: 28rpx;">{{item.initial}}</view>
       </view>
       <view class="m-row__main">
-        <text class="m-row__title ellipsis-1">{{item.name}}</text>
-        <text class="m-row__sub ellipsis-1">{{item.tag}} · 在售 {{item.goodsCount}} SKU · 累计销量 {{item.monthSales}}</text>
+        <text class="m-row__title">{{item.name}}</text>
+        <text class="m-row__sub">{{item.tag}} · 在售 {{item.goodsCount}} SKU · 累计销量 {{item.monthSales}}</text>
       </view>
       <view class="m-row__side">
         <button class="btn-primary" bindtap="goPurchase">去采购</button>

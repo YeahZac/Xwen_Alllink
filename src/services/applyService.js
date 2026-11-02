@@ -227,8 +227,17 @@ function mapStatusRow(r) {
   }
 }
 
-/** 运营审核通过：创建商户 + 额度池 + 账户 + 邀请码 */
-async function approveApply(applyId, { reviewerId, remark } = {}) {
+async function appendApplyReviewLog(payload) {
+  try {
+    const applyReviewLogService = require('./applyReviewLogService')
+    await applyReviewLogService.writeLog(payload)
+  } catch (e) {
+    console.warn('[apply] review log', e.message)
+  }
+}
+
+/** 运营审核通过：创建商户 + 额度池 + 账户 + 邀请码（支持驳回后改审通过） */
+async function approveApply(applyId, { reviewerId, reviewerName, remark } = {}) {
   return withTransaction(async (conn) => {
     const [rows] = await conn.execute(
       `SELECT * FROM merchant_applications WHERE id = ? FOR UPDATE`,
@@ -236,7 +245,68 @@ async function approveApply(applyId, { reviewerId, remark } = {}) {
     )
     if (!rows.length) throw new HttpError(404, '申请不存在')
     const a = rows[0]
-    if (a.status !== 'pending') throw new HttpError(400, '申请状态不可审核')
+    if (!['pending', 'rejected'].includes(a.status)) {
+      throw new HttpError(400, '当前状态不可改为通过（已通过请勿重复操作）')
+    }
+    const fromStatus = a.status
+
+    // 已有商户：仅改状态（改审），避免重复建店
+    if (a.merchant_id) {
+      const adminRemark = String(remark || '').trim()
+      if (adminRemark) {
+        const licenses = parseMaybeJson(a.license_json) || {}
+        licenses.adminRemark = adminRemark.slice(0, 255)
+        try {
+          await conn.execute(
+            `UPDATE merchant_applications
+             SET status='approved', reject_reason=NULL, reviewer_id=?, reviewed_at=NOW(),
+                 license_json=CAST(? AS JSON)
+             WHERE id=?`,
+            [reviewerId || null, JSON.stringify(licenses), applyId]
+          )
+        } catch (_) {
+          await conn.execute(
+            `UPDATE merchant_applications
+             SET status='approved', reject_reason=NULL, reviewer_id=?, reviewed_at=NOW()
+             WHERE id=?`,
+            [reviewerId || null, applyId]
+          )
+        }
+      } else {
+        await conn.execute(
+          `UPDATE merchant_applications
+           SET status='approved', reject_reason=NULL, reviewer_id=?, reviewed_at=NOW()
+           WHERE id=?`,
+          [reviewerId || null, applyId]
+        )
+      }
+      try {
+        await conn.execute(
+          `UPDATE merchants SET status=1, deleted_at=NULL WHERE id=?`,
+          [a.merchant_id]
+        )
+      } catch (_) {
+        await conn.execute(`UPDATE merchants SET status=1 WHERE id=?`, [a.merchant_id])
+      }
+      await appendApplyReviewLog({
+        applyType: 'merchant',
+        applyId,
+        fromStatus,
+        toStatus: 'approved',
+        reason: adminRemark || (fromStatus === 'rejected' ? '改审为通过' : '审核通过'),
+        reviewerId,
+        reviewerName
+      })
+      return {
+        merchantId: Number(a.merchant_id),
+        inviteCode: null,
+        merchantNo: null,
+        ownerUserId: null,
+        referrerUserId: null,
+        referralReward: 0,
+        reopened: fromStatus === 'rejected'
+      }
+    }
 
     // 审核通过即开通经营权限，城市必须仍处于开通状态
     const [city] = await conn.execute(
@@ -409,13 +479,24 @@ async function approveApply(applyId, { reviewerId, remark } = {}) {
       inviteeUserId: ownerUserId
     })
 
+    await appendApplyReviewLog({
+      applyType: 'merchant',
+      applyId,
+      fromStatus,
+      toStatus: 'approved',
+      reason: adminRemark || (fromStatus === 'rejected' ? '改审为通过' : '审核通过'),
+      reviewerId,
+      reviewerName
+    })
+
     return {
       merchantId,
       inviteCode,
       merchantNo,
       ownerUserId,
       referrerUserId,
-      referralReward: rewarded && rewarded.reward ? rewarded.reward : 0
+      referralReward: rewarded && rewarded.reward ? rewarded.reward : 0,
+      reopened: fromStatus === 'rejected'
     }
   })
 }
@@ -480,7 +561,27 @@ async function listApplies({ status, page, pageSize, limit } = {}) {
      ORDER BY id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
     params
   )
-  return pageResult(rows.map(mapApplyRow), total, paging)
+  const list = rows.map(mapApplyRow)
+  try {
+    const applyReviewLogService = require('./applyReviewLogService')
+    const logMap = await applyReviewLogService.listLogsBatch(
+      'merchant',
+      list.map((r) => r.id)
+    )
+    for (const item of list) {
+      item.reviewLogs = logMap[String(item.id)] || []
+      const latest = item.reviewLogs[0]
+      item.lastReviewAction = latest ? latest.actionText : ''
+      item.lastReviewReason = latest ? latest.reason || item.rejectReason || '' : item.rejectReason || ''
+    }
+  } catch (_) {
+    for (const item of list) {
+      item.reviewLogs = []
+      item.lastReviewAction = ''
+      item.lastReviewReason = item.rejectReason || ''
+    }
+  }
+  return pageResult(list, total, paging)
 }
 
 async function getApplyDetail(id) {
@@ -492,15 +593,27 @@ async function getApplyDetail(id) {
     { id }
   )
   if (!rows.length) throw new HttpError(404, '申请不存在')
-  return mapApplyRow(rows[0])
+  const detail = mapApplyRow(rows[0])
+  const applyReviewLogService = require('./applyReviewLogService')
+  detail.reviewLogs = await applyReviewLogService.listLogs('merchant', id)
+  return detail
 }
 
-async function rejectApply(applyId, { reason, reviewerId } = {}) {
-  const rows = await query(`SELECT id, status FROM merchant_applications WHERE id = :id`, {
-    id: applyId
-  })
+async function listApplyReviewLogs(id) {
+  const applyReviewLogService = require('./applyReviewLogService')
+  return applyReviewLogService.listLogs('merchant', id)
+}
+
+async function rejectApply(applyId, { reason, reviewerId, reviewerName } = {}) {
+  const rows = await query(
+    `SELECT id, status, merchant_id AS merchantId FROM merchant_applications WHERE id = :id`,
+    { id: applyId }
+  )
   if (!rows.length) throw new HttpError(404, '申请不存在')
-  if (rows[0].status !== 'pending') throw new HttpError(400, '申请状态不可审核')
+  if (!['pending', 'approved'].includes(rows[0].status)) {
+    throw new HttpError(400, '当前状态不可改为驳回')
+  }
+  const fromStatus = rows[0].status
   const rejectReason = String(reason || '').trim()
   if (!rejectReason) throw new HttpError(400, '请填写驳回原因')
   await query(
@@ -513,7 +626,26 @@ async function rejectApply(applyId, { reason, reviewerId } = {}) {
       rid: reviewerId || null
     }
   )
-  return { id: applyId, status: 'rejected' }
+  // 已通过改驳回：门店停业，不删除记录
+  if (fromStatus === 'approved' && rows[0].merchantId) {
+    try {
+      await query(`UPDATE merchants SET status=2 WHERE id=:mid AND deleted_at IS NULL`, {
+        mid: rows[0].merchantId
+      })
+    } catch (_) {
+      await query(`UPDATE merchants SET status=2 WHERE id=:mid`, { mid: rows[0].merchantId })
+    }
+  }
+  await appendApplyReviewLog({
+    applyType: 'merchant',
+    applyId,
+    fromStatus,
+    toStatus: 'rejected',
+    reason: rejectReason,
+    reviewerId,
+    reviewerName
+  })
+  return { id: applyId, status: 'rejected', fromStatus }
 }
 
 async function listMerchants({ role, limit = 200 } = {}) {
@@ -561,6 +693,7 @@ module.exports = {
   approveApply,
   listApplies,
   getApplyDetail,
+  listApplyReviewLogs,
   rejectApply,
   listMerchants
 }

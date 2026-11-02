@@ -1,0 +1,25 @@
+---
+description: 后端改动后自动 commit 并 push 到 origin/main，无需再问用户
+alwaysApply: true
+---
+
+# 后端改动自动推送 main
+
+用户明确要求：**不要再询问是否提交/推送**。只要本会话涉及后端相关改动并已完成可交付状态，就主动执行：
+
+1. 在当前仓库 `main` 分支上 `git add` 相关文件并 `commit`
+2. `git push origin main`（或当前跟踪的 `origin/main`）
+
+## 何谓「后端相关」
+
+命中任一即视为需要推送：
+
+- `src/`、`sql/`、`public/admin/`、服务配置、迁移、API/运营台逻辑
+- 同一次交付里为配合后端而改的小程序/文档，一并提交，避免半套代码
+
+## 执行要求
+
+- **不要**先问「要不要提交/推送」；做完后端改动后直接 push
+- 遵守仓库既有 Git Safety：不改 git config、不用 force push main、不跳过 hooks、不提交密钥（`.env`、credentials 等）
+- commit message 用 HEREDOC；说明「为什么」；push 后回报简短结果（含 commit 与是否已上 main）
+- 仅当 push 失败（权限/网络/冲突）时再告知用户并给出下一步，不要因此改成「每次先问一遍」
