@@ -580,11 +580,11 @@ async function ensureAnyPageAccess(auth, pageKeys = [], needEdit = false) {
 
 module.exports = {
   PAGE_CATALOG,
+  OPS_ROLE_DEFS,
   hashPassword,
   isSuperAdmin,
   ensureRbacBootstrap,
   ensureOpsRolesAndAccounts,
-  OPS_ACCOUNTS,
   registerPagePermission,
   listPermissionCatalog,
   getRolePermissions,
