@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "供应链商家"
+  "navigationBarTitleText": "供应链商家",
+  "navigationBarBackgroundColor": "#FF4D4F",
+  "navigationBarTextStyle": "white"
 }

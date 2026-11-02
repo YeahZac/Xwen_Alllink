@@ -1,7 +1,7 @@
-<view class="page">
+<view class="page page--tabbed">
   <view class="m-page-head">
-    <text class="m-page-head__title">交易流水</text>
-    <text class="m-page-head__desc">收款、采购、核销与结算</text>
+    <text class="m-page-head__title">财务</text>
+    <text class="m-page-head__desc">收款、采购、核销与结算流水</text>
   </view>
 
   <view wx:if="{{loading}}" class="empty-state">
@@ -26,4 +26,5 @@
       </view>
     </view>
   </view>
+  <role-tabbar role="merchant" active="finance" />
 </view>

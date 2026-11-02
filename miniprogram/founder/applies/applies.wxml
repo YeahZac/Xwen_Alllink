@@ -1,0 +1,20 @@
+<view class="page founder-applies page--tabbed">
+  <view class="tabs">
+    <text class="tab {{tab==='merchant'?'tab--on':''}}" data-tab="merchant" bindtap="onTab">商家入驻</text>
+    <text class="tab {{tab==='partner'?'tab--on':''}}" data-tab="partner" bindtap="onTab">合伙人</text>
+    <text class="tab {{tab==='withdraw'?'tab--on':''}}" data-tab="withdraw" bindtap="onTab">提现</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty">加载中…</view>
+  <view wx:elif="{{!list.length}}" class="empty">暂无待审</view>
+
+  <view class="card" wx:for="{{list}}" wx:key="id">
+    <view class="card__title">{{item.title}}</view>
+    <view class="card__meta">{{item.meta}}</view>
+    <view class="card__actions">
+      <button class="btn-ghost sm" size="mini" data-id="{{item.id}}" bindtap="onReject">驳回</button>
+      <button class="btn-primary sm" size="mini" data-id="{{item.id}}" bindtap="onApprove">通过</button>
+    </view>
+  </view>
+  <role-tabbar role="founder" active="audit" />
+</view>

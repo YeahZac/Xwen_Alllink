@@ -59,18 +59,40 @@ async function listNearbyStalls(opts = {}) {
   return applyGeo(rows.map((r) => enrichCoverRow(r)), opts)
 }
 
+/**
+ * 可兑门店列表。
+ * - 默认仅异业（首页「兑换」分栏）
+ * - opts.allRedeemable / opts.includeStall：分类页展示全部可参与门店（异业+地摊）
+ */
 async function listCrossStores(opts = {}) {
+  const includeStall =
+    opts.allRedeemable === true ||
+    opts.allRedeemable === '1' ||
+    opts.allRedeemable === 1 ||
+    opts.includeStall === true ||
+    opts.includeStall === '1' ||
+    opts.includeStall === 1
+  const roleSql = includeStall ? `m.role IN ('cross', 'stall')` : `m.role='cross'`
   const stores = await query(
-    `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude,
+    `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude, m.role,
             m.cover_hue AS coverHue, m.cover_url AS coverImage, m.materials_json AS materialsJson,
             LEFT(m.name,1) AS initial,
-            IFNULL(NULLIF(m.biz_type,''), '百货商店') AS category
+            IFNULL(
+              NULLIF(m.biz_type,''),
+              CASE WHEN m.role='stall' THEN '餐饮' ELSE '百货商店' END
+            ) AS category
      FROM merchants m
-     WHERE m.role='cross' AND m.status=1 AND m.deleted_at IS NULL
+     WHERE ${roleSql} AND m.status=1 AND m.deleted_at IS NULL
      ORDER BY m.id DESC`
   )
   const located = applyGeo(stores.map((r) => enrichCoverRow(r)), opts)
   for (const s of located) {
+    s.role = s.role || 'cross'
+    s.roleLabel = s.role === 'stall' ? '点餐' : '兑换'
+    if (s.role !== 'cross') {
+      s.items = []
+      continue
+    }
     try {
       s.items = await query(
         `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice,

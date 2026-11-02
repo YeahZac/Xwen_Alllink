@@ -1,6 +1,6 @@
-<view class="page">
+<view class="page page--tabbed">
   <view class="m-page-head">
-    <text class="m-page-head__title">订单中心</text>
+    <text class="m-page-head__title">订单</text>
     <text class="m-page-head__desc">{{desc}}</text>
   </view>
 
@@ -79,4 +79,5 @@
       </view>
     </view>
   </view>
+  <role-tabbar role="merchant" active="orders" />
 </view>

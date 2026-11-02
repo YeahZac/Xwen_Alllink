@@ -1,0 +1,43 @@
+.apply-partner {
+  padding: var(--space-md) var(--space-page) calc(var(--space-xl) + env(safe-area-inset-bottom));
+}
+
+.lead {
+  display: block;
+  margin-bottom: var(--space-md);
+  font-size: var(--font-caption);
+  color: var(--color-text-secondary);
+  line-height: var(--lh-body);
+}
+
+.form.surface {
+  padding: var(--space-md);
+  margin-bottom: var(--space-md);
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+}
+
+.field {
+  margin-bottom: var(--space-md);
+}
+
+.field__label {
+  display: block;
+  margin-bottom: 8rpx;
+  font-size: var(--font-caption);
+  color: var(--color-text-muted);
+}
+
+.field__input,
+.field__area {
+  width: 100%;
+  padding: 16rpx 20rpx;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  font-size: var(--font-body);
+  box-sizing: border-box;
+}
+
+.field__area {
+  min-height: 140rpx;
+}

@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "积分额度池"
+  "navigationBarTitleText": "积分额度池",
+  "navigationBarBackgroundColor": "#FF4D4F",
+  "navigationBarTextStyle": "white"
 }

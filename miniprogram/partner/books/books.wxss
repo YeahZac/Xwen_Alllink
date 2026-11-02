@@ -1,0 +1,13 @@
+.page--tabbed { padding: 24rpx 24rpx calc(140rpx + env(safe-area-inset-bottom)); }
+.m-page-head__title { display:block; font-size:36rpx; font-weight:800; }
+.m-page-head__desc { display:block; margin-top:8rpx; color:#8f959e; font-size:24rpx; }
+.kpi-row { display:flex; margin:24rpx 0; background:#fff; border-radius:16rpx; }
+.kpi { flex:1; text-align:center; padding:24rpx 8rpx; }
+.kpi__v { display:block; font-weight:800; color:#ff4d4f; }
+.kpi__l { font-size:22rpx; color:#8f959e; }
+.row { display:flex; align-items:center; padding:24rpx; margin-bottom:12rpx; background:#fff; border-radius:16rpx; }
+.row__main { flex:1; min-width:0; }
+.row__t { display:block; font-weight:700; }
+.row__s { display:block; margin-top:6rpx; font-size:22rpx; color:#8f959e; }
+.row__amt { color:#ff4d4f; font-weight:800; }
+.empty { padding:80rpx 0; text-align:center; color:#8f959e; }

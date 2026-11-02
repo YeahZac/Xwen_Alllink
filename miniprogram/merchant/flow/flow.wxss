@@ -13,3 +13,8 @@
 .amt--down {
   color: var(--color-ink);
 }
+
+.page--tabbed {
+  padding-bottom: calc(140rpx + env(safe-area-inset-bottom));
+}
+

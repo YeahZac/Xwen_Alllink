@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "切换身份"
+  "navigationBarTitleText": "切换身份",
+  "navigationBarBackgroundColor": "#FF4D4F",
+  "navigationBarTextStyle": "white"
 }

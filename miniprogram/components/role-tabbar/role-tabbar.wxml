@@ -1,0 +1,12 @@
+<view class="role-tabbar">
+  <view
+    wx:for="{{tabs}}"
+    wx:key="id"
+    class="role-tab {{active === item.id ? 'role-tab--on' : ''}}"
+    data-id="{{item.id}}"
+    data-url="{{item.url}}"
+    bindtap="onTap"
+  >
+    <text class="role-tab__t">{{item.title}}</text>
+  </view>
+</view>

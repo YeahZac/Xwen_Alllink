@@ -12,7 +12,7 @@ const NAV_GROUPS = [
   {
     name: '数据洞察',
     items: [
-      { id: 'screen', label: '数据大屏' },
+      // 数据大屏默认隐藏；如需开通，在「角色权限」授 screen 后仍不进导航（仅保留权限点）
       { id: 'dashboard', label: '概览' }
     ]
   },
@@ -25,6 +25,8 @@ const NAV_GROUPS = [
       { id: 'stores_cross', label: '异业门店' },
       { id: 'stores_supply', label: '供应链' },
       { id: 'applies', label: '入驻审核' },
+      { id: 'partner_ops', label: '合伙人运营' },
+      { id: 'identity_flags', label: '身份授权' },
       { id: 'cities', label: '经营城市' }
     ]
   },
@@ -35,7 +37,9 @@ const NAV_GROUPS = [
       { id: 'points', label: '积分与额度' },
       { id: 'settlements', label: '结算抽成' },
       { id: 'withdraws', label: '提现审核' },
-      { id: 'referrals', label: '推荐记录' }
+      { id: 'partner_purchases', label: '合伙人采购' },
+      { id: 'referrals', label: '推荐记录' },
+      { id: 'op_logs', label: '操作日志' }
     ]
   },
   {
@@ -196,10 +200,6 @@ function go(page) {
   $('pageTitle').textContent = ALL_NAV.find((n) => n.id === page)?.label || page
   renderNav()
   const map = {
-    screen: () => {
-      window.open('./screen.html', '_blank')
-      return Promise.resolve()
-    },
     dashboard: renderDashboard,
     users_all: () => renderIdentities('all'),
     users_consumer: () => renderIdentities('consumer'),
@@ -207,6 +207,8 @@ function go(page) {
     stores_cross: () => renderStores('cross'),
     stores_supply: () => renderStores('supply'),
     applies: renderApplies,
+    partner_ops: renderPartnerOps,
+    identity_flags: renderIdentityFlags,
     cities: renderCities,
     merchants: () => renderStores(''),
     users: () => renderIdentities('consumer'),
@@ -219,9 +221,11 @@ function go(page) {
     banners: renderBanners,
     configs: renderConfigs,
     withdraws: renderWithdraws,
+    partner_purchases: renderPartnerPurchases,
     complaints: renderComplaints,
     needs: renderNeeds,
     referrals: renderReferrals,
+    op_logs: renderOpLogs,
     referral_triggers: renderReferralTriggers,
     sys_roles: renderSysRoles,
     sys_accounts: renderSysAccounts,
@@ -284,7 +288,14 @@ const LICENSE_LABELS = {
   idCardBack: '身份证反面',
   stallPhoto: '摊位照片',
   storePhoto: '门店照片',
-  warehousePhoto: '仓库照片'
+  warehousePhoto: '仓库照片',
+  stallCommitment: '地摊合规承诺',
+  stallCommitmentAt: '承诺时间',
+  stallPath: '入驻路径'
+}
+
+const STALL_PATH_LABELS = {
+  no_license_personal: '无证个人经营者'
 }
 
 function badge(status) {
@@ -464,7 +475,6 @@ async function renderDashboard() {
   $('cashRate').textContent = `积分汇率 ${d.cashRate}`
   content().innerHTML = `
     <div class="toolbar">
-      <a class="btn primary" href="./screen.html" target="_blank">打开数据大屏</a>
       <button class="btn" id="btnReloadDash">刷新</button>
     </div>
     <div class="stats">
@@ -483,7 +493,7 @@ async function renderDashboard() {
     </div>
     <div class="panel">
       <h3>运营覆盖</h3>
-      <p class="muted">支持分角色管理 C端/地摊/异业/供应链，商品 SKU 启停删除，以及数据大屏（访问、流水、门店、热点地图）。</p>
+      <p class="muted">支持分角色管理 C端/地摊/异业/供应链与商品 SKU。创始人 / 合伙人 / 负责人可使用独立后台账号（见「账号管理」）。</p>
     </div>`
   $('btnReloadDash').onclick = () => renderDashboard()
 }
@@ -835,7 +845,7 @@ async function showStoreDetail(id, listReload) {
     btnMats.onclick = () => {
       const keys =
         d.role === 'stall'
-          ? ['foodLicense', 'idCardFront', 'idCardBack', 'storePhoto']
+          ? ['idCardFront', 'idCardBack', 'storePhoto', 'foodLicense']
           : d.role === 'supply'
             ? ['businessLicense', 'idCardFront', 'idCardBack', 'storePhoto', 'warehousePhoto']
             : ['businessLicense', 'idCardFront', 'idCardBack', 'storePhoto']
@@ -1190,7 +1200,12 @@ async function renderApplies() {
 async function showApplyDetail(id, reload) {
   const r = await api(`/admin/applies/${id}`)
   const licenses = r.licenses || {}
-  const licenseEntries = Object.entries(licenses).filter(([k]) => k !== 'adminRemark')
+  const metaKeys = new Set(['adminRemark', 'stallCommitment', 'stallCommitmentAt', 'stallPath'])
+  const licenseEntries = Object.entries(licenses).filter(([k, v]) => {
+    if (metaKeys.has(k)) return false
+    const url = typeof v === 'string' ? v : v?.url || ''
+    return /^https?:\/\//.test(url) || String(url).startsWith('/')
+  })
   const licenseHtml = licenseEntries.length
     ? `<div class="thumb-grid">${licenseEntries
         .map(([k, v]) => {
@@ -1199,16 +1214,26 @@ async function showApplyDetail(id, reload) {
         })
         .join('')}</div>`
     : '<p class="muted">未上传证照</p>'
+  const isStallNoLicense = r.role === 'stall' && (licenses.stallPath === 'no_license_personal' || licenses.stallCommitment)
+  const stallTip = isStallNoLicense
+    ? `<p class="ok">地摊无证路径：${esc(STALL_PATH_LABELS[licenses.stallPath] || '无证个人经营者')} · 已勾选合规承诺${
+        licenses.stallCommitmentAt ? `（${esc(licenses.stallCommitmentAt)}）` : ''
+      }。审核重点：身份证与本人一致、摊位实景可辨、无虚假材料；食品证非必填。</p>`
+    : r.role === 'stall'
+      ? '<p class="muted">地摊申请：可不要求营业执照与食品经营许可证。</p>'
+      : ''
+  const personLabel = r.role === 'stall' ? '经营者' : '法人'
   const canReview = r.status === 'pending' && canEdit('applies')
   openModal(
     `入驻审核 · ${r.shopName}`,
     `<p>${esc(r.roleLabel)} · ${badge(r.status)} · ${esc(r.applyNo)}</p>
-     <p>信用代码 ${esc(r.creditCode)} · 法人 ${esc(r.legalPerson)}</p>
+     <p>${r.role === 'stall' ? '信用代码（地摊可空）' : '信用代码'} ${esc(r.creditCode || '—')} · ${personLabel} ${esc(r.legalPerson)}</p>
      <p>联系人 ${esc(r.contactName)} ${esc(r.contactPhone)}</p>
      <p class="muted">${esc(r.city)} ${esc(r.address)}</p>
+     ${stallTip}
      ${r.rejectReason ? `<p class="err">驳回：${esc(r.rejectReason)}</p>` : ''}
      ${licenses.adminRemark ? `<p class="muted">审核备注：${esc(licenses.adminRemark)}</p>` : ''}
-     <h4>证照资料（点击放大）</h4>${licenseHtml}
+     <h4>${r.role === 'stall' ? '身份核验资料' : '证照资料'}（点击放大）</h4>${licenseHtml}
      ${
        canReview
          ? `<div class="toolbar" style="margin-top:12px">
@@ -2911,9 +2936,10 @@ async function renderSysMedia() {
         <option value="general">general</option>
       </select>
       <button class="btn" id="btnReload">刷新</button>
+      ${editable ? '<button class="btn primary" id="btnSyncMp">一键替换为实景图</button>' : ''}
       ${editable ? '<label class="btn primary sm">上传<input id="mediaUpload" type="file" accept="image/*,.pdf" hidden /></label>' : ''}
     </div>
-    <p class="muted">图片会自动压缩到 3MB 以内并上传到云托管存储桶，删除会同步清理对象存储。</p>
+    <p class="muted">图片会自动压缩到 3MB 以内并上传到云托管存储桶。点「一键替换为实景图」会把库内 Banner/门店封面/商品图里的旧图 URL 全面改成 mp-static 实景地址。</p>
     <div id="list"></div>`
   const load = async () => {
     const biz = $('fBiz').value
@@ -2964,6 +2990,17 @@ async function renderSysMedia() {
       }
     })
   }
+  if ($('btnSyncMp')) {
+    $('btnSyncMp').onclick = () =>
+      runAction(async () => {
+        if (!confirm('确认把 Banner、门店封面、商品图中的旧地址全部替换为云端实景图？')) return
+        const r = await api('/admin/sys/sync-mp-media', { method: 'POST', body: '{}' })
+        alert(
+          `已替换：Banner ${r.banners?.updated || 0}/${r.banners?.total || 0}，门店 ${r.merchants?.updated || 0}/${r.merchants?.total || 0}`
+        )
+        await load()
+      })
+  }
   if ($('mediaUpload')) {
     $('mediaUpload').onchange = async () => {
       const file = $('mediaUpload').files[0]
@@ -2990,6 +3027,322 @@ async function renderSysMedia() {
     pageState.page = 1
     load()
   }
+  await load()
+}
+
+async function renderPartnerOps() {
+  const editable = canEdit('partner_ops')
+  let tab = 'applies'
+  content().innerHTML = `
+    <div class="toolbar">
+      <button class="btn ${tab === 'applies' ? 'primary' : ''}" data-tab="applies">合伙人申请</button>
+      <button class="btn" data-tab="withdraws">合伙人提现</button>
+      <button class="btn" id="btnReload">刷新</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    if (tab === 'applies') {
+      const rows = (await api('/admin/partner-applies?status=pending')) || []
+      const list = Array.isArray(rows) ? rows : rows.list || []
+      $('list').innerHTML = table(
+        ['ID', '姓名', '手机', '城市', '单号', '时间', '操作'],
+        list
+          .map(
+            (r) => `<tr>
+          <td>${r.id}</td><td>${esc(r.contactName)}</td><td>${esc(r.contactPhone)}</td>
+          <td>${esc(r.city || '')}</td><td><code>${esc(r.applyNo || '')}</code></td>
+          <td>${fmtTime(r.createdAt)}</td>
+          <td class="actions">${
+            editable
+              ? `<button class="btn ok sm" data-approve="${r.id}">通过</button>
+                 <button class="btn danger sm" data-reject="${r.id}">驳回</button>`
+              : '-'
+          }</td></tr>`
+          )
+          .join('')
+      )
+      $('list').querySelectorAll('[data-approve]').forEach((b) => {
+        b.onclick = () =>
+          runAction(async () => {
+            await api(`/admin/partner-applies/${b.dataset.approve}/approve`, {
+              method: 'POST',
+              body: '{}'
+            })
+            load()
+          })
+      })
+      $('list').querySelectorAll('[data-reject]').forEach((b) => {
+        b.onclick = () => {
+          const reason = prompt('驳回原因', '资料不完整')
+          if (reason === null) return
+          runAction(async () => {
+            await api(`/admin/partner-applies/${b.dataset.reject}/reject`, {
+              method: 'POST',
+              body: JSON.stringify({ reason })
+            })
+            load()
+          })
+        }
+      })
+    } else {
+      const rows = (await api('/admin/partner-withdraws?status=pending')) || []
+      const list = Array.isArray(rows) ? rows : rows.list || []
+      $('list').innerHTML = table(
+        ['ID', '用户', '积分', '约合¥', '账户', '时间', '操作'],
+        list
+          .map(
+            (r) => `<tr>
+          <td>${r.id}</td><td>#${r.userId}</td><td>${r.amountPoints || 0}</td>
+          <td>${r.amountCash || 0}</td><td>${esc(r.accountName || '')}</td>
+          <td>${fmtTime(r.createdAt)}</td>
+          <td class="actions">${
+            editable
+              ? `<button class="btn ok sm" data-ok="${r.id}">通过</button>
+                 <button class="btn danger sm" data-no="${r.id}">驳回</button>`
+              : '-'
+          }</td></tr>`
+          )
+          .join('')
+      )
+      $('list').querySelectorAll('[data-ok]').forEach((b) => {
+        b.onclick = () =>
+          runAction(async () => {
+            await api(`/admin/partner-withdraws/${b.dataset.ok}/review`, {
+              method: 'POST',
+              body: JSON.stringify({ action: 'approve' })
+            })
+            load()
+          })
+      })
+      $('list').querySelectorAll('[data-no]').forEach((b) => {
+        b.onclick = () => {
+          const reason = prompt('驳回原因', '信息不完整')
+          if (reason === null) return
+          runAction(async () => {
+            await api(`/admin/partner-withdraws/${b.dataset.no}/review`, {
+              method: 'POST',
+              body: JSON.stringify({ action: 'reject', reason })
+            })
+            load()
+          })
+        }
+      })
+    }
+  }
+  content()
+    .querySelectorAll('[data-tab]')
+    .forEach((btn) => {
+      btn.onclick = () => {
+        tab = btn.dataset.tab
+        content().querySelectorAll('[data-tab]').forEach((x) => x.classList.remove('primary'))
+        btn.classList.add('primary')
+        runAction(load)
+      }
+    })
+  $('btnReload').onclick = () => runAction(load)
+  await load()
+}
+
+async function renderIdentityFlags() {
+  const editable = canEdit('identity_flags')
+  let tab = 'applies'
+  content().innerHTML = `
+    <div class="toolbar">
+      <button class="btn primary" data-tab="applies">身份申请审核</button>
+      <button class="btn" data-tab="members">成员授权</button>
+      <button class="btn" id="btnReload">刷新</button>
+    </div>
+    <div id="filters"></div>
+    <div id="list"></div>`
+  const roleLabel = { founder: '创始人', lead: '负责人', partner: '合伙人' }
+  const loadApplies = async () => {
+    $('filters').innerHTML = `
+      <select id="fApplyRole">
+        <option value="">全部身份</option>
+        <option value="founder">创始人</option>
+        <option value="lead">负责人</option>
+      </select>`
+    const role = $('fApplyRole').value
+    const qs = role ? `?status=pending&role=${encodeURIComponent(role)}` : '?status=pending'
+    const rows = (await api(`/admin/platform-role-applies${qs}`)) || []
+    $('list').innerHTML = table(
+      ['ID', '身份', '姓名', '手机', '城市', '单号', '时间', '操作'],
+      rows
+        .map(
+          (r) => `<tr>
+        <td>${r.id}</td><td>${esc(roleLabel[r.applyRole] || r.applyRole)}</td>
+        <td>${esc(r.contactName)}</td><td>${esc(r.contactPhone)}</td>
+        <td>${esc(r.city || '')}</td><td><code>${esc(r.applyNo || '')}</code></td>
+        <td>${fmtTime(r.createdAt)}</td>
+        <td class="actions">${
+          editable
+            ? `<button class="btn ok sm" data-approve="${r.id}">通过</button>
+               <button class="btn danger sm" data-reject="${r.id}">驳回</button>`
+            : '-'
+        }</td></tr>`
+        )
+        .join('')
+    )
+    $('fApplyRole').onchange = () => runAction(loadApplies)
+    $('list').querySelectorAll('[data-approve]').forEach((b) => {
+      b.onclick = () =>
+        runAction(async () => {
+          await api(`/admin/platform-role-applies/${b.dataset.approve}/approve`, {
+            method: 'POST',
+            body: '{}'
+          })
+          loadApplies()
+        })
+    })
+    $('list').querySelectorAll('[data-reject]').forEach((b) => {
+      b.onclick = () => {
+        const reason = prompt('驳回原因', '资料不完整')
+        if (reason === null) return
+        runAction(async () => {
+          await api(`/admin/platform-role-applies/${b.dataset.reject}/reject`, {
+            method: 'POST',
+            body: JSON.stringify({ reason })
+          })
+          loadApplies()
+        })
+      }
+    })
+  }
+  const loadMembers = async () => {
+    $('filters').innerHTML = `
+      <input id="fQ" placeholder="昵称/手机/邀请码/ID" style="min-width:220px" />
+      <select id="fRole">
+        <option value="">全部</option>
+        <option value="partner">合伙人</option>
+        <option value="founder">创始人</option>
+      </select>
+      <button class="btn" id="btnSearch">查询</button>`
+    const q = encodeURIComponent(($('fQ') && $('fQ').value.trim()) || '')
+    const role = encodeURIComponent(($('fRole') && $('fRole').value) || '')
+    const rows = (await api(`/admin/identity-members?q=${q}&role=${role}`)) || []
+    $('list').innerHTML = table(
+      ['ID', '昵称', '手机', '邀请码', '积分', '身份', '操作'],
+      rows
+        .map(
+          (u) => `<tr>
+        <td>${u.id}</td><td>${esc(u.nickname)}</td><td>${esc(u.phone || '')}</td>
+        <td><code>${esc(u.inviteCode || '')}</code></td><td>${u.points || 0}</td>
+        <td>${esc(u.roleLabel || '')}</td>
+        <td class="actions">${
+          editable
+            ? `<button class="btn sm" data-id="${u.id}" data-flag="partner" data-v="${Number(u.isPartner) ? 0 : 1}">${
+                Number(u.isPartner) ? '取消合伙人' : '设为合伙人'
+              }</button>
+               <button class="btn sm" data-id="${u.id}" data-flag="founder" data-v="${Number(u.isFounder) ? 0 : 1}">${
+                 Number(u.isFounder) ? '取消创始人' : '设为创始人'
+               }</button>
+               <button class="btn sm" data-id="${u.id}" data-flag="lead" data-v="1">设为负责人</button>`
+            : '-'
+        }</td></tr>`
+        )
+        .join('')
+    )
+    const search = () => runAction(loadMembers)
+    if ($('btnSearch')) $('btnSearch').onclick = search
+    if ($('fRole')) $('fRole').onchange = search
+    $('list').querySelectorAll('[data-flag]').forEach((b) => {
+      b.onclick = () =>
+        runAction(async () => {
+          await api(`/admin/identity-members/${b.dataset.id}/flag`, {
+            method: 'POST',
+            body: JSON.stringify({ flag: b.dataset.flag, value: Number(b.dataset.v) === 1 })
+          })
+          loadMembers()
+        })
+    })
+  }
+  const load = () => (tab === 'applies' ? loadApplies() : loadMembers())
+  content()
+    .querySelectorAll('[data-tab]')
+    .forEach((btn) => {
+      btn.onclick = () => {
+        tab = btn.dataset.tab
+        content().querySelectorAll('[data-tab]').forEach((x) => x.classList.remove('primary'))
+        btn.classList.add('primary')
+        runAction(load)
+      }
+    })
+  $('btnReload').onclick = () => runAction(load)
+  await load()
+}
+
+async function renderPartnerPurchases() {
+  const editable = canEdit('partner_purchases')
+  content().innerHTML = `
+    <div class="toolbar">
+      <select id="fStatus">
+        <option value="">全部</option>
+        <option value="pending">待处理</option>
+        <option value="accepted">已接单</option>
+        <option value="shipped">配送中</option>
+        <option value="done">已完成</option>
+        <option value="cancelled">已取消</option>
+      </select>
+      <button class="btn" id="btnReload">刷新</button>
+    </div>
+    <div id="list"></div>`
+  const load = async () => {
+    const st = $('fStatus').value
+    const qs = st ? `?status=${encodeURIComponent(st)}` : ''
+    const rows = (await api(`/admin/partner-purchases${qs}`)) || []
+    $('list').innerHTML = table(
+      ['ID', '单号', '合伙人', '品名', '数量', '状态', '时间', '操作'],
+      rows
+        .map(
+          (r) => `<tr>
+        <td>${r.id}</td><td><code>${esc(r.orderNo || '')}</code></td>
+        <td>${esc(r.userName || '')} #${r.userId || ''}</td>
+        <td>${esc(r.goodsName)}</td><td>${esc(r.qtyText || '')}</td>
+        <td>${badge(r.statusText || r.status)}</td><td>${fmtTime(r.createdAt)}</td>
+        <td class="actions">${
+          editable
+            ? `<button class="btn sm" data-id="${r.id}" data-s="accepted">接单</button>
+               <button class="btn sm" data-id="${r.id}" data-s="shipped">配送</button>
+               <button class="btn ok sm" data-id="${r.id}" data-s="done">完成</button>
+               <button class="btn danger sm" data-id="${r.id}" data-s="cancelled">取消</button>`
+            : '-'
+        }</td></tr>`
+        )
+        .join('')
+    )
+    $('list').querySelectorAll('[data-s]').forEach((b) => {
+      b.onclick = () =>
+        runAction(async () => {
+          await api(`/admin/partner-purchases/${b.dataset.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: b.dataset.s })
+          })
+          load()
+        })
+    })
+  }
+  $('btnReload').onclick = () => runAction(load)
+  $('fStatus').onchange = () => runAction(load)
+  await load()
+}
+
+async function renderOpLogs() {
+  content().innerHTML = `<div class="toolbar"><button class="btn" id="btnReload">刷新</button></div><div id="list"></div>`
+  const load = async () => {
+    const rows = (await api('/admin/op-logs')) || []
+    $('list').innerHTML = table(
+      ['类型', '标题', '状态', '备注', '时间'],
+      rows
+        .map(
+          (r) => `<tr>
+        <td>${esc(r.type)}</td><td>${esc(r.title)}</td><td>${badge(r.status)}</td>
+        <td style="max-width:240px;white-space:normal">${esc(r.remark || '')}</td>
+        <td>${fmtTime(r.time)}</td></tr>`
+        )
+        .join('')
+    )
+  }
+  $('btnReload').onclick = () => runAction(load)
   await load()
 }
 

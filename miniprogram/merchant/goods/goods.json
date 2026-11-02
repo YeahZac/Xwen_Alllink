@@ -1,3 +1,8 @@
 {
-  "navigationBarTitleText": "商品管理"
+  "navigationBarTitleText": "物料",
+  "navigationBarBackgroundColor": "#FF4D4F",
+  "navigationBarTextStyle": "white",
+  "usingComponents": {
+    "role-tabbar": "/components/role-tabbar/role-tabbar"
+  }
 }

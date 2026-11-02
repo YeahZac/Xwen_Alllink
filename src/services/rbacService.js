@@ -7,7 +7,7 @@ const DEFAULT_SALT = 'xwen_admin_salt_v1'
 
 /** 与运营台 NAV / 后续新增页面对齐；启动时同步入库并授予超级管理员 */
 const PAGE_CATALOG = [
-  { pageKey: 'screen', pageName: '数据大屏', groupName: '数据洞察', sortOrder: 5 },
+  // 「数据大屏」已下线：不再注册权限点，启动时会从角色权限中清除
   { pageKey: 'dashboard', pageName: '概览', groupName: '数据洞察', sortOrder: 10 },
   { pageKey: 'users_all', pageName: '用户总览', groupName: '用户与门店', sortOrder: 20 },
   { pageKey: 'users_consumer', pageName: 'C端用户', groupName: '用户与门店', sortOrder: 25 },
@@ -15,12 +15,16 @@ const PAGE_CATALOG = [
   { pageKey: 'stores_cross', pageName: '异业门店', groupName: '用户与门店', sortOrder: 35 },
   { pageKey: 'stores_supply', pageName: '供应链', groupName: '用户与门店', sortOrder: 40 },
   { pageKey: 'applies', pageName: '入驻审核', groupName: '用户与门店', sortOrder: 45 },
+  { pageKey: 'partner_ops', pageName: '合伙人运营', groupName: '用户与门店', sortOrder: 46 },
+  { pageKey: 'identity_flags', pageName: '身份授权', groupName: '用户与门店', sortOrder: 47 },
   { pageKey: 'cities', pageName: '经营城市', groupName: '用户与门店', sortOrder: 48 },
   { pageKey: 'orders', pageName: '订单中心', groupName: '交易运营', sortOrder: 50 },
   { pageKey: 'points', pageName: '积分与额度', groupName: '交易运营', sortOrder: 55 },
   { pageKey: 'settlements', pageName: '结算抽成', groupName: '交易运营', sortOrder: 60 },
   { pageKey: 'withdraws', pageName: '提现审核', groupName: '交易运营', sortOrder: 65 },
+  { pageKey: 'partner_purchases', pageName: '合伙人采购', groupName: '交易运营', sortOrder: 68 },
   { pageKey: 'referrals', pageName: '推荐记录', groupName: '交易运营', sortOrder: 70 },
+  { pageKey: 'op_logs', pageName: '操作日志', groupName: '交易运营', sortOrder: 72 },
   { pageKey: 'goods_sku', pageName: '商品SKU', groupName: '内容管理', sortOrder: 80 },
   { pageKey: 'goods', pageName: '商品目录', groupName: '内容管理', sortOrder: 85 },
   { pageKey: 'goods_categories', pageName: '商品类目', groupName: '内容管理', sortOrder: 88 },
@@ -75,7 +79,127 @@ async function ensureRbacBootstrap() {
        display_name='超级管理员', role_id=1, status=1`,
     { h: hash, salt: DEFAULT_SALT }
   )
+  await ensureOpsRolesAndAccounts(hash)
   return { pages: PAGE_CATALOG.length, superAdmin: 'admin' }
+}
+
+/**
+ * 说明书运营角色：创始人 / 合伙人 / 负责人（Web 后台账号，默认密码 123456）
+ * 按 code 幂等创建，避免覆盖线上已有 id=2/3/4（ops_admin/auditor/finance）
+ */
+const OPS_ROLE_DEFS = [
+  {
+    code: 'founder_ops',
+    name: '创始人',
+    remark: '平台总控：入驻/合伙人审核、名单授权、订单积分与日志',
+    username: 'founder',
+    displayName: '创始人运营',
+    pages: [
+      'dashboard',
+      'applies',
+      'partner_ops',
+      'identity_flags',
+      'users_all',
+      'users_consumer',
+      'orders',
+      'points',
+      'withdraws',
+      'partner_purchases',
+      'op_logs',
+      'complaints',
+      'needs',
+      'referrals'
+    ]
+  },
+  {
+    code: 'partner_ops',
+    name: '合伙人',
+    remark: '区域合伙人运营：推广审核协同、采购单、推荐记录',
+    username: 'partner',
+    displayName: '合伙人运营',
+    pages: ['dashboard', 'partner_ops', 'partner_purchases', 'referrals', 'orders', 'points']
+  },
+  {
+    code: 'lead_ops',
+    name: '负责人',
+    remark: '创始人权限子集：审核与订单积分查看，不含系统账号配置',
+    username: 'lead',
+    displayName: '负责人运营',
+    pages: ['dashboard', 'applies', 'partner_ops', 'orders', 'points', 'withdraws', 'op_logs', 'needs']
+  }
+]
+
+async function ensureOpsRolesAndAccounts(passwordHash) {
+  const hash = passwordHash || hashPassword('123456', DEFAULT_SALT)
+  // 下线数据大屏权限点
+  await query(`DELETE FROM admin_role_permissions WHERE page_key = 'screen'`)
+  await query(`DELETE FROM admin_permissions WHERE page_key = 'screen'`)
+
+  for (const role of OPS_ROLE_DEFS) {
+    let rows = await query(`SELECT id FROM admin_roles WHERE code = :code LIMIT 1`, {
+      code: role.code
+    })
+    let roleId
+    if (rows.length) {
+      roleId = Number(rows[0].id)
+      await query(
+        `UPDATE admin_roles SET name=:name, remark=:remark, status=1, is_system=1 WHERE id=:id`,
+        { id: roleId, name: role.name, remark: role.remark }
+      )
+    } else {
+      const inserted = await query(
+        `INSERT INTO admin_roles (code, name, remark, is_system, status)
+         VALUES (:code, :name, :remark, 1, 1)`,
+        { code: role.code, name: role.name, remark: role.remark }
+      )
+      roleId = Number(inserted.insertId)
+    }
+    for (const pageKey of role.pages) {
+      await query(
+        `INSERT INTO admin_role_permissions (role_id, page_key, can_view, can_edit)
+         VALUES (:rid, :pk, 1, 1)
+         ON DUPLICATE KEY UPDATE can_view=1, can_edit=1`,
+        { rid: roleId, pk: pageKey }
+      )
+    }
+    // 不授 sys_* / screen
+    await query(
+      `DELETE FROM admin_role_permissions
+       WHERE role_id = :rid AND (page_key = 'screen' OR page_key LIKE 'sys_%')`,
+      { rid: roleId }
+    )
+
+    const accRows = await query(
+      `SELECT id FROM admin_accounts WHERE username = :u LIMIT 1`,
+      { u: role.username }
+    )
+    if (accRows.length) {
+      await query(
+        `UPDATE admin_accounts
+         SET password_hash=:h, password_salt=:salt, display_name=:n, role_id=:rid, status=1
+         WHERE id=:id`,
+        {
+          id: Number(accRows[0].id),
+          h: hash,
+          salt: DEFAULT_SALT,
+          n: role.displayName,
+          rid: roleId
+        }
+      )
+    } else {
+      await query(
+        `INSERT INTO admin_accounts (username, password_hash, password_salt, display_name, role_id, status)
+         VALUES (:u, :h, :salt, :n, :rid, 1)`,
+        {
+          u: role.username,
+          h: hash,
+          salt: DEFAULT_SALT,
+          n: role.displayName,
+          rid: roleId
+        }
+      )
+    }
+  }
 }
 
 /** 业务新增页面时调用：登记权限点并自动授予超级管理员 */
@@ -459,6 +583,8 @@ module.exports = {
   hashPassword,
   isSuperAdmin,
   ensureRbacBootstrap,
+  ensureOpsRolesAndAccounts,
+  OPS_ACCOUNTS,
   registerPagePermission,
   listPermissionCatalog,
   getRolePermissions,

@@ -4,80 +4,63 @@
   background: var(--color-bg);
 }
 
-.menu-hero {
-  position: relative;
-  height: 360rpx;
+.menu-shell {
+  padding: var(--space-md) var(--space-page) var(--space-md);
+}
+
+.shop-info {
+  display: flex;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  margin-bottom: var(--space-md);
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft);
+}
+
+.shop-info__thumb {
+  width: 148rpx;
+  height: 148rpx;
+  border-radius: var(--radius-md);
   overflow: hidden;
-  background: var(--color-ink);
+  flex-shrink: 0;
+  background: var(--color-surface-soft);
 }
 
-.menu-hero__img {
-  width: 100%;
-  height: 100%;
-  display: block;
+.shop-info__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
-.menu-hero__mask {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 70%;
-  background: linear-gradient(transparent, rgba(18, 20, 26, 0.88));
-  pointer-events: none;
-}
-
-/* 底部留出 20rpx，抵消 .menu-panel 的负 margin 叠压 */
-.menu-hero__info {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: var(--space-lg) var(--space-page) calc(var(--space-lg) + 20rpx);
-  z-index: 1;
-}
-
-.menu-hero__name {
-  display: block;
-  font-size: var(--font-display);
+.shop-info__name {
+  font-size: var(--font-title);
   font-weight: 800;
-  color: #fff;
-  letter-spacing: var(--tracking-display);
-  line-height: var(--lh-tight);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.menu-hero__sub {
-  display: block;
-  margin-top: var(--space-xs);
-  font-size: var(--font-caption);
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--color-ink);
   line-height: var(--lh-snug);
 }
 
-.menu-hero__tags {
+.shop-info__desc {
+  display: block;
+  margin-top: 6rpx;
+  font-size: var(--font-caption);
+  color: var(--color-text-muted);
+  line-height: var(--lh-snug);
+}
+
+.shop-info__tags {
   margin-top: var(--space-sm);
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-xs);
 }
 
-.menu-panel {
-  margin-top: -20rpx;
-  position: relative;
-  z-index: 2;
-  padding: var(--space-lg) var(--space-page) var(--space-xs);
-  background: var(--color-bg);
-  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-}
-
 .menu-panel__head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-sm);
+  flex-direction: column;
+  gap: 6rpx;
   margin-bottom: var(--space-md);
 }
 
@@ -90,37 +73,9 @@
 }
 
 .menu-panel__hint {
-  font-size: var(--font-tiny);
-  font-weight: 700;
-  letter-spacing: var(--tracking-label);
-  color: var(--color-text-muted);
-}
-
-.cat-scroll {
-  white-space: nowrap;
-  margin-bottom: var(--space-md);
-  width: 100%;
-}
-
-.cat-chip {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  white-space: nowrap;
-  padding: var(--space-sm) var(--space-md);
-  margin-right: var(--space-sm);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface);
   font-size: var(--font-caption);
-  font-weight: 600;
-  color: var(--color-text-secondary);
-}
-
-.cat-chip--on {
-  background: var(--color-primary);
-  border-color: transparent;
-  color: #fff;
-  font-weight: 800;
+  color: var(--color-text-muted);
+  line-height: var(--lh-snug);
 }
 
 .cat-block {
@@ -130,10 +85,9 @@
 .cat-name {
   display: block;
   margin: var(--space-xs) 0 var(--space-sm);
-  font-size: var(--font-tiny);
-  font-weight: 800;
-  letter-spacing: var(--tracking-label);
-  color: var(--color-text-muted);
+  font-size: var(--font-caption);
+  font-weight: 700;
+  color: var(--color-text-secondary);
 }
 
 .dish {
@@ -143,6 +97,7 @@
   margin-bottom: var(--space-sm);
   background: var(--color-surface);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
 }
 
 .dish__thumb {
@@ -197,9 +152,9 @@
 }
 
 .qty__btn {
-  width: 52rpx;
-  height: 52rpx;
-  border-radius: var(--radius-sm);
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: 50%;
   background: var(--color-surface-soft);
   color: var(--color-ink);
   display: flex;
@@ -212,7 +167,6 @@
 .qty__btn--plus {
   background: var(--color-primary);
   color: #fff;
-  border-color: transparent;
   box-shadow: var(--shadow-seal);
 }
 
@@ -233,7 +187,6 @@
   line-height: 1.2;
 }
 
-/* 件数与积分同行，避免结算栏三行顶高、盖住列表 */
 .cart-bar__qty {
   font-size: var(--font-small);
   color: var(--color-text-muted);
@@ -294,7 +247,6 @@
   padding: var(--space-xs) var(--space-sm);
 }
 
-/* scroll-view 用内容高度 + 上限，比 flex:1 更可靠地触发滚动 */
 .sheet__body {
   flex: 0 1 auto;
   min-height: 0;

@@ -1,6 +1,7 @@
 const store = require('../../utils/store')
 const api = require('../../utils/api')
 const location = require('../../utils/location')
+const coverPack = require('../../utils/cover-pack')
 
 Page({
   data: { list: [], loading: true },

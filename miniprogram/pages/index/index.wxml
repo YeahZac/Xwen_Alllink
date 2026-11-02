@@ -2,7 +2,7 @@
   THESIS: 商场枢纽本地生活首页 — 拒绝旧暖橙卡片堆与朱印装饰。
   OWN-WORLD: 白顶栏 + 浅灰胶囊搜索 + 五金刚 + Banner + 积分条 + 点评式单列店卡；主色克制红 #FF4D4F。
   STORY: 定位搜店 → 入口与营销 → 附近好店评分/优惠/距离 → 去点餐或兑换。
-  FIRST VIEWPORT: 品牌/扫码/定位 → 搜索 → 五入口 → 广告 → 积分福利 → 附近好店店卡。
+  FIRST VIEWPORT: 品牌/扫码/定位 → 搜索 → Banner → 五入口 → 积分福利 → 附近好店店卡。
   FORM: 品类标准 mall-hub · seed canon · craft bar 点评+美团+京东 · key c37bde05.
   FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 -->
@@ -46,40 +46,30 @@
   </view>
 
   <view class="mall-body mall-body--counter">
+    <ad-banner role="consumer" page-key="index" height="240" />
+
     <view class="entry-rail">
       <view class="entry" bindtap="goOrders">
-        <view class="entry__bubble entry__bubble--order">
-          <view class="entry__ico entry__ico--order"></view>
-        </view>
+        <image class="entry__img" src="/assets/icons/home-entry/entry-order.png" mode="aspectFit" />
         <text class="entry__t">订单</text>
       </view>
       <view class="entry" bindtap="goPoints">
-        <view class="entry__bubble entry__bubble--points">
-          <view class="entry__ico entry__ico--points"></view>
-        </view>
+        <image class="entry__img" src="/assets/icons/home-entry/entry-points.png" mode="aspectFit" />
         <text class="entry__t">积分</text>
       </view>
       <view class="entry" bindtap="goRecommend">
-        <view class="entry__bubble entry__bubble--invite">
-          <view class="entry__ico entry__ico--invite"></view>
-        </view>
+        <image class="entry__img" src="/assets/icons/home-entry/entry-invite.png" mode="aspectFit" />
         <text class="entry__t">邀请</text>
       </view>
       <view class="entry" bindtap="goApply">
-        <view class="entry__bubble entry__bubble--shop">
-          <view class="entry__ico entry__ico--shop"></view>
-        </view>
+        <image class="entry__img" src="/assets/icons/home-entry/entry-shop.png" mode="aspectFit" />
         <text class="entry__t">开店</text>
       </view>
       <view class="entry" bindtap="goSupplyNeed">
-        <view class="entry__bubble entry__bubble--need">
-          <view class="entry__ico entry__ico--need"></view>
-        </view>
+        <image class="entry__img" src="/assets/icons/home-entry/entry-need.png" mode="aspectFit" />
         <text class="entry__t">需求</text>
       </view>
     </view>
-
-    <ad-banner role="consumer" page-key="index" height="240" />
 
     <view class="promo-card" bindtap="goPoints">
       <view class="promo-card__ico">积</view>
@@ -134,7 +124,14 @@
         data-type="{{item.itemType}}"
       >
         <view class="shop-card__cover">
-          <image wx:if="{{item.coverImage}}" class="cover-img" src="{{item.coverImage}}" mode="aspectFill" />
+          <image
+            wx:if="{{item.coverImage && !item.coverError}}"
+            class="cover-img"
+            src="{{item.coverImage}}"
+            mode="aspectFill"
+            binderror="onCoverError"
+            data-index="{{index}}"
+          />
           <view wx:else class="cover-fallback cover-fallback--shop">{{item.initial}}</view>
         </view>
         <view class="shop-card__body">

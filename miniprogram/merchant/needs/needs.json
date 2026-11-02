@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "采购需求大厅"
+  "navigationBarTitleText": "采购需求大厅",
+  "navigationBarBackgroundColor": "#FF4D4F",
+  "navigationBarTextStyle": "white"
 }

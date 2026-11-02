@@ -188,12 +188,43 @@
   font-weight: 300;
 }
 
+.notice {
+  padding: var(--space-md);
+  margin-bottom: var(--space-md);
+  background: var(--color-surface);
+}
+
+.notice__title {
+  display: block;
+  font-size: var(--font-body);
+  font-weight: 700;
+  color: var(--color-text);
+  margin-bottom: 8rpx;
+}
+
+.notice__text {
+  display: block;
+  font-size: var(--font-caption);
+  color: var(--color-text-secondary);
+  line-height: var(--lh-body);
+}
+
 .agree {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: var(--space-sm);
   padding: var(--space-md);
   margin-bottom: var(--space-md);
+}
+
+.agree--commit .agree__row {
+  align-items: flex-start;
+  width: 100%;
+}
+
+.agree--commit .agree__text {
+  flex: 1;
 }
 
 .agree__check {

@@ -5,6 +5,7 @@ const dataCache = require('../../utils/data-cache')
 const homePrefetch = require('../../utils/home-prefetch')
 const scan = require('../../utils/scan')
 const navigate = require('../../utils/navigate')
+const coverPack = require('../../utils/cover-pack')
 
 function splitTags(raw, fallback) {
   if (Array.isArray(raw) && raw.length) {
@@ -97,12 +98,17 @@ Page({
       const capsule = wx.getMenuButtonBoundingClientRect()
       if (capsule && capsule.bottom) headerTop = capsule.bottom + 8
     } catch (_) {}
-    // 默认沙井：首屏文案与预取数据先落地，避免空白
+    // 默认沙井：文案 + 磁盘/内存缓存立刻上屏，绝不卡 GPS
     location.ensureDefaultLoc()
     const pre = homePrefetch.getPayload()
     const patch = {
       headerTop,
-      locationText: location.displayDistrictName(location.getEffective())
+      locationText: location.displayDistrictName(location.getEffective()),
+      locating: false
+    }
+    if (!pre) {
+      patch.loading = true
+      patch.loadHint = '正在加载附近门店…'
     }
     this.setData(patch)
     if (pre) {
@@ -116,12 +122,17 @@ Page({
       const guest = !!(app && app.globalData && app.globalData.preferGuest) ||
         !!(store.preferGuestBrowse && store.preferGuestBrowse())
       if (!guest && app && app.globalData && app.globalData.bootPromise) {
-        const boot = await app.globalData.bootPromise
-        app.globalData.bootPromise = null
-        if (boot && boot.ok && boot.session && boot.session.role && boot.session.role !== 'consumer') {
-          store.routeAfterLogin()
-          return
-        }
+        // 不阻塞门店加载：会话路由与列表并行
+        app.globalData.bootPromise
+          .then((boot) => {
+            app.globalData.bootPromise = null
+            if (boot && boot.ok && boot.session && boot.session.role && boot.session.role !== 'consumer') {
+              store.routeAfterLogin()
+            }
+          })
+          .catch(() => {
+            app.globalData.bootPromise = null
+          })
       }
     } catch (_) {}
     if (!store.ensureConsumerOrRedirect({ allowGuest: true })) return
@@ -134,18 +145,30 @@ Page({
     this._loadError = ''
     this.syncLocationText()
 
-    // 若列表仍空：最多等预取 ~3s，保证首次进入尽量有数据
+    // 缓存命中立刻灌入；同时实时拉沙井/当前坐标列表（不等待定位）
     if (!this.data.displayList.length) {
-      this.setData({ loading: true, loadHint: '正在加载附近门店…' })
-      const pre = await homePrefetch.waitForData(3200)
-      if (pre) this.applyHomePayload(pre, store.getSession() || {})
+      const cached = homePrefetch.getPayload()
+      if (cached) {
+        this.applyHomePayload(cached, store.getSession() || {})
+      } else {
+        this.setData({ loading: true, loadHint: '正在加载附近门店…' })
+        // 后台等预取，但不串行挡住 reload
+        homePrefetch.waitForData(2500).then((pre) => {
+          if (pre && !this.data.displayList.length) {
+            this.applyHomePayload(pre, store.getSession() || {})
+          }
+        })
+      }
     }
 
     this.reload({ preferCache: true })
-    // 仅已授权定位时后台校正；未授权不弹窗，继续用沙井默认数据
+    // 仅已授权时后台校正真实位置；未授权继续用沙井默认
     this.ensureLocationSoft()
       .then((needReload) => {
-        if (needReload) this.reload({ preferCache: false })
+        if (needReload) {
+          homePrefetch.refreshWithQuery(this.geoQuery())
+          this.reload({ preferCache: false })
+        }
       })
       .catch(() => {})
   },
@@ -443,7 +466,12 @@ Page({
           ...s,
           itemType: 'stall',
           initial: s.initial || (s.name || '摊').slice(0, 1),
-          coverImage: s.coverImage || '',
+          coverImage: coverPack.resolveCover({
+            ...s,
+            role: 'stall',
+            itemType: 'stall',
+            bizType: s.bizType || s.category || s.tag
+          }),
           badge: s.open === false ? '休息中' : cuisineOf(s),
           rating: Number(s.rating || 4.8).toFixed(1),
           descLine: firstUnique([s.desc, s.category, cuisineOf(s)], used),
@@ -470,7 +498,12 @@ Page({
           ...s,
           itemType: 'cross',
           initial: s.initial || (s.name || '异').slice(0, 1),
-          coverImage: s.coverImage || '',
+          coverImage: coverPack.resolveCover({
+            ...s,
+            role: 'cross',
+            itemType: 'cross',
+            bizType: s.bizType || s.category || s.tag
+          }),
           badge: cuisineOf(s),
           rating: Number(s.rating || 4.7).toFixed(1),
           descLine: firstUnique([s.category, cuisineOf(s)], used),
@@ -497,7 +530,12 @@ Page({
           ...s,
           itemType: 'supply',
           initial: s.initial || (s.name || '供').slice(0, 1),
-          coverImage: s.coverImage || '',
+          coverImage: coverPack.resolveCover({
+            ...s,
+            role: 'supply',
+            itemType: 'supply',
+            bizType: s.bizType || s.category || s.tag
+          }),
           badge: cuisineOf(s),
           rating: '',
           descLine: firstUnique([cuisineOf(s) + '供货', s.city], used),
@@ -621,5 +659,10 @@ Page({
   },
   goSupplyNeed() {
     wx.navigateTo({ url: '/pages/supply-need/supply-need' })
+  },
+  onCoverError(e) {
+    const idx = Number(e.currentTarget.dataset.index)
+    if (Number.isNaN(idx) || idx < 0) return
+    this.setData({ [`displayList[${idx}].coverError`]: true })
   }
 })

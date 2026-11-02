@@ -1,6 +1,7 @@
 const store = require('../../utils/store')
 const api = require('../../utils/api')
 const { requestWxPay } = require('../../utils/pay')
+const coverPack = require('../../utils/cover-pack')
 
 Page({
   data: {
@@ -22,7 +23,11 @@ Page({
       const s = await api.crossStore(q.id)
       wx.hideLoading()
       this.setData({
-        store: { ...s, initial: s.initial || (s.name || '').slice(0, 1) },
+        store: {
+          ...s,
+          initial: s.initial || (s.name || '').slice(0, 1),
+          coverImage: coverPack.resolveCover({ ...s, role: s.role || 'cross' })
+        },
         items: (s.items || []).map((it) => this.withMix(it, store.getConsumerPoints()))
       })
       wx.setNavigationBarTitle({ title: s.name || '异业门店' })

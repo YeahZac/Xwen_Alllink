@@ -1,18 +1,20 @@
 const { query } = require('../utils/db')
 
-const BANNER_HOST = 'https://7072-prod-d3g1vkrj3290d085e-1467541248.tcb.qcloud.la/admin/banner/20260918'
+const MP_STATIC = 'https://7072-prod-d3g1vkrj3290d085e-1467541248.tcb.qcloud.la/admin/mp-static/20261102'
 const BANNER_IMAGES = {
   consumer: [
-    `${BANNER_HOST}/8e81329f825d6afd.webp`,
-    `${BANNER_HOST}/e71d33452d517e39.webp`,
-    `${BANNER_HOST}/ee3b164869f21c57.webp`
+    `${MP_STATIC}/3cdd06ea70c160cb.webp`,
+    `${MP_STATIC}/bcf4837bfb8f2347.webp`,
+    // 商场/百货实景（勿用夜市暗图顶「商场好店」）
+    `${MP_STATIC}/b348459d6195838b.webp`
   ],
-  stall: [`${BANNER_HOST}/1ef8e0176023fed0.webp`],
-  cross: [`${BANNER_HOST}/2b04f7adc3fccb07.webp`],
-  supply: [`${BANNER_HOST}/4fab0609b9f304b3.webp`],
-  login: [`${BANNER_HOST}/7f54551761013628.webp`]
+  stall: [`${MP_STATIC}/809fc9e17ef933b6.webp`, `${MP_STATIC}/3cdd06ea70c160cb.webp`],
+  cross: [`${MP_STATIC}/742baf46d2be8680.webp`, `${MP_STATIC}/bcf4837bfb8f2347.webp`],
+  supply: [`${MP_STATIC}/821f8b62aeaa627a.webp`, `${MP_STATIC}/821f8b62aeaa627a.webp`],
+  login: [`${MP_STATIC}/8f773fae68a0ba0e.webp`]
 }
-const LOCAL_BANNER = /\/assets\/banners\/|(consumer-[123]|stall-[12]|cross-[12]|supply-[12]|login-[12])\.png$/i
+const LOCAL_BANNER =
+  /\/assets\/banners\/|(consumer-[123]|stall-[12]|cross-[12]|supply-[12]|login-[12])\.png$|placehold|picsum|unsplash|\/admin\/(banner|cover)\//i
 
 async function listBanners(role, page) {
   const scope = role || 'consumer'
@@ -49,7 +51,8 @@ async function listBanners(role, page) {
   const pack = BANNER_IMAGES[scope] || BANNER_IMAGES.consumer
   return rows.map((row, i) => {
     const image = String(row.image || '').trim()
-    if (!image || LOCAL_BANNER.test(image)) {
+    const ready = /\/admin\/mp-static\//i.test(image)
+    if (!image || !ready || LOCAL_BANNER.test(image)) {
       row.image = pack[i % pack.length]
     }
     return row

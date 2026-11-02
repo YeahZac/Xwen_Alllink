@@ -22,7 +22,20 @@ function licenseUrl(v) {
   return ''
 }
 
-/** 优先门店/摊位/仓库封面，其次证照图 */
+function isMediaUrl(u) {
+  const s = String(u || '').trim()
+  if (!s) return false
+  return /^(https?:\/\/|wxfile:\/\/|cloud:\/\/|\/uploads\/|\/static\/)/i.test(s)
+}
+
+const LICENSE_META_KEYS = new Set([
+  'adminRemark',
+  'stallCommitment',
+  'stallCommitmentAt',
+  'stallPath'
+])
+
+/** 优先门店/摊位/仓库封面，其次证照图（跳过承诺书等非图片元数据） */
 function pickCoverFromLicenses(licenses) {
   const L = parseMaybeJson(licenses) || {}
   const preferred = [
@@ -37,11 +50,12 @@ function pickCoverFromLicenses(licenses) {
   ]
   for (const k of preferred) {
     const u = licenseUrl(L[k])
-    if (u) return u
+    if (isMediaUrl(u)) return u
   }
-  for (const v of Object.values(L)) {
+  for (const [k, v] of Object.entries(L)) {
+    if (LICENSE_META_KEYS.has(k)) continue
     const u = licenseUrl(v)
-    if (u) return u
+    if (isMediaUrl(u)) return u
   }
   return ''
 }

@@ -1,5 +1,8 @@
 /**
- * 首页列表启动预取：用默认沙井坐标尽早拉门店，进入首页时尽量已有数据。
+ * 首页启动预取三策略：
+ * 1) 网络预加载：App.onLaunch 用默认沙井坐标立刻拉列表（不等 GPS、不等 health）
+ * 2) 缓存：写入 data-cache，进入首页先同步灌入
+ * 3) 实时：首页 onShow / 定位成功后再按真实坐标刷新
  */
 const location = require('./location')
 const dataCache = require('./data-cache')
@@ -28,39 +31,67 @@ async function fetchHomeLists(q) {
   }
 }
 
+function publish(payload, key) {
+  lastPayload = payload
+  lastQueryKey = key
+  try {
+    const app = getApp()
+    if (app && app.globalData) {
+      app.globalData.homePrefetch = payload
+      app.globalData.homePrefetchKey = key
+    }
+  } catch (_) {}
+  return payload
+}
+
 /**
- * App.onLaunch 调用：预热 + 按默认定位拉首页三列表
+ * App.onLaunch：默认沙井立刻预拉；warmPromise 仅并行预热，不阻塞首包列表
  */
 function start(warmPromise) {
   location.ensureDefaultLoc()
   const q = location.queryFromSaved()
-  lastQueryKey = queryKey(q)
+  const key = queryKey(q)
+
+  // 先把磁盘缓存挂到内存，首页 onLoad 可同步渲染
+  const cached = dataCache.read(key)
+  if (cached && cached.data) {
+    publish(cached.data, key)
+  }
+
+  // 云托管预热并行，不 await
+  if (warmPromise && typeof warmPromise.then === 'function') {
+    warmPromise.catch(() => null)
+  }
 
   prefetchPromise = (async () => {
     try {
-      if (warmPromise && typeof warmPromise.then === 'function') {
-        await Promise.race([
-          warmPromise.catch(() => null),
-          new Promise((resolve) => setTimeout(resolve, 2800))
-        ])
-      }
       const payload = await fetchHomeLists(q)
-      dataCache.write(lastQueryKey, payload, dataCache.TTL.homeLists)
-      lastPayload = payload
-      try {
-        const app = getApp()
-        if (app && app.globalData) {
-          app.globalData.homePrefetch = payload
-          app.globalData.homePrefetchKey = lastQueryKey
-        }
-      } catch (_) {}
-      return payload
+      dataCache.write(key, payload, dataCache.TTL.homeLists)
+      return publish(payload, key)
     } catch (e) {
       console.warn('[home-prefetch]', (e && e.message) || e)
-      return null
+      return getPayload()
     }
   })()
 
+  return prefetchPromise
+}
+
+/** 按新坐标重新预取（定位成功后调用）；不打断当前页已有渲染 */
+function refreshWithQuery(q) {
+  location.ensureDefaultLoc()
+  const query = q || location.queryFromSaved()
+  const key = queryKey(query)
+  prefetchPromise = (async () => {
+    try {
+      const payload = await fetchHomeLists(query)
+      dataCache.write(key, payload, dataCache.TTL.homeLists)
+      return publish(payload, key)
+    } catch (e) {
+      console.warn('[home-prefetch:refresh]', (e && e.message) || e)
+      return getPayload()
+    }
+  })()
   return prefetchPromise
 }
 
@@ -72,8 +103,8 @@ function getPayload() {
       return app.globalData.homePrefetch
     }
   } catch (_) {}
-  const q = location.queryFromSaved()
-  const cached = dataCache.read(queryKey(q))
+  location.ensureDefaultLoc()
+  const cached = dataCache.read(queryKey(location.queryFromSaved()))
   return cached && cached.data ? cached.data : null
 }
 
@@ -81,10 +112,14 @@ function ready() {
   return prefetchPromise || Promise.resolve(getPayload())
 }
 
-/** 首页可等到预取完成（有上限），避免空白闪一下 */
-function waitForData(maxMs = 3200) {
+/** 有上限地等待预取；调用方不应阻塞首屏渲染 */
+function waitForData(maxMs = 2500) {
   const existing = getPayload()
-  if (existing && ((existing.stalls && existing.stalls.length) || (existing.crossStores && existing.crossStores.length))) {
+  if (
+    existing &&
+    ((existing.stalls && existing.stalls.length) ||
+      (existing.crossStores && existing.crossStores.length))
+  ) {
     return Promise.resolve(existing)
   }
   return Promise.race([
@@ -98,5 +133,6 @@ module.exports = {
   ready,
   waitForData,
   getPayload,
-  fetchHomeLists
+  fetchHomeLists,
+  refreshWithQuery
 }

@@ -1,0 +1,54 @@
+<view class="page m-home page--flush page--tabbed">
+  <page-nav title="合伙人中心" tone="solid" show-home="{{true}}" home-url="/pages/index/index" />
+
+  <view class="m-home-shell">
+    <view class="shop-card">
+      <text class="shop-card__name">区域合伙人</text>
+      <text class="shop-card__meta ellipsis-1">{{name}} · 邀请码 {{shareCode || '—'}}</text>
+      <text class="shop-card__tags">今日 / 本周 / 本月佣金（积分）</text>
+      <view class="kpi">
+        <view class="kpi__cell">
+          <text class="kpi__v">{{stats.todayPts}}</text>
+          <text class="kpi__l">今日</text>
+        </view>
+        <view class="kpi__cell">
+          <text class="kpi__v">{{stats.weekPts}}</text>
+          <text class="kpi__l">本周</text>
+        </view>
+        <view class="kpi__cell">
+          <text class="kpi__v">{{stats.monthPts}}</text>
+          <text class="kpi__l">本月</text>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{loadError}}" class="status-strip status-strip--warn">
+      <text>{{loadError}}</text>
+    </view>
+    <view class="status-strip">
+      <text>累计奖励 {{stats.rewardedPoints}} 积分 · 约 ¥{{stats.cashValue}} · 待审提现 {{stats.withdrawPending}}</text>
+    </view>
+
+    <view class="menu-grid">
+      <view
+        wx:for="{{menus}}"
+        wx:key="id"
+        class="menu-tile"
+        bindtap="go"
+        data-url="{{item.url}}"
+        data-title="{{item.title}}"
+      >
+        <text class="menu-tile__title">{{item.title}}</text>
+        <text class="menu-tile__sub">{{item.sub}}</text>
+      </view>
+    </view>
+
+    <view class="action-stack">
+      <view class="btn-outline-primary" bindtap="onWithdraw">申请提现</view>
+      <view class="btn-outline-primary" bindtap="onSwitchConsumer">切回消费者</view>
+      <view class="btn-outline-primary" bindtap="goIdentity">切换身份</view>
+    </view>
+    <view class="btn-gradient logout" bindtap="onLogout">退出登录</view>
+  </view>
+  <role-tabbar role="partner" active="home" />
+</view>

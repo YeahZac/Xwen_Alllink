@@ -1,5 +1,6 @@
 const api = require('../../utils/api')
 const { mergeBanners } = require('../../utils/banner-pack')
+const mediaCache = require('../../utils/media-cache')
 
 Component({
   properties: {
@@ -10,6 +11,10 @@ Component({
     height: {
       type: Number,
       value: 280
+    },
+    force: {
+      type: Boolean,
+      value: false
     }
   },
   data: {
@@ -23,10 +28,25 @@ Component({
   },
   lifetimes: {
     attached() {
-      this.load(this.properties.role)
+      // 先塞兜底，避免接口慢时整块空白
+      const scope = this.properties.role || 'consumer'
+      this.setData({ list: mergeBanners(scope, []) })
+      this.load(scope)
     }
   },
   methods: {
+    async hydrateCache(list) {
+      const next = list.slice()
+      for (let i = 0; i < next.length; i++) {
+        const item = next[i]
+        if (!item || !item.image || item.image.indexOf('/assets/') === 0) continue
+        try {
+          const local = await mediaCache.resolve(item.image)
+          if (local && local !== item.image) next[i] = { ...item, image: local }
+        } catch (_) {}
+      }
+      return next
+    },
     async load(role) {
       const scope = role || 'consumer'
       let rows = []
@@ -35,10 +55,30 @@ Component({
       } catch (_) {
         rows = []
       }
-      this.setData({ list: mergeBanners(scope, rows), current: 0 })
+      let list = mergeBanners(scope, rows)
+      if (!list.length) list = mergeBanners(scope, [])
+      this.setData({ list, current: 0 })
+      try {
+        const cached = await this.hydrateCache(list)
+        this.setData({ list: cached })
+      } catch (_) {}
     },
     onImgError(e) {
-      const idx = e.currentTarget.dataset.index
+      const idx = Number(e.currentTarget.dataset.index)
+      if (Number.isNaN(idx) || idx < 0) return
+      const item = this.data.list[idx]
+      if (!item) return
+      const pack = mergeBanners(this.properties.role || 'consumer', [])
+      const fallback = pack[idx % pack.length]
+      const cloud = fallback && fallback.image
+      // 云端失败时保留本地占位，避免整块空白
+      if (cloud && cloud !== item.image) {
+        this.setData({
+          [`list[${idx}].image`]: cloud,
+          [`list[${idx}].imgError`]: false
+        })
+        return
+      }
       this.setData({ [`list[${idx}].imgError`]: true })
     },
     onChange(e) {

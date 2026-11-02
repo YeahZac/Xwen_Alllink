@@ -1,0 +1,20 @@
+<view class="page page--tabbed">
+  <view class="m-page-head">
+    <text class="m-page-head__title">操作日志</text>
+    <text class="m-page-head__desc">审核、授权等关键动作</text>
+  </view>
+  <view wx:if="{{loading}}" class="empty">加载中…</view>
+  <view wx:elif="{{!list.length}}" class="empty">暂无日志（部署后审核动作会写入）</view>
+  <view class="row" wx:for="{{list}}" wx:key="id">
+    <view class="row__main">
+      <text class="row__t">{{item.action}}</text>
+      <text class="row__s">
+        {{item.actorRole || ''}}#{{item.actorUserId || '—'}}
+        · {{item.targetType || ''}} {{item.targetId || ''}}
+        · {{item.createdAt || ''}}
+      </text>
+      <text wx:if="{{item.detail}}" class="row__d">{{item.detail}}</text>
+    </view>
+  </view>
+  <role-tabbar role="founder" active="logs" />
+</view>

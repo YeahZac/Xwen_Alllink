@@ -1,17 +1,17 @@
-/* 万业互联云 · 本地生活品类标准（点评/美团/京东 craft bar）
-   mall-hub 构图 · 克制年轻红 · 白底清爽 Operate */
+/* 万业互联云 · cross-final / ok-* 统一视觉
+   暖米底 · 红橙渐变头图 · 大圆角白卡 · 双列店卡 */
 
 page {
-  /* —— Color（Restrained：中性底 + 一枚主色） —— */
-  --color-bg: #F5F6F8;
+  /* —— Color —— */
+  --color-bg: #F7F4F0;
   --color-surface: #FFFFFF;
-  --color-surface-soft: #F2F3F5;
+  --color-surface-soft: #F3F0EC;
   --color-ink: #1F2329;
   --color-text: #1F2329;
   --color-text-secondary: #646A73;
   --color-text-muted: #8F959E;
-  --color-border: #EBEDF0;
-  --color-border-strong: #DCDEE0;
+  --color-border: #EDE8E3;
+  --color-border-strong: #E0DAD3;
 
   --color-primary: #FF4D4F;
   --color-primary-soft: #FFF1F0;
@@ -22,8 +22,11 @@ page {
   --color-accent-soft: #FFF7E8;
   --color-accent-deep: #D46B08;
 
-  --color-header-start: #FF7875;
+  --color-header-start: #FF8A5C;
   --color-header-end: #FF4D4F;
+  --gradient-header: linear-gradient(135deg, #FF8A5C 0%, #FF4D4F 55%, #E03436 100%);
+  --gradient-hero: linear-gradient(120deg, #FF9A5C 0%, #FF5A4A 50%, #FF3D4A 100%);
+  --gradient-cta: linear-gradient(90deg, #FF7A45 0%, #FF4D4F 100%);
 
   --color-success: #00A870;
   --color-success-soft: #E8F8F2;
@@ -32,16 +35,16 @@ page {
 
   /* —— Radius —— */
   --radius-xs: 8rpx;
-  --radius-sm: 12rpx;
-  --radius-md: 16rpx;
-  --radius-lg: 20rpx;
-  --radius-xl: 28rpx;
+  --radius-sm: 14rpx;
+  --radius-md: 20rpx;
+  --radius-lg: 28rpx;
+  --radius-xl: 36rpx;
   --radius-pill: 999rpx;
 
-  /* —— Shadow（轻抬，无彩色光晕） —— */
-  --shadow-soft: 0 4rpx 16rpx rgba(31, 35, 41, 0.04);
-  --shadow-card: 0 8rpx 24rpx rgba(31, 35, 41, 0.06);
-  --shadow-seal: 0 6rpx 16rpx rgba(255, 77, 79, 0.22);
+  /* —— Shadow —— */
+  --shadow-soft: 0 6rpx 20rpx rgba(31, 35, 41, 0.05);
+  --shadow-card: 0 10rpx 28rpx rgba(31, 35, 41, 0.07);
+  --shadow-seal: 0 8rpx 20rpx rgba(255, 77, 79, 0.24);
 
   /* —— Type（微信小程序可读性：正文≥28rpx，辅助≥24rpx，忌 <22rpx） —— */
   --font-display: 44rpx;
@@ -105,13 +108,220 @@ picker {
 
 .page {
   min-height: 100vh;
-  padding: var(--space-sm) var(--space-page) calc(var(--space-lg) + env(safe-area-inset-bottom));
+  padding: var(--space-md) var(--space-page) calc(var(--space-lg) + env(safe-area-inset-bottom));
   background: var(--color-bg);
 }
 
 .page--flush {
   padding: 0;
   padding-bottom: calc(var(--space-md) + env(safe-area-inset-bottom));
+}
+
+/* 红橙渐变页头（分类/积分钱包等） */
+.hero-band {
+  padding: var(--space-lg) var(--space-page) var(--space-xl);
+  background: var(--gradient-header);
+  color: #fff;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-band__title {
+  display: block;
+  font-size: var(--font-display);
+  font-weight: 800;
+  line-height: var(--lh-tight);
+  letter-spacing: var(--tracking-display);
+  position: relative;
+  z-index: 1;
+}
+
+.hero-band__sub {
+  display: block;
+  margin-top: var(--space-sm);
+  font-size: var(--font-caption);
+  color: rgba(255, 255, 255, 0.88);
+  line-height: var(--lh-snug);
+  position: relative;
+  z-index: 1;
+}
+
+.hero-card {
+  margin: 0 var(--space-page);
+  padding: var(--space-lg);
+  border-radius: var(--radius-xl);
+  background: var(--gradient-hero);
+  color: #fff;
+  box-shadow: var(--shadow-seal);
+}
+
+.hero-card__label {
+  display: block;
+  font-size: var(--font-caption);
+  opacity: 0.92;
+}
+
+.hero-card__num {
+  display: block;
+  margin-top: var(--space-xs);
+  font-size: 72rpx;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-card__hint {
+  display: block;
+  margin-top: var(--space-sm);
+  font-size: var(--font-small);
+  opacity: 0.9;
+  line-height: var(--lh-snug);
+}
+
+.btn-ghost-on-hero {
+  margin-top: var(--space-md);
+  height: 72rpx;
+  line-height: 70rpx;
+  text-align: center;
+  border-radius: var(--radius-pill);
+  border: 2rpx solid rgba(255, 255, 255, 0.85);
+  color: #fff;
+  font-size: var(--font-body);
+  font-weight: 700;
+  background: transparent;
+}
+
+.btn-ghost-on-hero::after {
+  border: none;
+}
+
+.btn-outline-primary {
+  height: 88rpx;
+  line-height: 84rpx;
+  text-align: center;
+  border-radius: var(--radius-pill);
+  border: 2rpx solid var(--color-primary);
+  color: var(--color-primary);
+  font-size: var(--font-body);
+  font-weight: 700;
+  background: #fff;
+}
+
+.btn-outline-primary::after {
+  border: none;
+}
+
+.btn-gradient {
+  height: 88rpx;
+  line-height: 88rpx;
+  text-align: center;
+  border-radius: var(--radius-pill);
+  color: #fff;
+  font-size: var(--font-body);
+  font-weight: 800;
+  background: var(--gradient-cta);
+  box-shadow: var(--shadow-seal);
+}
+
+.btn-gradient::after {
+  border: none;
+}
+
+/* 双列门店网格 */
+.store-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.store-tile {
+  width: calc(50% - 6rpx);
+  overflow: hidden;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+}
+
+.store-tile:active {
+  transform: scale(0.985);
+}
+
+.store-tile__cover {
+  position: relative;
+  width: 100%;
+  height: 220rpx;
+  overflow: hidden;
+  background: var(--color-surface-soft);
+}
+
+.store-tile__badge {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  padding: 6rpx 14rpx;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: var(--font-tiny);
+  font-weight: 800;
+  border-radius: 0 0 var(--radius-sm) 0;
+}
+
+.store-tile__body {
+  padding: var(--space-sm) var(--space-sm) var(--space-md);
+}
+
+.store-tile__name {
+  display: block;
+  font-size: var(--font-body);
+  font-weight: 800;
+  color: var(--color-ink);
+  line-height: var(--lh-snug);
+}
+
+.store-tile__meta,
+.store-tile__addr {
+  display: block;
+  margin-top: 6rpx;
+  font-size: var(--font-tiny);
+  color: var(--color-text-muted);
+  line-height: var(--lh-snug);
+}
+
+/* 商户功能宫格 */
+.menu-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.menu-tile {
+  width: calc(50% - 6rpx);
+  padding: var(--space-md);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+  min-height: 148rpx;
+}
+
+.menu-tile:active {
+  transform: scale(0.985);
+}
+
+.menu-tile__title {
+  display: block;
+  font-size: var(--font-subtitle);
+  font-weight: 800;
+  color: var(--color-ink);
+  line-height: var(--lh-snug);
+}
+
+.menu-tile__sub {
+  display: block;
+  margin-top: var(--space-xs);
+  font-size: var(--font-tiny);
+  color: var(--color-text-muted);
+  line-height: var(--lh-snug);
 }
 
 .brand-mark {
@@ -155,8 +365,8 @@ picker {
 
 .section-title {
   font-size: var(--font-title);
-  font-weight: 700;
-  color: var(--color-text);
+  font-weight: 800;
+  color: var(--color-ink);
   margin: var(--space-section) 0 var(--space-sm);
   line-height: var(--lh-snug);
 }
@@ -175,9 +385,9 @@ picker {
 
 .surface {
   background: var(--color-surface);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   border: none;
-  box-shadow: none;
+  box-shadow: var(--shadow-soft);
 }
 
 .surface--lift {
@@ -233,11 +443,11 @@ picker {
 }
 
 .btn-primary {
-  background: var(--color-primary);
+  background: var(--gradient-cta);
   color: #fff;
   border-radius: var(--radius-pill);
   font-size: var(--font-subtitle);
-  font-weight: 600;
+  font-weight: 700;
   height: 88rpx;
   line-height: 88rpx;
   text-align: center;
@@ -250,8 +460,7 @@ picker {
 }
 
 .btn-primary:active {
-  background: var(--color-primary-deep);
-  opacity: 0.96;
+  opacity: 0.94;
 }
 
 .btn-ghost {

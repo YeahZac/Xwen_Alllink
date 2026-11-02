@@ -2,17 +2,17 @@
   <ad-banner role="login" height="240" />
 
   <view class="steps surface">
-    <view class="step {{step >= 1 ? 'step--on' : ''}}"><text>1</text><text class="step__l">身份</text></view>
+    <view class="step {{step >= 1 ? 'step--on' : ''}}"><text>1</text><text class="step__l">类型</text></view>
     <view class="step-line {{step >= 2 ? 'step-line--on' : ''}}"></view>
     <view class="step {{step >= 2 ? 'step--on' : ''}}"><text>2</text><text class="step__l">资料</text></view>
     <view class="step-line {{step >= 3 ? 'step-line--on' : ''}}"></view>
-    <view class="step {{step >= 3 ? 'step--on' : ''}}"><text>3</text><text class="step__l">证照</text></view>
+    <view class="step {{step >= 3 ? 'step--on' : ''}}"><text>3</text><text class="step__l">{{isStall ? '核验' : '证照'}}</text></view>
   </view>
 
-  <!-- Step 1 身份 -->
+  <!-- Step 1 商家经营类型 -->
   <block wx:if="{{step === 1}}">
-    <text class="section-title">选择入驻身份</text>
-    <text class="section-desc">不同身份审核材料不同，请如实选择</text>
+    <text class="section-title">申请成为商家</text>
+    <text class="section-desc">先选经营类型；供应链供货是商家类型之一，不再作为独立登录身份</text>
     <view
       wx:for="{{types}}"
       wx:key="id"
@@ -72,10 +72,14 @@
     </view>
   </block>
 
-  <!-- Step 3 证照 -->
+  <!-- Step 3 证照 / 地摊身份核验 -->
   <block wx:if="{{step === 3}}">
-    <text class="section-title">证照上传</text>
-    <text class="section-desc">照片清晰完整 · 审核通过后方可经营</text>
+    <text class="section-title">{{step3Title}}</text>
+    <text class="section-desc">{{step3Desc}}</text>
+    <view wx:if="{{isStall}}" class="notice surface">
+      <text class="notice__title">地摊入驻说明</text>
+      <text class="notice__text">无营业执照、无食品经营许可证也可申请。平台按「个人临时经营者」审核：核验本人身份与摊位实景，并签署合规承诺。实际摆摊仍须遵守当地城管与食品安全规定。</text>
+    </view>
     <view class="upload-list">
       <view class="upload surface" wx:for="{{licenseFields}}" wx:key="key">
         <view class="upload__head">
@@ -89,6 +93,12 @@
             <text class="muted">点击上传</text>
           </view>
         </view>
+      </view>
+    </view>
+    <view wx:if="{{isStall}}" class="agree surface agree--commit">
+      <view class="agree__row" bindtap="toggleStallCommitment">
+        <text class="agree__check {{form.stallCommitment ? 'agree__check--on' : ''}}">✓</text>
+        <text class="agree__text">我承诺：本人为摊位实际经营者；所售食品符合卫生安全要求；无证期间不超范围经营；服从属地监管并自行承担相应法律责任。如有虚假材料，同意平台驳回或关停。</text>
       </view>
     </view>
     <view class="agree surface">

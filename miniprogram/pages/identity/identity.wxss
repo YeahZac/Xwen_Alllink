@@ -21,16 +21,16 @@
   display: flex;
   align-items: center;
   gap: 20rpx;
-  padding: 24rpx 22rpx;
+  padding: 28rpx 24rpx;
   background: #fff;
-  border-radius: 20rpx;
-  box-shadow: 0 8rpx 28rpx rgba(18, 20, 26, 0.06);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft);
   border: 2rpx solid transparent;
 }
 
 .id-card--active {
-  border-color: rgba(255, 106, 42, 0.45);
-  background: linear-gradient(90deg, #fff8f3 0%, #fff 70%);
+  border-color: rgba(255, 77, 79, 0.4);
+  background: linear-gradient(90deg, #fff1f0 0%, #fff 70%);
 }
 
 .id-card--locked {
@@ -44,8 +44,8 @@
 .id-card__seal {
   width: 64rpx;
   height: 64rpx;
-  border-radius: 16rpx;
-  background: var(--color-ink);
+  border-radius: 50%;
+  background: var(--gradient-cta);
   color: #fff;
   font-size: 28rpx;
   font-weight: 800;

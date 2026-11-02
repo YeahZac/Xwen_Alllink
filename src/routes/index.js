@@ -20,9 +20,13 @@ const categoryService = require('../services/categoryService')
 const cityService = require('../services/cityService')
 const feeService = require('../services/feeService')
 const referralService = require('../services/referralService')
+const partnerService = require('../services/partnerService')
+const founderService = require('../services/founderService')
 
 const router = express.Router()
 const adminOnly = [authRequired, requireRoles('admin')]
+const founderOnly = [authRequired, requireRoles('founder', 'admin')]
+const partnerOnly = [authRequired, requireRoles('partner')]
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 25 * 1024 * 1024 }
@@ -273,7 +277,16 @@ router.post('/auth/switch-identity', authRequired, async (req, res, next) => {
 
 // ---------- Apply ----------
 router.get('/apply/license-rules', (_req, res) => {
-  res.json(ok(applyService.ROLE_LICENSE_RULES))
+  res.json(
+    ok({
+      required: applyService.ROLE_LICENSE_RULES,
+      optional: applyService.ROLE_OPTIONAL_LICENSES || {},
+      notes: {
+        stall:
+          '地摊可不提供营业执照与食品经营许可证；必填身份证正反面、摊位照，并勾选合规经营承诺（stallCommitment）'
+      }
+    })
+  )
 })
 
 router.post('/apply/submit', async (req, res, next) => {
@@ -754,6 +767,182 @@ router.patch('/admin/supply-needs/:id', ...adminOnly, requirePage('needs'), asyn
   }
 })
 
+router.get('/admin/partner-applies', ...adminOnly, requirePage('partner_ops'), async (req, res, next) => {
+  try {
+    res.json(ok(await partnerService.listPartnerApplies(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/admin/platform-role-applies', ...adminOnly, requirePage('identity_flags'), async (req, res, next) => {
+  try {
+    res.json(ok(await partnerService.listPlatformRoleApplies(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post(
+  '/admin/platform-role-applies/:id/approve',
+  ...adminOnly,
+  requirePage('identity_flags'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await partnerService.approvePlatformRoleApply(Number(req.params.id), {
+            reviewerId: req.auth.userId
+          })
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/admin/platform-role-applies/:id/reject',
+  ...adminOnly,
+  requirePage('identity_flags'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await partnerService.rejectPlatformRoleApply(Number(req.params.id), {
+            reviewerId: req.auth.userId,
+            reason: req.body?.reason
+          })
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/admin/partner-applies/:id/approve',
+  ...adminOnly,
+  requirePage('partner_ops'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(await partnerService.approvePartnerApply(Number(req.params.id), { reviewerId: req.auth.userId }))
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/admin/partner-applies/:id/reject',
+  ...adminOnly,
+  requirePage('partner_ops'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await partnerService.rejectPartnerApply(Number(req.params.id), {
+            reviewerId: req.auth.userId,
+            reason: req.body?.reason
+          })
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get('/admin/partner-withdraws', ...adminOnly, requirePage('partner_ops'), async (req, res, next) => {
+  try {
+    res.json(ok(await partnerService.listPartnerWithdraws(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post(
+  '/admin/partner-withdraws/:id/review',
+  ...adminOnly,
+  requirePage('partner_ops'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await partnerService.reviewPartnerWithdraw(Number(req.params.id), {
+            action: req.body?.action || 'approve',
+            reason: req.body?.reason,
+            reviewerId: req.auth.userId
+          })
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get('/admin/partner-purchases', ...adminOnly, requirePage('partner_purchases'), async (req, res, next) => {
+  try {
+    res.json(ok(await partnerService.listAllPurchaseOrders(req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.patch(
+  '/admin/partner-purchases/:id',
+  ...adminOnly,
+  requirePage('partner_purchases'),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await partnerService.updatePurchaseStatus(req.params.id, req.body?.status)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get('/admin/identity-members', ...adminOnly, requirePage('identity_flags'), async (req, res, next) => {
+  try {
+    res.json(ok(await founderService.listMembers(req.auth, req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post(
+  '/admin/identity-members/:id/flag',
+  ...adminOnly,
+  requirePage('identity_flags'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await founderService.setUserFlag(req.auth, req.params.id, {
+            flag: req.body?.flag,
+            value: req.body?.value
+          })
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get('/admin/op-logs', ...adminOnly, requirePage('op_logs'), async (req, res, next) => {
+  try {
+    res.json(ok(await founderService.listLogs(req.auth)))
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.get('/admin/referrals', ...adminOnly, requirePage('referrals'), async (req, res, next) => {
   try {
     res.json(ok(await adminService.listReferrals(req.query)))
@@ -928,10 +1117,25 @@ router.delete('/admin/media', ...adminOnly, requirePage('sys_media', { edit: tru
   }
 })
 
-// ---------- 分角色用户/门店 / SKU / 大屏 ----------
-router.get('/admin/ops/screen', ...adminOnly, requirePage('screen'), async (req, res, next) => {
+// ---------- 分角色用户/门店 / SKU ----------
+/** 数据大屏已下线 */
+router.get('/admin/ops/screen', ...adminOnly, async (req, res) => {
+  res.status(410).json({ code: 410, message: '数据大屏已下线', data: null })
+})
+
+router.post('/admin/sys/sync-mp-media', ...adminOnly, requirePage('sys_media', { edit: true }), async (req, res, next) => {
   try {
-    res.json(ok(await opsService.bigScreen()))
+    const mediaSyncService = require('../services/mediaSyncService')
+    res.json(ok(await mediaSyncService.syncAllMpStaticMedia()))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/sys/ensure-ops-roles', ...adminOnly, requirePage('sys_roles', { edit: true }), async (req, res, next) => {
+  try {
+    await rbacService.ensureOpsRolesAndAccounts()
+    res.json(ok({ ok: true, accounts: await rbacService.listAccounts() }))
   } catch (e) {
     next(e)
   }
@@ -1813,7 +2017,7 @@ router.post(
 )
 
 // ---------- Referral / complaints / needs ----------
-const promoterRoles = ['consumer', 'stall', 'cross', 'supply']
+const promoterRoles = ['consumer', 'stall', 'cross', 'supply', 'partner', 'founder']
 
 router.post('/referral/bind', authRequired, requireRoles(...promoterRoles), async (req, res, next) => {
   try {
@@ -1889,6 +2093,177 @@ router.post('/supply-needs', authRequired, requireRoles('consumer'), async (req,
         })
       )
     )
+  } catch (e) {
+    next(e)
+  }
+})
+
+// ---------- Partner（区域合伙人） ----------
+router.post('/partner/apply', authRequired, async (req, res, next) => {
+  try {
+    res.json(ok(await partnerService.submitPartnerApply(req.body, req.auth)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/identity/role-apply', authRequired, async (req, res, next) => {
+  try {
+    res.json(ok(await partnerService.submitPlatformRoleApply(req.body || {}, req.auth)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/partner/dashboard', ...partnerOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await partnerService.getDashboard(req.auth)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/partner/withdraw', ...partnerOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await partnerService.submitWithdraw(req.auth, req.body || {})))
+  } catch (e) {
+    next(e)
+  }
+})
+
+// ---------- Founder（创始人轻控制台） ----------
+router.get('/founder/overview', ...founderOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await founderService.overview(req.auth)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/founder/applies', ...founderOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await founderService.listMerchantApplies(req.auth, req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/founder/applies/:id/approve', ...founderOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await founderService.approveMerchantApply(req.auth, req.params.id, req.body?.remark)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/founder/applies/:id/reject', ...founderOnly, async (req, res, next) => {
+  try {
+    res.json(
+      ok(await founderService.rejectMerchantApply(req.auth, req.params.id, req.body?.reason))
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/founder/partner-applies', ...founderOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await founderService.listPartnerApplies(req.auth, req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/founder/partner-applies/:id/approve', ...founderOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await founderService.approvePartner(req.auth, req.params.id)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/founder/partner-applies/:id/reject', ...founderOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await founderService.rejectPartner(req.auth, req.params.id, req.body?.reason)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/founder/partner-withdraws', ...founderOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await founderService.listWithdraws(req.auth, req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/founder/partner-withdraws/:id/review', ...founderOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await founderService.reviewWithdraw(req.auth, req.params.id, req.body || {})))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/founder/members', ...founderOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await founderService.listMembers(req.auth, req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/founder/logs', ...founderOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await founderService.listLogs(req.auth)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/founder/perms', ...founderOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await founderService.getPerms(req.auth)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/founder/users/:id/flag', ...founderOnly, async (req, res, next) => {
+  try {
+    res.json(
+      ok(
+        await founderService.setUserFlag(req.auth, req.params.id, {
+          flag: req.body?.flag,
+          value: req.body?.value
+        })
+      )
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/partner/merchant-orders', ...partnerOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await partnerService.listMerchantOrders(req.auth)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get('/partner/purchase-orders', ...partnerOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await partnerService.listPurchaseOrders(req.auth)))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/partner/purchase-orders', ...partnerOnly, async (req, res, next) => {
+  try {
+    res.json(ok(await partnerService.submitPurchase(req.auth, req.body || {})))
   } catch (e) {
     next(e)
   }

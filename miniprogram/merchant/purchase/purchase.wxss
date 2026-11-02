@@ -163,3 +163,8 @@
   line-height: var(--lh-body);
   margin-bottom: var(--space-2);
 }
+
+.page--tabbed {
+  padding-bottom: calc(140rpx + env(safe-area-inset-bottom));
+}
+
