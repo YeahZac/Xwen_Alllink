@@ -89,6 +89,7 @@ async function submitApply(body) {
   if (pending.length) {
     throw new HttpError(400, '该手机号已有审核中的申请，请勿重复提交')
   }
+  // 停用(status=2) / 软删除 / 驳回 不拦截：允许重新提交商家申请
   const applyNo = orderNo('AP')
   const licensePayload = { ...(body.licenses || {}) }
   if (body.role === 'stall' && body.stallCommitment) {

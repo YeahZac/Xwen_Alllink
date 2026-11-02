@@ -25,8 +25,12 @@ const ROLE_DEFAULT = {
   supply: COVERS.warehouse
 }
 
-const REMOTE_MOCK =
-  /7072-prod-.*\/admin\/banner\/|placehold|picsum|unsplash|dummyimage|via\.placeholder/i
+const REMOTE_MOCK = /placehold|picsum|unsplash|dummyimage|via\.placeholder/i
+
+function isLegacyCloudCover(url) {
+  // 旧批 admin/cover、admin/banner，需换成本轮 mp-static 实景
+  return /tcb\.qcloud\.la\/admin\/(cover|banner)\//i.test(String(url || ''))
+}
 
 function pickByName(name, role, bizType) {
   const n = String(name || '') + ' ' + String(bizType || '')
@@ -52,6 +56,7 @@ function needsCoverReplace(url) {
   if (!s) return true
   if (s.indexOf('/assets/placeholders/') === 0) return false
   if (cdn.isOurCdn(s)) return false
+  if (isLegacyCloudCover(s)) return true
   if (s.indexOf('/uploads/') === 0) return false
   if (/^cloud:\/\//i.test(s)) return false
   if (REMOTE_MOCK.test(s)) return true

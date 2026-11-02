@@ -5,7 +5,8 @@ const BANNER_IMAGES = {
   consumer: [
     `${MP_STATIC}/3cdd06ea70c160cb.webp`,
     `${MP_STATIC}/bcf4837bfb8f2347.webp`,
-    `${MP_STATIC}/c24ce20a00c6790e.webp`
+    // 商场/百货实景（勿用夜市暗图顶「商场好店」）
+    `${MP_STATIC}/b348459d6195838b.webp`
   ],
   stall: [`${MP_STATIC}/809fc9e17ef933b6.webp`, `${MP_STATIC}/3cdd06ea70c160cb.webp`],
   cross: [`${MP_STATIC}/742baf46d2be8680.webp`, `${MP_STATIC}/bcf4837bfb8f2347.webp`],
@@ -13,7 +14,7 @@ const BANNER_IMAGES = {
   login: [`${MP_STATIC}/8f773fae68a0ba0e.webp`]
 }
 const LOCAL_BANNER =
-  /\/assets\/banners\/|(consumer-[123]|stall-[12]|cross-[12]|supply-[12]|login-[12])\.png$|placehold|picsum|unsplash/i
+  /\/assets\/banners\/|(consumer-[123]|stall-[12]|cross-[12]|supply-[12]|login-[12])\.png$|placehold|picsum|unsplash|\/admin\/(banner|cover)\//i
 
 async function listBanners(role, page) {
   const scope = role || 'consumer'
@@ -50,7 +51,8 @@ async function listBanners(role, page) {
   const pack = BANNER_IMAGES[scope] || BANNER_IMAGES.consumer
   return rows.map((row, i) => {
     const image = String(row.image || '').trim()
-    if (!image || LOCAL_BANNER.test(image)) {
+    const ready = /\/admin\/mp-static\//i.test(image)
+    if (!image || !ready || LOCAL_BANNER.test(image)) {
       row.image = pack[i % pack.length]
     }
     return row

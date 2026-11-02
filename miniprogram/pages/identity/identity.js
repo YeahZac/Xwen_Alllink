@@ -1,6 +1,10 @@
 const store = require('../../utils/store')
 const api = require('../../utils/api')
 
+/** 说明书五身份；地摊/异业/供应链仅为商家经营类型，禁止作为顶层身份卡 */
+const ALLOWED_ROLES = ['consumer', 'merchant', 'partner', 'founder', 'lead']
+const LEGACY_SHOP_ROLES = ['stall', 'cross', 'supply']
+
 const FALLBACK_CARDS = [
   {
     role: 'consumer',
@@ -74,6 +78,55 @@ const FALLBACK_CARDS = [
   }
 ]
 
+function normalizeIdentityCards(rawCards) {
+  const list = Array.isArray(rawCards) ? rawCards : []
+  const byRole = {}
+  list.forEach((c) => {
+    if (!c || !c.role) return
+    if (ALLOWED_ROLES.includes(c.role)) {
+      byRole[c.role] = c
+      return
+    }
+    // 旧接口把 stall|cross|supply 拆成顶层卡 → 聚合进「商家」
+    if (LEGACY_SHOP_ROLES.includes(c.role)) {
+      const prev = byRole.merchant || {}
+      const opened = !!(prev.opened || c.opened)
+      const active = !!(prev.active || c.active)
+      const pending = !opened && !!(prev.pending || c.pending)
+      byRole.merchant = {
+        ...prev,
+        role: 'merchant',
+        opened,
+        active,
+        pending,
+        merchantId: opened ? c.merchantId || prev.merchantId || null : null,
+        shopName: opened
+          ? c.shopName || prev.shopName || ''
+          : prev.shopName || '',
+        badge: opened ? '已开通' : pending ? '审核中' : prev.badge || '未开通',
+        shopType: c.role,
+        applyPath: prev.applyPath || '/pages/apply/apply',
+        applyTitle: prev.applyTitle || '立即申请成为商家'
+      }
+    }
+  })
+
+  return FALLBACK_CARDS.map((fb) => {
+    const hit = byRole[fb.role]
+    if (!hit) return { ...fb }
+    return {
+      ...fb,
+      ...hit,
+      role: fb.role,
+      label: fb.label,
+      seal: fb.seal,
+      desc: fb.desc,
+      applyPath: hit.applyPath || fb.applyPath,
+      applyTitle: hit.applyTitle || fb.applyTitle
+    }
+  })
+}
+
 Page({
   data: {
     identityCards: FALLBACK_CARDS
@@ -83,9 +136,11 @@ Page({
     try {
       const identities = await api.listIdentities()
       if (identities && identities.cards) {
-        this.setData({ identityCards: identities.cards })
+        this.setData({ identityCards: normalizeIdentityCards(identities.cards) })
       }
-    } catch (_) {}
+    } catch (_) {
+      this.setData({ identityCards: FALLBACK_CARDS })
+    }
   },
   onIdentityTap(e) {
     const ds = (e.currentTarget && e.currentTarget.dataset) || {}
@@ -96,7 +151,6 @@ Page({
     const label = ds.label || store.ROLE_LABEL[role] || '该身份'
     const applyPath = ds.applyPath || ''
     const applyTitle = ds.applyTitle || `立即申请开通${label}`
-
     if (active) {
       wx.showToast({ title: '当前已是该身份', icon: 'none' })
       return
@@ -110,9 +164,14 @@ Page({
         wx.showToast({ title: `${label}暂未开通`, icon: 'none' })
         return
       }
+      const badgeText = String(ds.badge || '')
+      const reapply =
+        String(applyTitle || '').indexOf('重新') >= 0 || badgeText.indexOf('可重申') >= 0
       wx.showModal({
-        title: '当前暂未开通',
-        content: `${label}尚未开通。${applyTitle}？审核需填写联系手机号。`,
+        title: reapply ? '可重新申请' : '当前暂未开通',
+        content: reapply
+          ? `${label}已停用或删除，可重新提交申请。是否去申请？`
+          : `${label}尚未开通。${applyTitle}？审核需填写联系手机号。`,
         confirmText: '去申请',
         cancelText: '取消',
         success: (r) => {

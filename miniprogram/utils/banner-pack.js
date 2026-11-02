@@ -20,9 +20,9 @@ const PACK = {
       linkType: 'switchTab'
     },
     {
-      title: '附近夜市好店',
-      sub: '炒面烤串麻辣烫都有',
-      image: cdn.bannerUrl('consumer-market.jpg'),
+      title: '商场好店上新',
+      sub: '餐饮 · 鲜花 · 蛋糕 · 百货',
+      image: cdn.coverUrl('cover-supermarket.jpg'),
       placeholder: cdn.PLACEHOLDER_BANNER,
       link: '/pages/index/index',
       linkType: 'switchTab'
@@ -94,17 +94,15 @@ const PACK = {
   ]
 }
 
-const BAD_REMOTE =
-  /7072-prod-.*\/admin\/banner\/|placehold|picsum|unsplash|dummyimage|via\.placeholder/i
-
 function isMissingImage(image) {
   const s = String(image || '').trim()
   if (!s) return true
   if (s.indexOf('/assets/placeholders/') === 0) return false
   if (cdn.isOurCdn(s)) return false
+  if (/tcb\.qcloud\.la\/admin\/(cover|banner)\//i.test(s)) return true
   if (s.indexOf('/uploads/') === 0) return false
   if (/^cloud:\/\//i.test(s)) return false
-  if (BAD_REMOTE.test(s)) return true
+  if (/placehold|picsum|unsplash|dummyimage|via\.placeholder/i.test(s)) return true
   if (/(consumer|stall|cross|supply|login)-[123]\.png$/i.test(s)) return true
   if (/\/assets\/banners\//i.test(s)) return true
   if (/^https?:\/\//i.test(s)) return true

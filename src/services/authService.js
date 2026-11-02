@@ -430,12 +430,14 @@ async function getProfile(auth) {
   }
 }
 
-/** 登录可切换的四类身份（对齐说明书）；商家内部再分经营类型 */
+/** 登录可切换的五类身份（说明书）；商家内部再分经营类型 stall|cross|supply */
 const SHOP_TYPE_LABEL = {
   stall: '地摊',
   cross: '异业门店',
   supply: '供应链供货'
 }
+
+const MERCHANT_STATUS = { pending: 0, open: 1, closed: 2, rejected: 3 }
 
 const IDENTITY_ROLES = [
   {
@@ -601,11 +603,12 @@ function founderSession(user, { asLead = false } = {}) {
   }
 }
 
-async function findOwnedMerchants(userId, phone) {
+async function findOwnedMerchants(userId, phone, { includeDeleted = false } = {}) {
+  const delClause = includeDeleted ? '' : ' AND deleted_at IS NULL'
   const byOwner = await query(
-    `SELECT id, role, name, status, invite_code, contact_phone, cover_url
+    `SELECT id, role, name, status, invite_code, contact_phone, cover_url, deleted_at
      FROM merchants
-     WHERE owner_user_id = :uid
+     WHERE owner_user_id = :uid${delClause}
      ORDER BY id ASC`,
     { uid: userId }
   )
@@ -613,12 +616,16 @@ async function findOwnedMerchants(userId, phone) {
   const p = String(phone || '').trim()
   if (!/^1\d{10}$/.test(p)) return []
   return query(
-    `SELECT id, role, name, status, invite_code, contact_phone, cover_url
+    `SELECT id, role, name, status, invite_code, contact_phone, cover_url, deleted_at
      FROM merchants
-     WHERE contact_phone = :phone
+     WHERE contact_phone = :phone${delClause}
      ORDER BY id ASC`,
     { phone: p }
   )
+}
+
+function isMerchantOpen(m) {
+  return m && !m.deleted_at && Number(m.status) === MERCHANT_STATUS.open
 }
 
 async function findPendingApplies(phone) {
@@ -656,25 +663,33 @@ async function merchantSessionFromRow(m, userId) {
 }
 
 /**
- * 同一微信账号下的身份清单（说明书四端）：
- * 消费者 / 商家（聚合 stall|cross|supply）/ 合伙人 / 创始人
+ * 同一微信账号下的身份清单（说明书五身份）：
+ * 消费者 / 商家（经营类型 stall|cross|supply）/ 合伙人 / 创始人 / 负责人
+ * 商家仅 status=1 且未软删视为已开通；停用/删除后可重新申请
  */
 async function listIdentities(auth) {
   const userId = await resolveAccountUserId(auth)
   const user = await loadAccountUser(userId)
   const merchants = await findOwnedMerchants(userId, user.phone)
+  const allMerchants = await findOwnedMerchants(userId, user.phone, { includeDeleted: true })
   const pending = await findPendingApplies(user.phone)
   const partnerPending = await findPendingPartnerApply(userId)
   const founderPending = await findPendingPlatformRoleApply(userId, 'founder')
   const leadPending = await findPendingPlatformRoleApply(userId, 'lead')
+  const openMerchants = merchants.filter(isMerchantOpen)
   const activeMerchant =
-    merchants.find((m) => Number(auth.merchantId) === Number(m.id)) ||
-    merchants.find((m) => Number(m.status) === 1) ||
-    merchants[0] ||
+    openMerchants.find((m) => Number(auth.merchantId) === Number(m.id)) ||
+    openMerchants[0] ||
     null
   const anyPending = pending[0] || null
-  const merchantOpened = merchants.length > 0
-  const merchantActive = MERCHANT_SHOP_TYPES.includes(auth.role)
+  const merchantOpened = openMerchants.length > 0
+  const hadStopped = !merchantOpened && merchants.some((m) => Number(m.status) === MERCHANT_STATUS.closed)
+  const hadDeleted =
+    !merchantOpened &&
+    !hadStopped &&
+    allMerchants.some((m) => m.deleted_at || Number(m.status) === MERCHANT_STATUS.rejected)
+  const canReapply = !merchantOpened
+  const merchantActive = MERCHANT_SHOP_TYPES.includes(auth.role) && merchantOpened
   const shopTypeLabel = activeMerchant ? SHOP_TYPE_LABEL[activeMerchant.role] || activeMerchant.role : ''
 
   const cards = IDENTITY_ROLES.map((meta) => {
@@ -698,11 +713,15 @@ async function listIdentities(auth) {
       let badge = '未开通'
       if (merchantOpened) badge = '已开通'
       else if (anyPending) badge = '审核中'
+      else if (hadStopped) badge = '已停用，可重申'
+      else if (hadDeleted) badge = '已删除，可重申'
       const shopName = merchantOpened
         ? `${activeMerchant.name} · ${shopTypeLabel}`
         : anyPending
           ? anyPending.shopName
-          : ''
+          : hadStopped || hadDeleted
+            ? '原门店已失效，可重新申请'
+            : ''
       return {
         role: 'merchant',
         label: meta.label,
@@ -711,12 +730,13 @@ async function listIdentities(auth) {
         opened: merchantOpened,
         active: merchantActive,
         pending: !merchantOpened && !!anyPending,
+        canReapply,
         merchantId: activeMerchant ? Number(activeMerchant.id) : null,
         shopType: activeMerchant ? activeMerchant.role : '',
         shopTypeLabel,
         shopName,
         badge,
-        applyTitle: meta.applyTitle,
+        applyTitle: hadStopped || hadDeleted ? '重新申请成为商家' : meta.applyTitle,
         applyPath: meta.applyPath,
         applyNo: anyPending ? anyPending.applyNo : '',
         shops: merchants.map((m) => ({
@@ -724,7 +744,8 @@ async function listIdentities(auth) {
           shopType: m.role,
           shopTypeLabel: SHOP_TYPE_LABEL[m.role] || m.role,
           shopName: m.name,
-          status: Number(m.status)
+          status: Number(m.status),
+          opened: isMerchantOpen(m)
         }))
       }
     }
@@ -838,18 +859,19 @@ async function switchIdentity(auth, { role, merchantId } = {}) {
   }
 
   const merchants = await findOwnedMerchants(userId, user.phone)
+  const openMerchants = merchants.filter(isMerchantOpen)
   let target = null
   const mid = Number(merchantId) || 0
   if (mid) {
-    target = merchants.find((m) => Number(m.id) === mid) || null
+    target = openMerchants.find((m) => Number(m.id) === mid) || null
   } else {
-    target = merchants.find((m) => Number(m.status) === 1) || merchants[0] || null
+    target = openMerchants[0] || null
   }
   if (!target) {
+    if (merchants.length) {
+      throw new HttpError(403, '商家身份已停用或删除，请重新申请')
+    }
     throw new HttpError(403, '当前暂未开通商家身份')
-  }
-  if (Number(target.status) !== 1) {
-    throw new HttpError(403, '该商户已停用，暂不可切换')
   }
 
   await query(

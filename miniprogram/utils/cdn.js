@@ -8,10 +8,10 @@ const CDN_HOST = String((manifest && manifest.cdnHost) || '').replace(/\/+$/, ''
 const PLACEHOLDER_BANNER = '/assets/placeholders/banner-loading.jpg'
 const PLACEHOLDER_COVER = '/assets/placeholders/cover-loading.jpg'
 
+/** 仅认定「本批实景素材」为已就绪；旧 admin/cover、admin/banner 等仍替换 */
 function isOurCdn(url) {
   const s = String(url || '')
   if (!s) return false
-  if (CDN_HOST && s.indexOf(CDN_HOST) === 0) return true
   return /tcb\.qcloud\.la\/admin\/mp-static\//i.test(s)
 }
 

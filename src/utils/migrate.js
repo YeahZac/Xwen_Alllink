@@ -187,10 +187,22 @@ async function ensureSchema() {
     console.warn('[schema] ops roles platform applies', e.message)
   }
   try {
+    await runSqlStatements('29_cdn_media_backfill.sql', 'cdn media backfill')
+  } catch (e) {
+    console.warn('[schema] cdn media backfill', e.message)
+  }
+  try {
     const rbacService = require('../services/rbacService')
     await rbacService.ensureRbacBootstrap()
   } catch (e) {
     console.warn('[schema] rbac bootstrap', e.message)
+  }
+  try {
+    const mediaSyncService = require('../services/mediaSyncService')
+    const r = await mediaSyncService.syncAllMpStaticMedia()
+    console.log('[schema] mp-static media sync', JSON.stringify(r))
+  } catch (e) {
+    console.warn('[schema] mp-static media sync', e.message)
   }
 }
 

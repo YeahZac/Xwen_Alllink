@@ -1117,10 +1117,25 @@ router.delete('/admin/media', ...adminOnly, requirePage('sys_media', { edit: tru
   }
 })
 
-// ---------- 分角色用户/门店 / SKU / 大屏 ----------
-router.get('/admin/ops/screen', ...adminOnly, requirePage('screen'), async (req, res, next) => {
+// ---------- 分角色用户/门店 / SKU ----------
+/** 数据大屏已下线 */
+router.get('/admin/ops/screen', ...adminOnly, async (req, res) => {
+  res.status(410).json({ code: 410, message: '数据大屏已下线', data: null })
+})
+
+router.post('/admin/sys/sync-mp-media', ...adminOnly, requirePage('sys_media', { edit: true }), async (req, res, next) => {
   try {
-    res.json(ok(await opsService.bigScreen()))
+    const mediaSyncService = require('../services/mediaSyncService')
+    res.json(ok(await mediaSyncService.syncAllMpStaticMedia()))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/sys/ensure-ops-roles', ...adminOnly, requirePage('sys_roles', { edit: true }), async (req, res, next) => {
+  try {
+    await rbacService.ensureOpsRolesAndAccounts()
+    res.json(ok({ ok: true, accounts: await rbacService.listAccounts() }))
   } catch (e) {
     next(e)
   }
