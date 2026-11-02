@@ -192,6 +192,20 @@ async function ensureSchema() {
     console.warn('[schema] cdn media backfill', e.message)
   }
   try {
+    await addColumn(
+      'admin_accounts',
+      'user_id',
+      "`user_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '关联 users.id' AFTER `role_id`"
+    )
+    await addColumn(
+      'admin_accounts',
+      'openid',
+      "`openid` VARCHAR(64) DEFAULT NULL COMMENT '关联微信 openid' AFTER `user_id`"
+    )
+  } catch (e) {
+    console.warn('[schema] admin accounts user link', e.message)
+  }
+  try {
     const rbacService = require('../services/rbacService')
     await rbacService.ensureRbacBootstrap()
   } catch (e) {

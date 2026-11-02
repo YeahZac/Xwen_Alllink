@@ -1141,6 +1141,25 @@ router.post('/admin/sys/ensure-ops-roles', ...adminOnly, requirePage('sys_roles'
   }
 })
 
+/** 为小程序用户开通/绑定后台账号（合伙人/创始人/负责人） */
+router.post('/admin/sys/provision-ops-account', ...adminOnly, requirePage('sys_accounts', { edit: true }), async (req, res, next) => {
+  try {
+    res.json(
+      ok(
+        await rbacService.provisionLinkedOpsAccount({
+          userId: req.body?.userId,
+          roleCode: req.body?.roleCode,
+          username: req.body?.username,
+          password: req.body?.password || '123456',
+          displayName: req.body?.displayName
+        })
+      )
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.get('/admin/ops/identities', ...adminOnly, async (req, res, next) => {
   try {
     const role = String(req.query.role || 'all')

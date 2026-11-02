@@ -8,64 +8,74 @@ const state = {
   permissions: {}
 }
 
+/** 大类（可折叠）→ 场景小类；id 仍对应权限 pageKey */
 const NAV_GROUPS = [
   {
-    name: '数据洞察',
+    key: 'insight',
+    name: '经营总览',
+    items: [{ id: 'dashboard', label: '数据概览' }]
+  },
+  {
+    key: 'onboard',
+    name: '入驻与身份',
     items: [
-      // 数据大屏默认隐藏；如需开通，在「角色权限」授 screen 后仍不进导航（仅保留权限点）
-      { id: 'dashboard', label: '概览' }
+      { id: 'applies', label: '商家入驻审核' },
+      { id: 'partner_ops', label: '合伙人申请/提现' },
+      { id: 'identity_flags', label: '创始人/负责人申请' },
+      { id: 'cities', label: '经营城市开通' }
     ]
   },
   {
+    key: 'users_stores',
     name: '用户与门店',
     items: [
       { id: 'users_all', label: '用户总览' },
-      { id: 'users_consumer', label: 'C端用户' },
+      { id: 'users_consumer', label: 'C端消费者' },
       { id: 'stores_stall', label: '地摊门店' },
       { id: 'stores_cross', label: '异业门店' },
-      { id: 'stores_supply', label: '供应链' },
-      { id: 'applies', label: '入驻审核' },
-      { id: 'partner_ops', label: '合伙人运营' },
-      { id: 'identity_flags', label: '身份授权' },
-      { id: 'cities', label: '经营城市' }
+      { id: 'stores_supply', label: '供应链门店' }
     ]
   },
   {
-    name: '交易运营',
+    key: 'trade',
+    name: '交易与资金',
     items: [
       { id: 'orders', label: '订单中心' },
       { id: 'points', label: '积分与额度' },
       { id: 'settlements', label: '结算抽成' },
       { id: 'withdraws', label: '提现审核' },
-      { id: 'partner_purchases', label: '合伙人采购' },
+      { id: 'partner_purchases', label: '合伙人采购单' },
       { id: 'referrals', label: '推荐记录' },
       { id: 'op_logs', label: '操作日志' }
     ]
   },
   {
-    name: '内容管理',
+    key: 'content',
+    name: '内容与运营',
     items: [
       { id: 'goods_sku', label: '商品SKU' },
       { id: 'goods', label: '商品目录' },
       { id: 'goods_categories', label: '商品类目' },
-      { id: 'banners', label: 'Banner' },
+      { id: 'banners', label: 'Banner 运营' },
       { id: 'needs', label: '供应需求' },
       { id: 'complaints', label: '投诉工单' },
       { id: 'configs', label: '平台配置' }
     ]
   },
   {
-    name: '系统管理',
+    key: 'system',
+    name: '系统与权限',
     items: [
       { id: 'referral_triggers', label: '推荐奖励设置' },
       { id: 'sys_roles', label: '角色权限' },
-      { id: 'sys_accounts', label: '账号管理' },
+      { id: 'sys_accounts', label: '后台账号' },
       { id: 'sys_media', label: '媒体资源' }
     ]
   }
 ]
 
 const ALL_NAV = NAV_GROUPS.flatMap((g) => g.items)
+const NAV_COLLAPSE_KEY = 'xwen_admin_nav_collapse'
 
 function isSuper() {
   const p = state.profile || {}
@@ -172,22 +182,60 @@ async function showDash() {
   go(state.page)
 }
 
+function loadNavCollapse() {
+  try {
+    return JSON.parse(localStorage.getItem(NAV_COLLAPSE_KEY) || '{}') || {}
+  } catch (_) {
+    return {}
+  }
+}
+
+function saveNavCollapse(map) {
+  try {
+    localStorage.setItem(NAV_COLLAPSE_KEY, JSON.stringify(map || {}))
+  } catch (_) {}
+}
+
 function renderNav() {
   const nav = $('nav')
+  const collapse = loadNavCollapse()
   const html = []
   for (const g of NAV_GROUPS) {
     const items = g.items.filter((n) => canView(n.id))
     if (!items.length) continue
-    html.push(`<div class="nav-group">${esc(g.name)}</div>`)
-    for (const n of items) {
-      html.push(
-        `<button type="button" data-page="${n.id}" class="${state.page === n.id ? 'on' : ''}">${n.label}</button>`
-      )
-    }
+    const collapsed = !!collapse[g.key]
+    const activeInGroup = items.some((n) => n.id === state.page)
+    const isCollapsed = collapsed && !activeInGroup
+    html.push(`<div class="nav-group ${isCollapsed ? 'is-collapsed' : ''}" data-group="${esc(g.key)}">
+      <button type="button" class="nav-group__head" data-toggle-group="${esc(g.key)}">
+        <span>${esc(g.name)}</span>
+        <span class="nav-group__chev">▾</span>
+      </button>
+      <div class="nav-group__body">
+        ${items
+          .map(
+            (n) =>
+              `<button type="button" class="nav-item ${state.page === n.id ? 'on' : ''}" data-page="${n.id}">${esc(n.label)}</button>`
+          )
+          .join('')}
+      </div>
+    </div>`)
   }
   nav.innerHTML = html.join('')
   nav.querySelectorAll('button[data-page]').forEach((btn) => {
     btn.onclick = () => go(btn.dataset.page)
+  })
+  nav.querySelectorAll('[data-toggle-group]').forEach((btn) => {
+    btn.onclick = () => {
+      const key = btn.dataset.toggleGroup
+      const box = nav.querySelector(`.nav-group[data-group="${key}"]`)
+      if (!box) return
+      const next = !box.classList.contains('is-collapsed')
+      box.classList.toggle('is-collapsed', next)
+      const map = loadNavCollapse()
+      map[key] = next
+      saveNavCollapse(map)
+    }
   })
 }
 
@@ -242,6 +290,22 @@ function esc(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+}
+
+/** 危险操作二次确认（删除/不可逆） */
+function confirmDanger(message) {
+  return confirm(message || '确认执行该操作？此操作通常不可恢复。')
+}
+
+/** 开关控件：on=true 表示营业/启用 */
+function switchControl({ on, onLabel = '开', offLabel = '关', disabled = false, attrs = '' }) {
+  const checked = on ? 'checked' : ''
+  const dis = disabled ? 'disabled' : ''
+  return `<label class="switch">
+    <input type="checkbox" ${checked} ${dis} ${attrs} />
+    <span class="switch__track"></span>
+    <span class="switch__label">${on ? esc(onLabel) : esc(offLabel)}</span>
+  </label>`
 }
 
 function isImgUrl(url) {
@@ -447,7 +511,7 @@ function bindMediaFields(root = document) {
     delBtn.onclick = async () => {
       const url = hidden.value
       if (!url) return
-      if (!confirm('确认删除该资源？')) return
+      if (!confirmDanger('确认删除该资源？删除后不可恢复。')) return
       try {
         await api('/admin/media', {
           method: 'DELETE',
@@ -541,7 +605,29 @@ async function renderIdentities(role) {
           <td>${esc(r.name)}</td><td><code>${esc(r.code)}</code></td>
           <td>${esc(r.phone || '-')}</td>
           <td>${isStore ? esc(r.city || '-') : esc(r.points ?? 0)}</td>
-          <td>${r.status}</td><td>${fmtTime(r.createdAt)}</td>
+          <td>${
+            isStore
+              ? editable
+                ? switchControl({
+                    on: Number(r.status) === 1,
+                    onLabel: '营业',
+                    offLabel: '停业',
+                    attrs: `data-store-switch="${r.merchantId}"`
+                  })
+                : Number(r.status) === 1
+                  ? '营业'
+                  : '停业'
+              : editable
+                ? switchControl({
+                    on: Number(r.status) === 1,
+                    onLabel: '启用',
+                    offLabel: '禁用',
+                    attrs: `data-user-switch="${r.id}"`
+                  })
+                : Number(r.status) === 1
+                  ? '启用'
+                  : '禁用'
+          }</td><td>${fmtTime(r.createdAt)}</td>
           <td class="actions">
             ${
               isStore
@@ -549,16 +635,12 @@ async function renderIdentities(role) {
                    ${
                      editable
                        ? `<button class="btn sm" data-grant="${r.merchantId}">发额度</button>
-                   <button class="btn ok sm" data-open="${r.merchantId}">营业</button>
-                   <button class="btn warn sm" data-close="${r.merchantId}">停业</button>
                    <button class="btn danger sm" data-del-store="${r.merchantId}">删除</button>`
                        : ''
                    }`
                 : `${
                     editable
                       ? `<button class="btn sm" data-pts="${r.id}">调积分</button>
-                   <button class="btn sm" data-on="${r.id}">启用</button>
-                   <button class="btn warn sm" data-off="${r.id}">禁用</button>
                    <button class="btn danger sm" data-del-user="${r.id}">删除</button>`
                       : '-'
                   }`
@@ -606,22 +688,26 @@ async function renderIdentities(role) {
         )
       }
     })
-    $('list').querySelectorAll('[data-open]').forEach((b) => {
-      b.onclick = () =>
+    $('list').querySelectorAll('[data-store-switch]').forEach((input) => {
+      input.onchange = () =>
         runAction(async () => {
-          await api(`/admin/ops/stores/${b.dataset.open}/status`, {
+          const id = Number(input.getAttribute('data-store-switch'))
+          const next = input.checked ? 1 : 2
+          await api(`/admin/ops/stores/${id}/status`, {
             method: 'POST',
-            body: JSON.stringify({ status: 1 })
+            body: JSON.stringify({ status: next })
           })
           load()
         })
     })
-    $('list').querySelectorAll('[data-close]').forEach((b) => {
-      b.onclick = () =>
+    $('list').querySelectorAll('[data-user-switch]').forEach((input) => {
+      input.onchange = () =>
         runAction(async () => {
-          await api(`/admin/ops/stores/${b.dataset.close}/status`, {
+          const id = Number(input.getAttribute('data-user-switch'))
+          const next = input.checked ? 1 : 0
+          await api(`/admin/ops/users/${id}/status`, {
             method: 'POST',
-            body: JSON.stringify({ status: 2 })
+            body: JSON.stringify({ status: next })
           })
           load()
         })
@@ -629,35 +715,15 @@ async function renderIdentities(role) {
     $('list').querySelectorAll('[data-del-store]').forEach((b) => {
       b.onclick = () =>
         runAction(async () => {
-          if (!confirm('确认删除该门店？')) return
+          if (!confirmDanger('确认删除该门店？删除后不可在列表中恢复。')) return
           await api(`/admin/ops/stores/${b.dataset.delStore}`, { method: 'DELETE' })
-          load()
-        })
-    })
-    $('list').querySelectorAll('[data-on]').forEach((b) => {
-      b.onclick = () =>
-        runAction(async () => {
-          await api(`/admin/ops/users/${b.dataset.on}/status`, {
-            method: 'POST',
-            body: JSON.stringify({ status: 1 })
-          })
-          load()
-        })
-    })
-    $('list').querySelectorAll('[data-off]').forEach((b) => {
-      b.onclick = () =>
-        runAction(async () => {
-          await api(`/admin/ops/users/${b.dataset.off}/status`, {
-            method: 'POST',
-            body: JSON.stringify({ status: 0 })
-          })
           load()
         })
     })
     $('list').querySelectorAll('[data-del-user]').forEach((b) => {
       b.onclick = () =>
         runAction(async () => {
-          if (!confirm('确认删除该用户？')) return
+          if (!confirmDanger('确认删除该用户？删除后不可在列表中恢复。')) return
           await api(`/admin/ops/users/${b.dataset.delUser}`, { method: 'DELETE' })
           load()
         })
@@ -796,7 +862,7 @@ async function showStoreDetail(id, listReload) {
   $('modalBody').querySelectorAll('[data-g-del]').forEach((b) => {
     b.onclick = () =>
       runAction(async () => {
-        if (!confirm('确认删除该商品？')) return
+        if (!confirmDanger('确认删除该商品？删除后不可恢复。')) return
         await api(`/admin/ops/skus/${d.role}/${b.dataset.gDel}`, { method: 'DELETE' })
         await refresh()
       })
@@ -1078,7 +1144,7 @@ async function renderGoodsSku() {
     $('list').querySelectorAll('[data-del]').forEach((b) => {
       b.onclick = () =>
         runAction(async () => {
-          if (!confirm('确认删除该商品？')) return
+          if (!confirmDanger('确认删除该商品？删除后不可恢复。')) return
           const [t, id] = b.dataset.del.split(':')
           await api(`/admin/ops/skus/${t}/${id}`, { method: 'DELETE' })
           load()
@@ -1305,7 +1371,18 @@ async function renderCities() {
         <td>${r.id}</td>
         <td>${esc(r.name)}</td>
         <td>${esc(r.province || '-')}</td>
-        <td>${Number(r.status) === 1 ? badge('open') : badge('closed')}</td>
+        <td>${
+          editable
+            ? switchControl({
+                on: Number(r.status) === 1,
+                onLabel: '开通',
+                offLabel: '关闭',
+                attrs: `data-city-switch="${r.id}" data-city-name="${encodeURIComponent(r.name || '')}"`
+              })
+            : Number(r.status) === 1
+              ? badge('open')
+              : badge('closed')
+        }</td>
         <td>${fmtTime(r.openedAt)}</td>
         <td>${r.merchantCount ?? 0}</td>
         <td>${r.geoCount ?? 0}</td>
@@ -1313,12 +1390,7 @@ async function renderCities() {
         <td class="actions">
           ${
             editable
-              ? `<button class="btn sm" data-edit='${encodeURIComponent(JSON.stringify(r))}'>编辑</button>
-                 ${
-                   Number(r.status) === 1
-                     ? `<button class="btn danger sm" data-close="${r.id}" data-name="${encodeURIComponent(r.name || '')}">关城</button>`
-                     : `<button class="btn ok sm" data-reopen='${encodeURIComponent(JSON.stringify(r))}'>重新开通</button>`
-                 }`
+              ? `<button class="btn sm" data-edit='${encodeURIComponent(JSON.stringify(r))}'>编辑</button>`
               : '-'
           }
         </td></tr>`
@@ -1354,19 +1426,24 @@ async function renderCities() {
     $('list').querySelectorAll('[data-edit]').forEach((b) => {
       b.onclick = () => openEditor(JSON.parse(decodeURIComponent(b.dataset.edit)))
     })
-    $('list').querySelectorAll('[data-reopen]').forEach((b) => {
-      b.onclick = () => {
-        const row = JSON.parse(decodeURIComponent(b.dataset.reopen))
-        openEditor({ ...row, status: 1 })
-      }
-    })
-    $('list').querySelectorAll('[data-close]').forEach((b) => {
-      b.onclick = () =>
+    $('list').querySelectorAll('[data-city-switch]').forEach((input) => {
+      input.onchange = () =>
         runAction(async () => {
-          const cityName = decodeURIComponent(b.dataset.name || '')
-          if (!confirm(`确认关闭经营城市「${cityName}」？在营门店将无法新开城入驻。`)) return
-          const res = await api(`/admin/cities/${b.dataset.close}/close`, { method: 'POST', body: '{}' })
-          alert(`已关城。当前仍有 ${res.activeMerchants ?? 0} 家在营门店归属该城市。`)
+          const id = Number(input.getAttribute('data-city-switch'))
+          const cityName = decodeURIComponent(input.getAttribute('data-city-name') || '')
+          if (!input.checked) {
+            if (!confirmDanger(`确认关闭经营城市「${cityName}」？在营门店将无法新开城入驻。`)) {
+              input.checked = true
+              return
+            }
+            const res = await api(`/admin/cities/${id}/close`, { method: 'POST', body: '{}' })
+            alert(`已关城。当前仍有 ${res.activeMerchants ?? 0} 家在营门店归属该城市。`)
+          } else {
+            await api('/admin/cities', {
+              method: 'POST',
+              body: JSON.stringify({ name: cityName, status: 1 })
+            })
+          }
           load()
         })
     })
@@ -1640,7 +1717,7 @@ async function renderGoods() {
     $('list').querySelectorAll('[data-del]').forEach((b) => {
       b.onclick = () =>
         runAction(async () => {
-          if (!confirm('确认删除该商品？')) return
+          if (!confirmDanger('确认删除该商品？删除后不可恢复。')) return
           const [t, id] = b.dataset.del.split(':')
           await api(`/admin/goods/${t}/${id}`, { method: 'DELETE' })
           load()
@@ -1707,7 +1784,7 @@ async function renderGoodsCategories() {
     })
     $('list').querySelectorAll('[data-del]').forEach((b) => {
       b.onclick = async () => {
-        if (!confirm('确认删除该类目？')) return
+        if (!confirmDanger('确认删除该类目？删除后不可恢复。')) return
         await api(`/admin/goods-categories/${b.dataset.del}`, { method: 'DELETE' })
         load()
       }
@@ -2234,7 +2311,7 @@ async function renderBanners() {
     $('list').querySelectorAll('[data-del]').forEach((btn) => {
       btn.onclick = () =>
         runAction(async () => {
-          if (!confirm('确认删除？')) return
+          if (!confirmDanger('确认删除？删除后不可恢复。')) return
           await api(`/admin/banners/${btn.dataset.del}`, { method: 'DELETE' })
           load()
         })
@@ -2810,6 +2887,10 @@ async function editRolePermissions(roleId, editable) {
   const rows = detail.permissions || []
   const body = `
     <p class="muted">${esc(detail.name)}（${esc(detail.code)}）· 勾选浏览 / 编辑</p>
+    <div class="perm-toolbar">
+      <label><input type="checkbox" id="permAllView" ${editable ? '' : 'disabled'}/> 全选「浏览」</label>
+      <label><input type="checkbox" id="permAllEdit" ${editable ? '' : 'disabled'}/> 全选「编辑」</label>
+    </div>
     <div class="perm-grid" id="permGrid">
       ${rows
         .map(
@@ -2838,6 +2919,60 @@ async function editRolePermissions(roleId, editable) {
         }
       : null
   )
+  const syncAllState = () => {
+    const views = [...document.querySelectorAll('#permGrid [data-v]')]
+    const edits = [...document.querySelectorAll('#permGrid [data-e]')]
+    const allV = $('permAllView')
+    const allE = $('permAllEdit')
+    if (allV) allV.checked = views.length > 0 && views.every((x) => x.checked)
+    if (allE) allE.checked = edits.length > 0 && edits.every((x) => x.checked)
+  }
+  if (editable) {
+    const allV = $('permAllView')
+    const allE = $('permAllEdit')
+    if (allV) {
+      allV.onchange = () => {
+        document.querySelectorAll('#permGrid [data-v]').forEach((el) => {
+          el.checked = allV.checked
+          if (!allV.checked) {
+            const row = el.closest('.perm-row')
+            const e = row && row.querySelector('[data-e]')
+            if (e) e.checked = false
+          }
+        })
+        syncAllState()
+      }
+    }
+    if (allE) {
+      allE.onchange = () => {
+        document.querySelectorAll('#permGrid [data-e]').forEach((el) => {
+          el.checked = allE.checked
+          if (allE.checked) {
+            const row = el.closest('.perm-row')
+            const v = row && row.querySelector('[data-v]')
+            if (v) v.checked = true
+          }
+        })
+        syncAllState()
+      }
+    }
+    document.querySelectorAll('#permGrid [data-v], #permGrid [data-e]').forEach((el) => {
+      el.onchange = () => {
+        if (el.matches('[data-e]') && el.checked) {
+          const row = el.closest('.perm-row')
+          const v = row && row.querySelector('[data-v]')
+          if (v) v.checked = true
+        }
+        if (el.matches('[data-v]') && !el.checked) {
+          const row = el.closest('.perm-row')
+          const e = row && row.querySelector('[data-e]')
+          if (e) e.checked = false
+        }
+        syncAllState()
+      }
+    })
+    syncAllState()
+  }
 }
 
 async function renderSysAccounts() {
@@ -2855,18 +2990,46 @@ async function renderSysAccounts() {
   const load = async () => {
     const rows = await api('/admin/rbac/accounts')
     $('list').innerHTML = table(
-      ['ID', '账号', '姓名', '角色', '状态', '最近登录', '操作'],
+      ['ID', '账号', '姓名', '角色', '绑定用户', '微信openid', '状态', '最近登录', '操作'],
       rows
         .map(
           (a) => `<tr>
         <td>${a.id}</td><td><code>${esc(a.username)}</code></td><td>${esc(a.displayName)}</td>
-        <td>${esc(a.roleName)}</td><td>${a.status}</td><td>${fmtTime(a.lastLoginAt)}</td>
+        <td>${esc(a.roleName)}</td>
+        <td>${a.userId ? `#${a.userId}` : '-'}</td>
+        <td style="max-width:140px;white-space:normal;word-break:break-all">${esc(a.openid || '-')}</td>
+        <td>${
+          editable && a.username !== 'admin'
+            ? switchControl({
+                on: Number(a.status) === 1,
+                onLabel: '启用',
+                offLabel: '停用',
+                attrs: `data-acc-switch="${a.id}" data-role-id="${a.roleId}" data-name="${esc(a.displayName)}"`
+              })
+            : a.status
+        }</td>
+        <td>${fmtTime(a.lastLoginAt)}</td>
         <td class="actions">
           ${editable ? `<button class="btn sm" data-edit='${encodeURIComponent(JSON.stringify(a))}'>编辑</button>` : '-'}
         </td></tr>`
         )
         .join('')
     )
+    $('list').querySelectorAll('[data-acc-switch]').forEach((input) => {
+      input.onchange = () =>
+        runAction(async () => {
+          await api('/admin/rbac/accounts', {
+            method: 'POST',
+            body: JSON.stringify({
+              id: Number(input.getAttribute('data-acc-switch')),
+              displayName: input.getAttribute('data-name') || '',
+              roleId: Number(input.getAttribute('data-role-id')),
+              status: input.checked ? 1 : 0
+            })
+          })
+          load()
+        })
+    })
     $('list').querySelectorAll('[data-edit]').forEach((b) => {
       b.onclick = () => {
         const a = JSON.parse(decodeURIComponent(b.getAttribute('data-edit')))
@@ -2981,7 +3144,7 @@ async function renderSysMedia() {
     })
     $('list').querySelectorAll('[data-del]').forEach((b) => {
       b.onclick = async () => {
-        if (!confirm('确认删除该资源？')) return
+        if (!confirmDanger('确认删除该资源？删除后不可恢复。')) return
         await api('/admin/media', {
           method: 'DELETE',
           body: JSON.stringify({ id: Number(b.dataset.del), fileKey: b.dataset.key })
@@ -3064,10 +3227,16 @@ async function renderPartnerOps() {
       $('list').querySelectorAll('[data-approve]').forEach((b) => {
         b.onclick = () =>
           runAction(async () => {
-            await api(`/admin/partner-applies/${b.dataset.approve}/approve`, {
+            if (!confirmDanger('确认通过该合伙人申请？通过后将开通小程序合伙人身份，并尝试创建后台登录账号。')) return
+            const res = await api(`/admin/partner-applies/${b.dataset.approve}/approve`, {
               method: 'POST',
               body: '{}'
             })
+            if (res && res.opsAccount) {
+              alert(
+                `已通过。后台账号：${res.opsAccount.username} / ${res.opsAccount.password || '123456'}（可用此账号登录运营台；同一微信打开小程序可切换合伙人身份）`
+              )
+            }
             load()
           })
       })
@@ -3187,10 +3356,16 @@ async function renderIdentityFlags() {
     $('list').querySelectorAll('[data-approve]').forEach((b) => {
       b.onclick = () =>
         runAction(async () => {
-          await api(`/admin/platform-role-applies/${b.dataset.approve}/approve`, {
+          if (!confirmDanger('确认通过该身份申请？通过后将开通小程序对应身份，并尝试创建后台登录账号。')) return
+          const res = await api(`/admin/platform-role-applies/${b.dataset.approve}/approve`, {
             method: 'POST',
             body: '{}'
           })
+          if (res && res.opsAccount) {
+            alert(
+              `已通过。后台账号：${res.opsAccount.username} / ${res.opsAccount.password || '123456'}（可用此账号登录运营台；同一微信打开小程序可切换身份）`
+            )
+          }
           loadApplies()
         })
     })

@@ -193,7 +193,18 @@ async function approvePartnerApply(id, { reviewerId } = {}) {
     }
     throw e
   }
-  return { ok: true, userId: rows[0].userId }
+  let opsAccount = null
+  try {
+    const rbacService = require('./rbacService')
+    opsAccount = await rbacService.provisionLinkedOpsAccount({
+      userId: rows[0].userId,
+      roleCode: 'partner_ops',
+      password: '123456'
+    })
+  } catch (e) {
+    console.warn('[partner] provision ops account', e.message)
+  }
+  return { ok: true, userId: rows[0].userId, opsAccount }
 }
 
 async function rejectPartnerApply(id, { reason, reviewerId } = {}) {
@@ -540,7 +551,19 @@ async function approvePlatformRoleApply(id, { reviewerId } = {}) {
      SET status='approved', reviewed_by=:rid, reviewed_at=NOW() WHERE id=:id`,
     { id: Number(id), rid: reviewerId || null }
   )
-  return { ok: true, status: 'approved', applyRole: rows[0].applyRole }
+  let opsAccount = null
+  try {
+    const rbacService = require('./rbacService')
+    const roleCode = rows[0].applyRole === 'founder' ? 'founder_ops' : 'lead_ops'
+    opsAccount = await rbacService.provisionLinkedOpsAccount({
+      userId: rows[0].userId,
+      roleCode,
+      password: '123456'
+    })
+  } catch (e) {
+    console.warn('[platform-role] provision ops account', e.message)
+  }
+  return { ok: true, status: 'approved', applyRole: rows[0].applyRole, userId: rows[0].userId, opsAccount }
 }
 
 async function rejectPlatformRoleApply(id, { reviewerId, reason } = {}) {

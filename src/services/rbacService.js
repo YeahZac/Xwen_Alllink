@@ -464,14 +464,140 @@ async function saveRolePermissions(roleId, permissions = []) {
 }
 
 async function listAccounts() {
-  return query(
-    `SELECT a.id, a.username, a.display_name AS displayName, a.role_id AS roleId,
-            r.name AS roleName, r.code AS roleCode, a.status, a.last_login_at AS lastLoginAt,
-            a.created_at AS createdAt
-     FROM admin_accounts a
-     JOIN admin_roles r ON r.id=a.role_id
-     ORDER BY a.id`
-  )
+  try {
+    return await query(
+      `SELECT a.id, a.username, a.display_name AS displayName, a.role_id AS roleId,
+              a.user_id AS userId, a.openid,
+              r.name AS roleName, r.code AS roleCode, a.status, a.last_login_at AS lastLoginAt,
+              a.created_at AS createdAt
+       FROM admin_accounts a
+       JOIN admin_roles r ON r.id=a.role_id
+       ORDER BY a.id`
+    )
+  } catch (e) {
+    if (!/Unknown column/i.test(String(e.message || ''))) throw e
+    return query(
+      `SELECT a.id, a.username, a.display_name AS displayName, a.role_id AS roleId,
+              r.name AS roleName, r.code AS roleCode, a.status, a.last_login_at AS lastLoginAt,
+              a.created_at AS createdAt
+       FROM admin_accounts a
+       JOIN admin_roles r ON r.id=a.role_id
+       ORDER BY a.id`
+    )
+  }
+}
+
+/**
+ * 审核通过后：为小程序用户开通对应运营台账号（绑定 user_id / openid）
+ * roleCode: partner_ops | founder_ops | lead_ops
+ */
+async function provisionLinkedOpsAccount({
+  userId,
+  roleCode,
+  username,
+  password = '123456',
+  displayName
+} = {}) {
+  const uid = Number(userId)
+  if (!uid) throw new HttpError(400, '缺少用户 ID')
+  const code = String(roleCode || '').trim()
+  if (!code) throw new HttpError(400, '缺少角色编码')
+
+  const roles = await query(`SELECT id, code, name FROM admin_roles WHERE code=:c AND status=1 LIMIT 1`, {
+    c: code
+  })
+  if (!roles.length) {
+    await ensureOpsRolesAndAccounts()
+  }
+  const roleRows = await query(`SELECT id, code, name FROM admin_roles WHERE code=:c AND status=1 LIMIT 1`, {
+    c: code
+  })
+  if (!roleRows.length) throw new HttpError(400, `角色不存在：${code}`)
+  const roleId = Number(roleRows[0].id)
+
+  let userRows = []
+  try {
+    userRows = await query(
+      `SELECT id, nickname, phone, openid FROM users WHERE id=:id LIMIT 1`,
+      { id: uid }
+    )
+  } catch (_) {
+    userRows = await query(`SELECT id, nickname, phone FROM users WHERE id=:id LIMIT 1`, { id: uid })
+  }
+  if (!userRows.length) throw new HttpError(404, '用户不存在')
+  const u = userRows[0]
+  const openid = u.openid || null
+  const uname =
+    String(username || '').trim() ||
+    (u.phone && /^1\d{10}$/.test(String(u.phone)) ? String(u.phone) : `u${uid}`)
+  const dname = String(displayName || u.nickname || roleRows[0].name || uname).trim()
+  const hash = hashPassword(String(password || '123456'), DEFAULT_SALT)
+
+  const byUser = await query(`SELECT id FROM admin_accounts WHERE username=:u LIMIT 1`, { u: uname })
+  if (byUser.length) {
+    try {
+      await query(
+        `UPDATE admin_accounts
+         SET password_hash=:h, password_salt=:salt, display_name=:n, role_id=:rid, status=1,
+             user_id=:uid, openid=:oid
+         WHERE id=:id`,
+        { id: byUser[0].id, h: hash, salt: DEFAULT_SALT, n: dname, rid: roleId, uid, oid: openid }
+      )
+    } catch (e) {
+      if (/Unknown column/i.test(String(e.message || ''))) {
+        await query(
+          `UPDATE admin_accounts
+           SET password_hash=:h, password_salt=:salt, display_name=:n, role_id=:rid, status=1
+           WHERE id=:id`,
+          { id: byUser[0].id, h: hash, salt: DEFAULT_SALT, n: dname, rid: roleId }
+        )
+      } else throw e
+    }
+    return {
+      id: Number(byUser[0].id),
+      username: uname,
+      password: String(password || '123456'),
+      roleCode: code,
+      userId: uid,
+      openid,
+      updated: true
+    }
+  }
+
+  try {
+    const r = await query(
+      `INSERT INTO admin_accounts
+        (username, password_hash, password_salt, display_name, role_id, user_id, openid, status)
+       VALUES (:u, :h, :salt, :n, :rid, :uid, :oid, 1)`,
+      { u: uname, h: hash, salt: DEFAULT_SALT, n: dname, rid: roleId, uid, oid: openid }
+    )
+    return {
+      id: Number(r.insertId),
+      username: uname,
+      password: String(password || '123456'),
+      roleCode: code,
+      userId: uid,
+      openid,
+      created: true
+    }
+  } catch (e) {
+    if (!/Unknown column/i.test(String(e.message || ''))) throw e
+    const r = await query(
+      `INSERT INTO admin_accounts
+        (username, password_hash, password_salt, display_name, role_id, status)
+       VALUES (:u, :h, :salt, :n, :rid, 1)`,
+      { u: uname, h: hash, salt: DEFAULT_SALT, n: dname, rid: roleId }
+    )
+    return {
+      id: Number(r.insertId),
+      username: uname,
+      password: String(password || '123456'),
+      roleCode: code,
+      userId: uid,
+      openid,
+      created: true
+    }
+  }
 }
 
 async function saveAccount(body) {
@@ -482,6 +608,15 @@ async function saveAccount(body) {
   if (!roleId) throw new HttpError(400, '请选择角色')
   const role = await query('SELECT id, code FROM admin_roles WHERE id=:id AND status=1', { id: roleId })
   if (!role.length) throw new HttpError(400, '角色无效或已停用')
+
+  const linkUserId = body.userId != null && body.userId !== '' ? Number(body.userId) : null
+  let linkOpenid = body.openid != null ? String(body.openid || '').trim() || null : null
+  if (linkUserId && !linkOpenid) {
+    try {
+      const urows = await query(`SELECT openid FROM users WHERE id=:id LIMIT 1`, { id: linkUserId })
+      linkOpenid = (urows[0] && urows[0].openid) || null
+    } catch (_) {}
+  }
 
   if (body.id) {
     const id = Number(body.id)
@@ -495,10 +630,28 @@ async function saveAccount(body) {
       if (body.status === 0) throw new HttpError(400, '不能停用内置超级管理员账号')
       if (Number(roleId) !== 1) throw new HttpError(400, '内置 admin 账号必须保持超级管理员角色')
     }
-    await query(
-      `UPDATE admin_accounts SET display_name=:n, role_id=:rid, status=:s WHERE id=:id`,
-      { id, n: isBuiltinAdmin ? '超级管理员' : displayName, rid: roleId, s: body.status === 0 ? 0 : 1 }
-    )
+    try {
+      await query(
+        `UPDATE admin_accounts
+         SET display_name=:n, role_id=:rid, status=:s,
+             user_id=IFNULL(:uid, user_id), openid=IFNULL(:oid, openid)
+         WHERE id=:id`,
+        {
+          id,
+          n: isBuiltinAdmin ? '超级管理员' : displayName,
+          rid: roleId,
+          s: body.status === 0 ? 0 : 1,
+          uid: isBuiltinAdmin ? null : linkUserId,
+          oid: isBuiltinAdmin ? null : linkOpenid
+        }
+      )
+    } catch (e) {
+      if (!/Unknown column/i.test(String(e.message || ''))) throw e
+      await query(
+        `UPDATE admin_accounts SET display_name=:n, role_id=:rid, status=:s WHERE id=:id`,
+        { id, n: isBuiltinAdmin ? '超级管理员' : displayName, rid: roleId, s: body.status === 0 ? 0 : 1 }
+      )
+    }
     if (body.password) {
       const salt = DEFAULT_SALT
       await query(
@@ -513,6 +666,26 @@ async function saveAccount(body) {
   const exists = await query('SELECT id FROM admin_accounts WHERE username=:u', { u: username })
   if (exists.length) throw new HttpError(400, '登录账号已存在')
   const salt = DEFAULT_SALT
+  try {
+    const r = await query(
+      `INSERT INTO admin_accounts
+        (username, password_hash, password_salt, display_name, role_id, user_id, openid, status)
+       VALUES (:u, :h, :salt, :n, :rid, :uid, :oid, :s)`,
+      {
+        u: username,
+        h: hashPassword(body.password, salt),
+        salt,
+        n: displayName,
+        rid: roleId,
+        uid: linkUserId,
+        oid: linkOpenid,
+        s: body.status === 0 ? 0 : 1
+      }
+    )
+    return { id: r.insertId }
+  } catch (e) {
+    if (!/Unknown column/i.test(String(e.message || ''))) throw e
+  }
   const r = await query(
     `INSERT INTO admin_accounts (username, password_hash, password_salt, display_name, role_id, status)
      VALUES (:u, :h, :salt, :n, :rid, :s)`,
@@ -585,6 +758,7 @@ module.exports = {
   isSuperAdmin,
   ensureRbacBootstrap,
   ensureOpsRolesAndAccounts,
+  provisionLinkedOpsAccount,
   registerPagePermission,
   listPermissionCatalog,
   getRolePermissions,

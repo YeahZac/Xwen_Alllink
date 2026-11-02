@@ -21,7 +21,8 @@ const ROLE_HOME = {
   cross: '/merchant/home/home',
   supply: '/merchant/home/home',
   partner: '/partner/home/home',
-  founder: '/founder/home/home'
+  founder: '/founder/home/home',
+  lead: '/founder/home/home'
 }
 
 const ROLE_LABEL = {
