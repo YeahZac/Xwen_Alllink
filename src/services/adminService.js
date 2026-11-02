@@ -616,6 +616,16 @@ async function deleteBanner(id) {
   return { id: Number(id) }
 }
 
+async function setBannerStatus(id, status) {
+  const sid = Number(id)
+  if (!sid) throw new HttpError(400, '缺少 Banner ID')
+  const on = Number(status) === 1 ? 1 : 0
+  const rows = await query('SELECT id FROM banners WHERE id=:id LIMIT 1', { id: sid })
+  if (!rows.length) throw new HttpError(404, 'Banner 不存在')
+  await query('UPDATE banners SET status=:s WHERE id=:id', { id: sid, s: on })
+  return { id: sid, status: on }
+}
+
 /* ---------- withdraw ---------- */
 async function listWithdraws({ status, page, pageSize, limit } = {}) {
   const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
@@ -987,6 +997,7 @@ module.exports = {
   listAllBanners,
   saveBanner,
   deleteBanner,
+  setBannerStatus,
   listWithdraws,
   reviewWithdraw,
   createDemoWithdraw,

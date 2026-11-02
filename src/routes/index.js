@@ -608,6 +608,20 @@ router.post('/admin/goods-categories', ...adminOnly, requirePage('goods_categori
   }
 })
 
+router.patch(
+  '/admin/goods-categories/:id/status',
+  ...adminOnly,
+  requirePage('goods_categories'),
+  async (req, res, next) => {
+    try {
+      const categoryService = require('../services/categoryService')
+      res.json(ok(await categoryService.setCategoryStatus(Number(req.params.id), req.body?.status)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
 router.delete('/admin/goods-categories/:id', ...adminOnly, requirePage('goods_categories'), async (req, res, next) => {
   try {
     res.json(ok(await categoryService.deleteCategory(Number(req.params.id))))
@@ -705,6 +719,14 @@ router.post('/admin/banners', ...adminOnly, requirePage('banners'), async (req, 
 router.delete('/admin/banners/:id', ...adminOnly, requirePage('banners'), async (req, res, next) => {
   try {
     res.json(ok(await adminService.deleteBanner(Number(req.params.id))))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.patch('/admin/banners/:id/status', ...adminOnly, requirePage('banners'), async (req, res, next) => {
+  try {
+    res.json(ok(await adminService.setBannerStatus(Number(req.params.id), req.body?.status)))
   } catch (e) {
     next(e)
   }

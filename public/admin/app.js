@@ -339,26 +339,42 @@ function confirmDanger(message) {
   return confirm(message || '确认执行该操作？此操作通常不可恢复。')
 }
 
-/** 开关控件：on=true 表示营业/启用 */
+/** 开关控件：单一滑块切换开/关（禁止再放「打开」「关闭」双按钮） */
 function switchControl({ on, onLabel = '开', offLabel = '关', disabled = false, attrs = '' }) {
   const checked = on ? 'checked' : ''
   const dis = disabled ? 'disabled' : ''
-  return `<label class="switch">
+  return `<label class="switch" data-on-label="${esc(onLabel)}" data-off-label="${esc(offLabel)}">
     <input type="checkbox" ${checked} ${dis} ${attrs} />
-    <span class="switch__track"></span>
+    <span class="switch__track" aria-hidden="true"></span>
     <span class="switch__label">${on ? esc(onLabel) : esc(offLabel)}</span>
   </label>`
+}
+
+function syncSwitchLabel(input) {
+  const wrap = input && input.closest && input.closest('.switch')
+  if (!wrap) return
+  const label = wrap.querySelector('.switch__label')
+  if (!label) return
+  const on = !!input.checked
+  label.textContent = on
+    ? wrap.getAttribute('data-on-label') || '开'
+    : wrap.getAttribute('data-off-label') || '关'
+  const tr = input.closest('tr')
+  if (tr) tr.classList.toggle('is-off', !on)
 }
 
 /** 列表开关：勾选=开，取消=关；失败时回滚勾选状态 */
 function bindToggleSwitch(root, selector, handler) {
   ;(root || document).querySelectorAll(selector).forEach((input) => {
+    syncSwitchLabel(input)
     input.onchange = () =>
       runAction(async () => {
+        syncSwitchLabel(input)
         try {
           await handler(input, !!input.checked)
         } catch (e) {
           input.checked = !input.checked
+          syncSwitchLabel(input)
           throw e
         }
       })
@@ -1148,13 +1164,15 @@ async function renderGoodsSku() {
         ['预览', '供应商类型', '店铺名称', 'SKU', '品名', '价格', '销量', '库存', '上架', '操作'],
         rows
           .map(
-            (g) => `<tr>
+            (g) => {
+              const on = Number(g.onSale) === 1
+              return `<tr class="${on ? '' : 'is-off'}">
         <td>${thumb(g.imageUrl)}</td>
         <td>${esc(g.goodsTypeLabel || g.goodsType)}</td><td>${esc(g.shopName)}</td>
         <td><code>${esc(g.sku)}</code></td><td>${esc(g.name)}</td>
         <td>${g.price}</td><td>${g.sales}</td><td>${g.stock ?? '-'}</td>
         <td>${switchControl({
-          on: Number(g.onSale) === 1,
+          on,
           onLabel: '上架',
           offLabel: '下架',
           disabled: !editable,
@@ -1168,6 +1186,7 @@ async function renderGoodsSku() {
               : '-'
           }
         </td></tr>`
+            }
           )
           .join('')
       ) + pagerHtml(data)
@@ -1792,9 +1811,10 @@ async function renderGoods() {
       editable
         ? `<button class="btn danger sm" data-del="${type}:${g.id}">删除</button>`
         : ''
+    const saleOn = (g) => Number(g.onSale != null ? g.onSale : g.status) === 1
     const saleCell = (g) =>
       switchControl({
-        on: Number(g.onSale != null ? g.onSale : g.status) === 1,
+        on: saleOn(g),
         onLabel: type === 'supply' ? '启用' : '上架',
         offLabel: type === 'supply' ? '停用' : '下架',
         disabled: !editable,
@@ -1806,7 +1826,7 @@ async function renderGoods() {
           ['预览', 'ID', '店名', '品名', '价', '积分', '分类', '库存', '上架', '操作'],
           rows
             .map(
-              (g) => `<tr>
+              (g) => `<tr class="${saleOn(g) ? '' : 'is-off'}">
           <td>${thumb(g.imageUrl)}</td>
           <td>${g.id}</td><td>${esc(g.shopName)}</td><td>${esc(g.name)}</td>
           <td>${g.price}</td><td>${g.pointsGrant}</td><td>${esc(g.category)}</td><td>${g.stock}</td>
@@ -1825,7 +1845,7 @@ async function renderGoods() {
           ['预览', 'ID', '店名', '品名', '类目', '积分', '现金价', '库存', '上架', '操作'],
           rows
             .map(
-              (g) => `<tr>
+              (g) => `<tr class="${saleOn(g) ? '' : 'is-off'}">
           <td>${thumb(g.imageUrl)}</td>
           <td>${g.id}</td><td>${esc(g.shopName)}</td><td>${esc(g.name)}</td>
           <td>${esc(g.category || '')}</td>
@@ -1843,7 +1863,7 @@ async function renderGoods() {
           ['预览', 'ID', '供应方', '品名', '类目', '价', '库存', '积分', '状态', '操作'],
           rows
             .map(
-              (g) => `<tr>
+              (g) => `<tr class="${saleOn(g) ? '' : 'is-off'}">
           <td>${thumb(g.imageUrl)}</td>
           <td>${g.id}</td><td>${esc(g.vendor)}</td><td>${esc(g.name)}</td>
           <td>${esc(g.category || '')}</td>
@@ -1914,13 +1934,15 @@ async function renderGoodsCategories() {
       ['ID', '关联角色', '类目名称', '排序', '状态', '操作'],
       rows
         .map(
-          (r) => `<tr>
+          (r) => {
+            const on = Number(r.status) === 1
+            return `<tr class="${on ? '' : 'is-off'}">
         <td>${r.id}</td>
         <td>${esc(r.roleLabel || r.role)}</td>
         <td>${esc(r.name)}</td>
         <td>${r.sortOrder}</td>
         <td>${switchControl({
-          on: Number(r.status) === 1,
+          on,
           onLabel: '启用',
           offLabel: '停用',
           disabled: !editable,
@@ -1934,6 +1956,7 @@ async function renderGoodsCategories() {
               : '-'
           }
         </td></tr>`
+          }
         )
         .join('')
     )
@@ -1945,17 +1968,9 @@ async function renderGoodsCategories() {
     })
     bindToggleSwitch($('list'), '[data-cat-switch]', async (input, on) => {
       const id = Number(input.getAttribute('data-cat-switch'))
-      const row = rows.find((x) => Number(x.id) === id)
-      if (!row) return
-      await api('/admin/goods-categories', {
-        method: 'POST',
-        body: JSON.stringify({
-          id: row.id,
-          role: row.role,
-          name: row.name,
-          sortOrder: row.sortOrder,
-          status: on ? 1 : 0
-        })
+      await api(`/admin/goods-categories/${id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: on ? 1 : 0 })
       })
       load()
     })
@@ -2466,12 +2481,14 @@ async function renderBanners() {
       ['预览', 'ID', '范围', '标题', '副标', '排序', '展示', '操作'],
       rows
         .map(
-          (b) => `<tr>
+          (b) => {
+            const on = Number(b.status) === 1
+            return `<tr class="${on ? '' : 'is-off'}">
         <td>${thumb(b.imageUrl)}</td>
         <td>${b.id}</td><td>${esc(b.roleScope)}</td><td>${esc(b.title)}</td>
         <td>${esc(b.subTitle)}</td><td>${b.sortOrder}</td>
         <td>${switchControl({
-          on: Number(b.status) === 1,
+          on,
           onLabel: '展示',
           offLabel: '隐藏',
           disabled: !editable,
@@ -2485,6 +2502,7 @@ async function renderBanners() {
               : '-'
           }
         </td></tr>`
+          }
         )
         .join('')
     )
@@ -2494,23 +2512,9 @@ async function renderBanners() {
     })
     bindToggleSwitch($('list'), '[data-banner-switch]', async (input, on) => {
       const id = Number(input.getAttribute('data-banner-switch'))
-      const row = rows.find((x) => Number(x.id) === id)
-      if (!row) return
-      await api('/admin/banners', {
-        method: 'POST',
-        body: JSON.stringify({
-          id: row.id,
-          roleScope: row.roleScope,
-          title: row.title,
-          subTitle: row.subTitle,
-          imageUrl: row.imageUrl,
-          linkUrl: row.linkUrl,
-          linkType: row.linkType,
-          sortOrder: row.sortOrder,
-          status: on ? 1 : 0,
-          startAt: row.startAt || null,
-          endAt: row.endAt || null
-        })
+      await api(`/admin/banners/${id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: on ? 1 : 0 })
       })
       load()
     })

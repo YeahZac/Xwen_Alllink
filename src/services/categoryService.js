@@ -77,9 +77,20 @@ async function deleteCategory(id) {
   return { id: Number(id) }
 }
 
+async function setCategoryStatus(id, status) {
+  const sid = Number(id)
+  if (!sid) throw new HttpError(400, '缺少类目 ID')
+  const on = Number(status) === 1 ? 1 : 0
+  const rows = await query('SELECT id FROM goods_categories WHERE id=:id', { id: sid })
+  if (!rows.length) throw new HttpError(404, '类目不存在')
+  await query('UPDATE goods_categories SET status=:s WHERE id=:id', { id: sid, s: on })
+  return { id: sid, status: on }
+}
+
 module.exports = {
   ROLE_LABEL,
   listCategories,
   saveCategory,
-  deleteCategory
+  deleteCategory,
+  setCategoryStatus
 }

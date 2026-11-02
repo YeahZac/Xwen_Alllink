@@ -8,7 +8,19 @@ const { ensureSchema } = require('./utils/migrate')
 
 const app = express()
 const adminDir = path.join(__dirname, '../public/admin')
-const adminStatic = express.static(adminDir, { index: 'index.html' })
+const adminStatic = express.static(adminDir, {
+  index: 'index.html',
+  etag: false,
+  lastModified: false,
+  setHeaders(res, filePath) {
+    // 运营台 JS/CSS/HTML 禁止长缓存，避免线上仍见「打开/关闭」双按钮旧版
+    if (/\.(html?|js|css)$/i.test(filePath)) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+      res.setHeader('Pragma', 'no-cache')
+      res.setHeader('Expires', '0')
+    }
+  }
+})
 
 // 云托管 / 自定义域名经反向代理终止 TLS
 app.set('trust proxy', true)
@@ -50,6 +62,9 @@ function publicOrigin(req) {
 app.get('/', (req, res, next) => {
   // 运营台域名：根路径直接出 index.html
   if (isAdminHost(req)) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    res.setHeader('Pragma', 'no-cache')
+    res.setHeader('Expires', '0')
     return res.sendFile(path.join(adminDir, 'index.html'))
   }
   const accept = String(req.headers.accept || '')
