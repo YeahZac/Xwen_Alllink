@@ -32,3 +32,8 @@
   gap: var(--space-sm);
   width: 100%;
 }
+
+.page--tabbed {
+  padding-bottom: calc(140rpx + env(safe-area-inset-bottom));
+}
+

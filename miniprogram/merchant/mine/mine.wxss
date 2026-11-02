@@ -1,0 +1,5 @@
+@import "../home/home.wxss";
+
+.page--tabbed {
+  padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
+}

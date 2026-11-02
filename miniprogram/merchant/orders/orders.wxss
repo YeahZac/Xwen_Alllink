@@ -31,3 +31,8 @@
   margin: 0;
   padding: 0 var(--space-md);
 }
+
+.page--tabbed {
+  padding-bottom: calc(140rpx + env(safe-area-inset-bottom));
+}
+

@@ -13,14 +13,21 @@
     <swiper-item wx:for="{{list}}" wx:key="id">
       <view class="ad-banner__slide" bindtap="onTap" data-index="{{index}}">
         <image
+          wx:if="{{item.placeholder}}"
+          class="ad-banner__img ad-banner__img--ph"
+          src="{{item.placeholder}}"
+          mode="aspectFill"
+        />
+        <image
           wx:if="{{!item.imgError}}"
           class="ad-banner__img"
           src="{{item.image}}"
           mode="aspectFill"
+          lazy-load="{{true}}"
           binderror="onImgError"
           data-index="{{index}}"
         />
-        <view wx:else class="ad-banner__fallback"></view>
+        <view wx:elif="{{!item.placeholder}}" class="ad-banner__fallback"></view>
         <view class="ad-banner__mask">
           <text class="ad-banner__title ellipsis-1">{{item.title}}</text>
           <text class="ad-banner__sub ellipsis-1">{{item.sub}}</text>

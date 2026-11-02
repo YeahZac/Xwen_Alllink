@@ -319,6 +319,13 @@
   opacity: 0.72;
 }
 
+.entry__img {
+  width: 88rpx;
+  height: 88rpx;
+  display: block;
+  flex-shrink: 0;
+}
+
 .entry__bubble {
   width: 88rpx;
   height: 88rpx;

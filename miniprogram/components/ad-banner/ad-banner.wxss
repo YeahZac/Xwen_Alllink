@@ -24,6 +24,14 @@
   display: block;
 }
 
+.ad-banner__img--ph {
+  position: absolute;
+  left: 0;
+  top: 0;
+  filter: blur(6rpx);
+  transform: scale(1.06);
+}
+
 .ad-banner__fallback {
   background: linear-gradient(120deg, #ff8a5c 0%, #ff4d4f 48%, #c41e3a 100%);
 }

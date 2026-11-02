@@ -1,0 +1,26 @@
+<view class="page apply-partner">
+  <text class="lead">区域合伙人可推广商家、查看佣金并申请提现。审核通过后可在「切换身份」进入合伙人端。</text>
+  <view class="form surface">
+    <view class="field">
+      <text class="field__label">姓名*</text>
+      <input class="field__input" placeholder="请输入姓名" value="{{form.contactName}}" data-key="contactName" bindinput="onField" />
+    </view>
+    <view class="field">
+      <text class="field__label">手机号*</text>
+      <input class="field__input" type="number" maxlength="11" placeholder="11位手机号" value="{{form.contactPhone}}" data-key="contactPhone" bindinput="onField" />
+    </view>
+    <view class="field">
+      <text class="field__label">经营城市</text>
+      <input class="field__input" placeholder="如：深圳市" value="{{form.city}}" data-key="city" bindinput="onField" />
+    </view>
+    <view class="field">
+      <text class="field__label">推荐人邀请码</text>
+      <input class="field__input" placeholder="选填" value="{{form.referrerCode}}" data-key="referrerCode" bindinput="onField" />
+    </view>
+    <view class="field">
+      <text class="field__label">备注</text>
+      <textarea class="field__area" placeholder="可说明覆盖区域或资源" value="{{form.remark}}" data-key="remark" bindinput="onField" maxlength="200" />
+    </view>
+  </view>
+  <button class="btn-primary" bindtap="submit" loading="{{submitting}}">提交合伙人申请</button>
+</view>

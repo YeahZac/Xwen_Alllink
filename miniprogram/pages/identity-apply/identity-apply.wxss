@@ -1,0 +1,62 @@
+.apply-identity {
+  padding: var(--space-md) var(--space-page) calc(var(--space-xl) + env(safe-area-inset-bottom));
+}
+
+.lead {
+  display: block;
+  margin-bottom: var(--space-md);
+  font-size: var(--font-caption);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.status-chip {
+  margin-bottom: var(--space-md);
+  padding: 12rpx 20rpx;
+  border-radius: 999rpx;
+  background: #fff7e6;
+  color: #d48806;
+  font-size: var(--font-caption);
+  font-weight: 600;
+}
+
+.form {
+  padding: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.field {
+  margin-bottom: var(--space-md);
+}
+
+.field__label {
+  display: block;
+  margin-bottom: 8rpx;
+  font-size: var(--font-caption);
+  color: var(--color-text-muted);
+}
+
+.field__static {
+  display: block;
+  font-size: var(--font-body);
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.field__input,
+.field__area {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid #eee;
+  font-size: var(--font-body);
+}
+
+.field__area {
+  min-height: 120rpx;
+}
+
+.btn-primary {
+  background: #ff4d4f;
+  color: #fff;
+}

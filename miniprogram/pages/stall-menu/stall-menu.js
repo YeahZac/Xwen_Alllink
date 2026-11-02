@@ -1,6 +1,7 @@
 const store = require('../../utils/store')
 const api = require('../../utils/api')
 const scan = require('../../utils/scan')
+const coverPack = require('../../utils/cover-pack')
 
 function calcUnit(basePrice, basePts, groups, selectedMap) {
   let price = Number(basePrice) || 0
@@ -85,7 +86,14 @@ Page({
       wx.showLoading({ title: '加载中' })
       const data = await api.stallMenu(this.data.stallId)
       wx.hideLoading()
-      const stall = data.stall || {}
+      const stallRaw = data.stall || {}
+      const stall = {
+        ...stallRaw,
+        coverImage: coverPack.resolveCover({
+          ...stallRaw,
+          role: stallRaw.role || 'stall'
+        })
+      }
       const menu = data.menu || []
       const map = {}
       menu.forEach((g) => {

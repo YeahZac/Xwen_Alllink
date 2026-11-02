@@ -1,0 +1,53 @@
+<view class="page m-home page--flush page--tabbed">
+  <page-nav title="创始人总控" tone="solid" show-home="{{true}}" home-url="/pages/index/index" />
+
+  <view class="m-home-shell">
+    <view class="shop-card">
+      <text class="shop-card__name">平台总控</text>
+      <text class="shop-card__meta">{{name}} · 万业互联云</text>
+      <text class="shop-card__tags">待办合计 {{todoTotal}} 项</text>
+      <view class="kpi">
+        <view class="kpi__cell">
+          <text class="kpi__v">{{metrics.merchants}}</text>
+          <text class="kpi__l">门店</text>
+        </view>
+        <view class="kpi__cell">
+          <text class="kpi__v">{{metrics.todayOrders}}</text>
+          <text class="kpi__l">今日单</text>
+        </view>
+        <view class="kpi__cell">
+          <text class="kpi__v">{{metrics.users}}</text>
+          <text class="kpi__l">会员</text>
+        </view>
+      </view>
+    </view>
+
+    <view wx:if="{{loadError}}" class="status-strip status-strip--warn">
+      <text>{{loadError}}</text>
+    </view>
+    <view class="status-strip">
+      <text>入驻待审 {{metrics.pendingApplies}} · 合伙人待审 {{metrics.pendingPartners}} · 提现待审 {{metrics.pendingWithdraws}}</text>
+    </view>
+
+    <view class="menu-grid">
+      <view
+        wx:for="{{menus}}"
+        wx:key="id"
+        class="menu-tile"
+        bindtap="go"
+        data-url="{{item.url}}"
+        data-title="{{item.title}}"
+      >
+        <text class="menu-tile__title">{{item.title}}</text>
+        <text class="menu-tile__sub">{{item.sub}}</text>
+      </view>
+    </view>
+
+    <view class="action-stack">
+      <view class="btn-outline-primary" bindtap="onSwitchConsumer">切回消费者</view>
+      <view class="btn-outline-primary" bindtap="goIdentity">切换身份</view>
+    </view>
+    <view class="btn-gradient logout" bindtap="onLogout">退出登录</view>
+  </view>
+  <role-tabbar role="founder" active="home" />
+</view>

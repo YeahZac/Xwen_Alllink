@@ -1,0 +1,29 @@
+.page--tabbed { padding: 24rpx 24rpx calc(140rpx + env(safe-area-inset-bottom)); }
+.m-page-head__title { display:block; font-size:36rpx; font-weight:800; }
+.m-page-head__desc { display:block; margin-top:8rpx; color:#8f959e; font-size:24rpx; margin-bottom:16rpx; }
+.kpi-row { display:flex; margin-bottom:16rpx; background:#fff; border-radius:16rpx; }
+.kpi { flex:1; text-align:center; padding:24rpx 8rpx; }
+.kpi__v { display:block; font-weight:800; color:#ff4d4f; }
+.kpi__l { font-size:22rpx; color:#8f959e; }
+.card {
+  padding: 24rpx;
+  margin-bottom: 12rpx;
+  background: #fff;
+  border-radius: 16rpx;
+}
+.card__t { display:block; font-weight:700; }
+.card__s { display:block; margin-top:8rpx; font-size:22rpx; color:#8f959e; }
+.form {
+  margin-top: 16rpx;
+  padding: 24rpx;
+  background: #fff;
+  border-radius: 16rpx;
+}
+.form input {
+  background: #f7f4f0;
+  border-radius: 12rpx;
+  padding: 16rpx 20rpx;
+  margin-bottom: 16rpx;
+}
+.btn-row { display:flex; gap:12rpx; margin-bottom:12rpx; flex-wrap:wrap; }
+.sm { margin: 0; }

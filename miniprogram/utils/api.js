@@ -263,7 +263,56 @@ const api = {
     request({ path: `/merchant/purchase/${id}/cancel`, method: 'POST', data: { reason } }),
   setMerchantOpen: (open) =>
     request({ path: '/merchant/profile/status', method: 'POST', data: { open: open ? 1 : 0 } }),
-  merchantFeeStatus: () => request({ path: '/merchant/fees/status' })
+  merchantFeeStatus: () => request({ path: '/merchant/fees/status' }),
+
+  // 合伙人
+  submitPartnerApply: (body) =>
+    request({ path: '/partner/apply', method: 'POST', data: body || {} }),
+  submitIdentityRoleApply: (body) =>
+    request({ path: '/identity/role-apply', method: 'POST', data: body || {} }),
+  partnerDashboard: () => request({ path: '/partner/dashboard' }),
+  partnerWithdraw: (body) =>
+    request({ path: '/partner/withdraw', method: 'POST', data: body || {} }),
+
+  // 创始人
+  founderOverview: () => request({ path: '/founder/overview' }),
+  founderApplies: (status = 'pending') =>
+    request({ path: `/founder/applies?status=${encodeURIComponent(status || 'pending')}` }),
+  founderApproveApply: (id, remark) =>
+    request({ path: `/founder/applies/${id}/approve`, method: 'POST', data: { remark } }),
+  founderRejectApply: (id, reason) =>
+    request({ path: `/founder/applies/${id}/reject`, method: 'POST', data: { reason } }),
+  founderPartnerApplies: (status = 'pending') =>
+    request({
+      path: `/founder/partner-applies?status=${encodeURIComponent(status || 'pending')}`
+    }),
+  founderApprovePartner: (id) =>
+    request({ path: `/founder/partner-applies/${id}/approve`, method: 'POST', data: {} }),
+  founderRejectPartner: (id, reason) =>
+    request({
+      path: `/founder/partner-applies/${id}/reject`,
+      method: 'POST',
+      data: { reason }
+    }),
+  founderPartnerWithdraws: (status = 'pending') =>
+    request({
+      path: `/founder/partner-withdraws?status=${encodeURIComponent(status || 'pending')}`
+    }),
+  founderReviewWithdraw: (id, body) =>
+    request({ path: `/founder/partner-withdraws/${id}/review`, method: 'POST', data: body || {} }),
+  founderMembers: ({ q = '', role = '' } = {}) =>
+    request({
+      path: `/founder/members?q=${encodeURIComponent(q || '')}&role=${encodeURIComponent(role || '')}`
+    }),
+  founderLogs: () => request({ path: '/founder/logs' }),
+  founderPerms: () => request({ path: '/founder/perms' }),
+  founderSetUserFlag: (id, body) =>
+    request({ path: `/founder/users/${id}/flag`, method: 'POST', data: body || {} }),
+
+  partnerMerchantOrders: () => request({ path: '/partner/merchant-orders' }),
+  partnerPurchaseOrders: () => request({ path: '/partner/purchase-orders' }),
+  partnerSubmitPurchase: (body) =>
+    request({ path: '/partner/purchase-orders', method: 'POST', data: body || {} })
 }
 
 module.exports = api

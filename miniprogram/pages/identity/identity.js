@@ -4,9 +4,9 @@ const api = require('../../utils/api')
 const FALLBACK_CARDS = [
   {
     role: 'consumer',
-    label: 'C端用户',
-    seal: 'C',
-    desc: '逛市集、点餐、积分兑换',
+    label: '消费者',
+    seal: '顾',
+    desc: '点餐、下单、饭票/积分、逛市集',
     opened: true,
     active: true,
     pending: false,
@@ -17,46 +17,60 @@ const FALLBACK_CARDS = [
     applyPath: ''
   },
   {
-    role: 'stall',
-    label: '地摊商户',
-    seal: '摊',
-    desc: '摆摊点餐与收款经营',
-    opened: false,
-    active: false,
-    pending: false,
-    merchantId: null,
-    shopName: '',
-    badge: '未开通',
-    applyTitle: '立即申请入驻地摊',
-    applyPath: '/pages/apply/apply?role=stall'
-  },
-  {
-    role: 'cross',
-    label: '异业门店',
+    role: 'merchant',
+    label: '商家',
     seal: '店',
-    desc: '异业核销与积分收银',
+    desc: '门店经营：地摊 / 异业 / 供应链供货',
     opened: false,
     active: false,
     pending: false,
     merchantId: null,
     shopName: '',
     badge: '未开通',
-    applyTitle: '立即申请入驻异业门店',
-    applyPath: '/pages/apply/apply?role=cross'
+    applyTitle: '立即申请成为商家',
+    applyPath: '/pages/apply/apply'
   },
   {
-    role: 'supply',
-    label: '供应链',
-    seal: '供',
-    desc: '供货、报价与货款结算',
+    role: 'partner',
+    label: '合伙人',
+    seal: '合',
+    desc: '区域推广佣金、商家订单与供应链采购',
     opened: false,
     active: false,
     pending: false,
     merchantId: null,
     shopName: '',
     badge: '未开通',
-    applyTitle: '立即申请入驻供应链',
-    applyPath: '/pages/apply/apply?role=supply'
+    applyTitle: '立即申请成为合伙人',
+    applyPath: '/partner/apply/apply'
+  },
+  {
+    role: 'founder',
+    label: '创始人',
+    seal: '创',
+    desc: '平台总控：审核、名单与经营监控',
+    opened: false,
+    active: false,
+    pending: false,
+    merchantId: null,
+    shopName: '',
+    badge: '未开通',
+    applyTitle: '立即申请成为创始人',
+    applyPath: '/pages/identity-apply/identity-apply?role=founder'
+  },
+  {
+    role: 'lead',
+    label: '负责人',
+    seal: '负',
+    desc: '创始人权限子集：审核与经营监控',
+    opened: false,
+    active: false,
+    pending: false,
+    merchantId: null,
+    shopName: '',
+    badge: '未开通',
+    applyTitle: '立即申请成为负责人',
+    applyPath: '/pages/identity-apply/identity-apply?role=lead'
   }
 ]
 
@@ -65,7 +79,7 @@ Page({
     identityCards: FALLBACK_CARDS
   },
   async onShow() {
-    if (!store.ensureConsumerOrRedirect()) return
+    if (!store.ensureIdentityAccess()) return
     try {
       const identities = await api.listIdentities()
       if (identities && identities.cards) {
@@ -80,22 +94,26 @@ Page({
     const pending = ds.pending === true || ds.pending === 'true'
     const active = ds.active === true || ds.active === 'true'
     const label = ds.label || store.ROLE_LABEL[role] || '该身份'
-    const applyPath = ds.applyPath || `/pages/apply/apply?role=${role}`
-    const applyTitle = ds.applyTitle || `立即申请入驻${label}`
+    const applyPath = ds.applyPath || ''
+    const applyTitle = ds.applyTitle || `立即申请开通${label}`
 
     if (active) {
       wx.showToast({ title: '当前已是该身份', icon: 'none' })
       return
     }
     if (pending) {
-      wx.showToast({ title: '入驻申请审核中，请稍候', icon: 'none' })
+      wx.showToast({ title: '申请审核中，请稍候', icon: 'none' })
       return
     }
     if (!opened) {
+      if (!applyPath) {
+        wx.showToast({ title: `${label}暂未开通`, icon: 'none' })
+        return
+      }
       wx.showModal({
         title: '当前暂未开通',
-        content: `${label}尚未开通。${applyTitle}？`,
-        confirmText: '确定',
+        content: `${label}尚未开通。${applyTitle}？审核需填写联系手机号。`,
+        confirmText: '去申请',
         cancelText: '取消',
         success: (r) => {
           if (r.confirm) wx.navigateTo({ url: applyPath })

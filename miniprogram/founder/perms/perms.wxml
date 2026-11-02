@@ -1,0 +1,31 @@
+<view class="page page--tabbed">
+  <view class="m-page-head">
+    <text class="m-page-head__title">权限开关</text>
+    <text class="m-page-head__desc">开通 / 关闭合伙人与创始人身份</text>
+  </view>
+
+  <view class="kpi-row" wx:if="{{!loading}}">
+    <view class="kpi"><text class="kpi__v">{{summary.partners}}</text><text class="kpi__l">合伙人</text></view>
+    <view class="kpi"><text class="kpi__v">{{summary.founders}}</text><text class="kpi__l">创始人</text></view>
+    <view class="kpi"><text class="kpi__v">{{summary.merchants}}</text><text class="kpi__l">门店</text></view>
+  </view>
+
+  <view class="card" wx:for="{{rules}}" wx:key="key">
+    <text class="card__t">{{item.title}}</text>
+    <text class="card__s">{{item.desc}}</text>
+  </view>
+
+  <view class="form">
+    <input placeholder="用户 ID" type="number" value="{{userId}}" bindinput="onUserId" />
+    <view class="btn-row">
+      <button class="btn-primary sm" size="mini" data-flag="partner" data-value="1" bindtap="setFlag">开通合伙人</button>
+      <button class="btn-ghost sm" size="mini" data-flag="partner" data-value="0" bindtap="setFlag">关闭合伙人</button>
+    </view>
+    <view class="btn-row">
+      <button class="btn-primary sm" size="mini" data-flag="founder" data-value="1" bindtap="setFlag">开通创始人</button>
+      <button class="btn-ghost sm" size="mini" data-flag="founder" data-value="0" bindtap="setFlag">关闭创始人</button>
+    </view>
+  </view>
+
+  <role-tabbar role="founder" active="perms" />
+</view>

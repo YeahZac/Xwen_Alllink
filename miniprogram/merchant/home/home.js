@@ -5,15 +5,15 @@ const { ensureCloud } = require('../../utils/request')
 
 const META = {
   stall: {
-    name: '地摊',
+    name: '商家·地摊',
     assetsHint: '积分额度池 · 营业额结算'
   },
   supply: {
-    name: '供应链',
+    name: '商家·供应链供货',
     assetsHint: '货款账户 · 积分折现权益'
   },
   cross: {
-    name: '异业',
+    name: '商家·异业',
     assetsHint: '应收结算 · 积分额度池'
   }
 }
@@ -33,34 +33,34 @@ function withSeal(rows) {
   }))
 }
 
-/** 对齐 ok-merchant：2×3 功能宫格，不堆协议与次要入口 */
+/** 对齐说明书商家端：工作台 / 订单 / 物料·财务·供应链（落在现有能力上） */
 function menusFor(role) {
   if (role === 'stall') {
     return withSeal([
-      { id: 'goods', icon: '品', tone: 'seal', title: '销售商品', sub: '菜单上架与售价', url: '/merchant/goods/goods' },
-      { id: 'customers', icon: '客', tone: 'gold', title: '客户列表', sub: '到店消费者', url: '/merchant/customers/customers' },
-      { id: 'flow', icon: '流', tone: 'teal', title: '交易流水', sub: '收款与采购', url: '/merchant/flow/flow' },
-      { id: 'purchase', icon: '采', tone: 'seal', title: '向供应链采购', sub: '成交获积分额度', url: '/merchant/purchase/purchase' },
-      { id: 'pool', icon: '池', tone: 'soft', title: '积分额度管理', sub: '池余额与划拨', url: '/merchant/points-pool/points-pool' },
-      { id: 'orders', icon: '单', tone: 'ink', title: '订单中心', sub: '点餐履约与出餐', url: '/merchant/orders/orders' }
+      { id: 'orders', icon: '单', tone: 'ink', title: '订单', sub: '待出单 / 出餐履约', url: '/merchant/orders/orders' },
+      { id: 'goods', icon: '品', tone: 'seal', title: '菜品物料', sub: '菜单上架与售价', url: '/merchant/goods/goods' },
+      { id: 'flow', icon: '财', tone: 'teal', title: '财务', sub: '收款与流水', url: '/merchant/flow/flow' },
+      { id: 'purchase', icon: '供', tone: 'seal', title: '供应链', sub: '向平台采购获额度', url: '/merchant/purchase/purchase' },
+      { id: 'pool', icon: '票', tone: 'soft', title: '饭票/积分池', sub: '额度与划拨', url: '/merchant/points-pool/points-pool' },
+      { id: 'customers', icon: '客', tone: 'gold', title: '我的客户', sub: '到店消费者', url: '/merchant/customers/customers' }
     ])
   }
   if (role === 'cross') {
     return withSeal([
+      { id: 'orders', icon: '单', tone: 'ink', title: '订单', sub: '兑换核销履约', url: '/merchant/orders/orders' },
       { id: 'goods', icon: '品', tone: 'seal', title: '门店商品', sub: '积分价 / 现金价', url: '/merchant/goods/goods' },
-      { id: 'customers', icon: '客', tone: 'gold', title: '客流与客户', sub: '积分客 / 现金客', url: '/merchant/customers/customers' },
-      { id: 'flow', icon: '流', tone: 'teal', title: '成交流水', sub: '核销与收银', url: '/merchant/flow/flow' },
-      { id: 'purchase', icon: '采', tone: 'seal', title: '采购获额度', sub: '向供应链进货', url: '/merchant/purchase/purchase' },
-      { id: 'pool', icon: '池', tone: 'soft', title: '积分额度管理', sub: '池余额查询', url: '/merchant/points-pool/points-pool' },
-      { id: 'orders', icon: '单', tone: 'ink', title: '兑换订单', sub: '积分 / 现金核销', url: '/merchant/orders/orders' }
+      { id: 'flow', icon: '财', tone: 'teal', title: '财务', sub: '核销与收银流水', url: '/merchant/flow/flow' },
+      { id: 'purchase', icon: '供', tone: 'seal', title: '供应链', sub: '采购获积分额度', url: '/merchant/purchase/purchase' },
+      { id: 'pool', icon: '票', tone: 'soft', title: '饭票/积分池', sub: '池余额查询', url: '/merchant/points-pool/points-pool' },
+      { id: 'customers', icon: '客', tone: 'gold', title: '我的客户', sub: '积分客 / 现金客', url: '/merchant/customers/customers' }
     ])
   }
   return withSeal([
-    { id: 'needs', icon: '需', tone: 'seal', title: '采购需求大厅', sub: '查看待报价原料需求', url: '/merchant/needs/needs' },
-    { id: 'goods', icon: '货', tone: 'seal', title: '供货商品', sub: '库存与积分比例', url: '/merchant/goods/goods' },
-    { id: 'orders', icon: '单', tone: 'ink', title: '采购订单', sub: '发货 / 确认', url: '/merchant/orders/orders' },
+    { id: 'orders', icon: '单', tone: 'ink', title: '订单', sub: '采购单发货确认', url: '/merchant/orders/orders' },
+    { id: 'needs', icon: '需', tone: 'seal', title: '需求大厅', sub: '待报价原料需求', url: '/merchant/needs/needs' },
+    { id: 'goods', icon: '货', tone: 'seal', title: '供货商品', sub: '库存与报价', url: '/merchant/goods/goods' },
+    { id: 'flow', icon: '财', tone: 'teal', title: '财务', sub: '出货与提现流水', url: '/merchant/flow/flow' },
     { id: 'customers', icon: '店', tone: 'gold', title: '客户门店', sub: '地摊 / 异业客户', url: '/merchant/customers/customers' },
-    { id: 'flow', icon: '流', tone: 'teal', title: '交易流水', sub: '出货与提现', url: '/merchant/flow/flow' },
     { id: 'assets', icon: '资', tone: 'soft', title: '资产账户', sub: '货款与积分折现', url: '/merchant/assets/assets' }
   ])
 }
@@ -138,14 +138,14 @@ Page({
     const userName = session.name || session.contactName || '老板'
     const featureTags =
       role === 'supply'
-        ? '需求大厅 · 供货商品 · 发货 · 客户门店 · 资产账户'
+        ? '商家工作台 · 订单 · 需求 · 财务 · 客户'
         : role === 'cross'
-          ? '门店商品 · 兑换订单 · 客户 · 流水 · 采购获额度'
-          : '销售商品 · 客户 · 流水 · 采购获额度 · 划拨给顾客'
+          ? '商家工作台 · 订单 · 财务 · 供应链 · 饭票/积分'
+          : '商家工作台 · 订单 · 菜品 · 财务 · 供应链'
     this.setData({
       role,
       roleName: m.name,
-      navTitle: `${m.name}工作台`,
+      navTitle: '商家工作台',
       shopName,
       userName,
       heroMeta: featureTags,
@@ -220,6 +220,9 @@ Page({
       wx.hideLoading()
       wx.showToast({ title: e.message || '切换失败', icon: 'none' })
     }
+  },
+  goIdentity() {
+    wx.navigateTo({ url: '/pages/identity/identity' })
   },
   openLegalDoc(e) {
     const key = e.currentTarget.dataset.key

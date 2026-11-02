@@ -25,12 +25,17 @@ function requestHost(req) {
     .split(':')[0]
 }
 
-/** admin.wanye.cloud → 根路径即运营台 */
+/** 运营台域名：admin 子域，或已绑定的 apex（如 wanye.cloud） */
 function isAdminHost(req) {
   const host = requestHost(req)
   if (!host) return false
   if (config.adminHost && host === config.adminHost) return true
   if (host.startsWith('admin.')) return true
+  // 云托管若只绑了 apex（截图常见 wanye.cloud），根路径也出运营台，避免只开 /admin 才可用
+  const apex = String(config.adminHost || '')
+    .replace(/^admin\./i, '')
+    .toLowerCase()
+  if (apex && (host === apex || host === `www.${apex}`)) return true
   return false
 }
 
@@ -89,6 +94,8 @@ app.get('/admin', (req, res) => {
 
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')))
 app.use('/banners', express.static(path.join(__dirname, '../public/banners')))
+/** 小程序云端静态资源备份（COS 为主；此处便于自建域名回源） */
+app.use('/static/mp', express.static(path.join(__dirname, '../public/static/mp')))
 /** 平台协议 PDF（审核 / 用户查看） */
 app.use(
   '/legal',

@@ -1,0 +1,67 @@
+.founder-applies {
+  padding: var(--space-md) var(--space-page) calc(var(--space-xl) + env(safe-area-inset-bottom));
+}
+
+.page--tabbed {
+  padding-bottom: calc(140rpx + env(safe-area-inset-bottom)) !important;
+}
+
+.tabs {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: var(--space-md);
+}
+
+.tab {
+  flex: 1;
+  text-align: center;
+  padding: 16rpx 0;
+  font-size: var(--font-caption);
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+}
+
+.tab--on {
+  color: #fff;
+  background: var(--color-primary);
+  font-weight: 700;
+}
+
+.empty {
+  padding: 80rpx 0;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: var(--font-caption);
+}
+
+.card {
+  padding: var(--space-md);
+  margin-bottom: var(--space-sm);
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+}
+
+.card__title {
+  font-size: var(--font-body);
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.card__meta {
+  margin-top: 8rpx;
+  font-size: var(--font-caption);
+  color: var(--color-text-muted);
+  line-height: 1.45;
+}
+
+.card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16rpx;
+  margin-top: var(--space-md);
+}
+
+.sm {
+  margin: 0;
+}

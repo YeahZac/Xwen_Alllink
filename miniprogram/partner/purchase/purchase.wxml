@@ -1,0 +1,20 @@
+<view class="page page--tabbed">
+  <view class="m-page-head">
+    <text class="m-page-head__title">采购</text>
+    <text class="m-page-head__desc">提交采购需求 · 可流转供货商接单</text>
+  </view>
+  <view class="form">
+    <input placeholder="采购品名*" value="{{form.goodsName}}" data-key="goodsName" bindinput="onField" />
+    <input placeholder="数量/规格" value="{{form.qtyText}}" data-key="qtyText" bindinput="onField" />
+    <input placeholder="备注" value="{{form.note}}" data-key="note" bindinput="onField" />
+    <button class="btn-primary" bindtap="submit">提交采购单</button>
+  </view>
+  <view wx:if="{{loading}}" class="empty">加载中…</view>
+  <view class="row" wx:for="{{list}}" wx:key="id">
+    <view class="row__main">
+      <text class="row__t">{{item.goodsName}}</text>
+      <text class="row__s">{{item.statusText || item.status}} · {{item.qtyText || ''}} · {{item.createdAt || ''}}</text>
+    </view>
+  </view>
+  <role-tabbar role="partner" active="purchase" />
+</view>

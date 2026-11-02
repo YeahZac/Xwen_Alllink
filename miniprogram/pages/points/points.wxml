@@ -1,5 +1,5 @@
 <view class="page points page--flush">
-  <page-nav title="积分" tone="solid" />
+  <page-nav title="饭票/积分" tone="solid" />
 
   <view class="points-shell">
     <view wx:if="{{needLogin}}" class="empty-state surface">

@@ -32,6 +32,10 @@
         "value": "assets/legal"
       },
       {
+        "type": "folder",
+        "value": "assets/icons/entry"
+      },
+      {
         "type": "file",
         "value": "utils/mock.js"
       },
@@ -42,6 +46,10 @@
       {
         "type": "file",
         "value": "云托管对接说明.md"
+      },
+      {
+        "type": "file",
+        "value": "DESIGN.md"
       },
       {
         "value": ".DS_Store",

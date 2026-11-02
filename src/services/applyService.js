@@ -7,10 +7,16 @@ const referralService = require('./referralService')
 const { parseMaybeJson, pickCoverFromLicenses } = require('../utils/mediaPick')
 
 const ROLE_LICENSE_RULES = {
-  // 地摊：无需营业执照；三类均需门店/摊位封面图，审核通过后写入 merchants.cover_url
-  stall: ['foodLicense', 'idCardFront', 'idCardBack', 'storePhoto'],
+  // 地摊：无需营业执照 / 食品经营许可证（食品证选填）；核验身份证 + 摊位照 + 合规承诺
+  // 异业 / 供应链：需营业执照；三类均需门店/摊位封面图，审核通过后写入 merchants.cover_url
+  stall: ['idCardFront', 'idCardBack', 'storePhoto'],
   cross: ['businessLicense', 'idCardFront', 'idCardBack', 'storePhoto'],
   supply: ['businessLicense', 'idCardFront', 'idCardBack', 'storePhoto']
+}
+
+/** 地摊可选上传材料（有则存档，无则不拦） */
+const ROLE_OPTIONAL_LICENSES = {
+  stall: ['foodLicense', 'businessLicense']
 }
 
 function assertApplyPayload(body) {
@@ -30,6 +36,10 @@ function assertApplyPayload(body) {
     throw new HttpError(400, '请填写统一社会信用代码')
   }
   if (!body.agreed) throw new HttpError(400, '请同意入驻协议')
+  // 无证地摊必须勾选合规经营承诺，才能走通入驻审核路径
+  if (role === 'stall' && !body.stallCommitment) {
+    throw new HttpError(400, '请确认地摊合规经营承诺')
+  }
   const licenses = body.licenses || {}
   for (const key of ROLE_LICENSE_RULES[role]) {
     if (!licenses[key]) throw new HttpError(400, `请上传必填证照：${key}`)
@@ -80,6 +90,12 @@ async function submitApply(body) {
     throw new HttpError(400, '该手机号已有审核中的申请，请勿重复提交')
   }
   const applyNo = orderNo('AP')
+  const licensePayload = { ...(body.licenses || {}) }
+  if (body.role === 'stall' && body.stallCommitment) {
+    licensePayload.stallCommitment = true
+    licensePayload.stallCommitmentAt = new Date().toISOString()
+    licensePayload.stallPath = 'no_license_personal' // 无证个人经营者路径标记，供运营台审核
+  }
   try {
     await query(
       `INSERT INTO merchant_applications
@@ -99,7 +115,7 @@ async function submitApply(body) {
         applicantUserId: applicantUserId || null,
         city,
         address: body.address,
-        licenseJson: JSON.stringify(body.licenses || {}),
+        licenseJson: JSON.stringify(licensePayload),
         referrerCode: referrer.code,
         lat: Number(body.latitude) || null,
         lng: Number(body.longitude) || null
@@ -125,7 +141,7 @@ async function submitApply(body) {
         contactPhone: body.contactPhone,
         city,
         address: body.address,
-        licenseJson: JSON.stringify(body.licenses || {}),
+        licenseJson: JSON.stringify(licensePayload),
         referrerCode: referrer.code,
         lat: Number(body.latitude) || null,
         lng: Number(body.longitude) || null
@@ -137,7 +153,10 @@ async function submitApply(body) {
     status: 'pending',
     statusText: '审核中',
     referrerCode: referrer.code,
-    remark: '预计1-3个工作日审核，通过后将通知商户邀请码'
+    remark:
+      body.role === 'stall'
+        ? '已提交（无证个人经营者路径），预计1-3个工作日核验身份与摊位；通过后将通知商户邀请码'
+        : '预计1-3个工作日审核，通过后将通知商户邀请码'
   }
 }
 
@@ -534,6 +553,7 @@ async function listMerchants({ role, limit = 200 } = {}) {
 
 module.exports = {
   ROLE_LICENSE_RULES,
+  ROLE_OPTIONAL_LICENSES,
   submitApply,
   queryByPhone,
   queryByUserId,

@@ -5,30 +5,36 @@ const legal = require('../../utils/legal')
 
 const TYPE_META = {
   stall: {
-    name: '地摊商铺',
-    desc: '扫码点餐 · 采购获额度 · 向消费者划拨积分',
-    tags: ['食品经营许可', '扫码点餐']
+    name: '地摊经营',
+    desc: '商家经营类型 · 个人经营者可入驻 · 扫码点餐 · 采购获额度',
+    tags: ['商家类型', '无证可申', '扫码点餐']
   },
   cross: {
     name: '异业门店',
-    desc: '承接积分兑换 · 可采购供应链获额度',
-    tags: ['积分兑换', '全现金兜底']
+    desc: '商家经营类型 · 承接积分兑换 · 可向供应链采购获额度',
+    tags: ['商家类型', '需营业执照', '积分兑换']
   },
   supply: {
-    name: '供应链',
-    desc: '向地摊/异业供货 · 货款与积分分账户',
-    tags: ['供货', '分账结算']
+    name: '供应链供货',
+    desc: '商家经营类型 · 向地摊/异业供货 · 非独立登录身份',
+    tags: ['商家类型', '需营业执照', '供货结算']
   }
 }
 
 const ROLE_FIELDS = {
   stall: {
-    label: '地摊商铺',
+    label: '地摊经营',
+    // 地摊常见无营业执照、无食品经营许可证：走「身份证 + 摊位照 + 合规承诺」路径；有食品证可自愿上传
     licenses: [
-      { key: 'foodLicense', label: '食品经营许可证', required: true },
-      { key: 'idCardFront', label: '法人身份证正面', required: true },
-      { key: 'idCardBack', label: '法人身份证反面', required: true },
-      { key: 'storePhoto', label: '摊位封面照片', required: true }
+      { key: 'idCardFront', label: '经营者身份证正面', required: true },
+      { key: 'idCardBack', label: '经营者身份证反面', required: true },
+      { key: 'storePhoto', label: '摊位封面照片', required: true },
+      {
+        key: 'foodLicense',
+        label: '食品经营许可证（选填）',
+        required: false,
+        tip: '有证建议上传，加快审核'
+      }
     ]
   },
   cross: {
@@ -41,7 +47,7 @@ const ROLE_FIELDS = {
     ]
   },
   supply: {
-    label: '供应链',
+    label: '供应链供货',
     licenses: [
       { key: 'businessLicense', label: '营业执照', required: true },
       { key: 'idCardFront', label: '法人身份证正面', required: true },
@@ -67,8 +73,12 @@ const CREDIT_CODE_FIELD = {
 }
 
 function baseFieldsForRole(role) {
-  // 地摊无需统一社会信用代码；异业 / 供应链照常填写
-  if (role === 'stall') return BASE_FIELDS_COMMON.slice()
+  // 地摊：无需统一社会信用代码；「法人」改为「经营者」
+  if (role === 'stall') {
+    return BASE_FIELDS_COMMON.map((f) =>
+      f.key === 'legalPerson' ? { ...f, label: '经营者姓名' } : { ...f }
+    )
+  }
   return [BASE_FIELDS_COMMON[0], CREDIT_CODE_FIELD, ...BASE_FIELDS_COMMON.slice(1)]
 }
 
@@ -89,7 +99,8 @@ Page({
       city: '',
       address: '',
       referrerCode: '',
-      agreed: false
+      agreed: false,
+      stallCommitment: false
     },
     files: {},
     fileUrls: {},
@@ -98,7 +109,10 @@ Page({
     locationName: '',
     locationText: '',
     cities: [],
-    submitting: false
+    submitting: false,
+    isStall: true,
+    step3Title: '身份核验与承诺',
+    step3Desc: '地摊可无营业执照与食品证 · 须完成身份核验与合规承诺'
   },
   onLoad(query) {
     const selected = ROLE_FIELDS[query.role] ? query.role : 'stall'
@@ -116,10 +130,17 @@ Page({
   },
   syncRoleFields(role) {
     const cfg = ROLE_FIELDS[role]
+    const isStall = role === 'stall'
     this.setData({
       roleLabel: cfg.label,
       licenseFields: cfg.licenses,
-      baseFields: baseFieldsForRole(role)
+      baseFields: baseFieldsForRole(role),
+      isStall,
+      step3Title: isStall ? '身份核验与承诺' : '证照上传',
+      step3Desc: isStall
+        ? '地摊可无营业执照与食品证 · 须完成身份核验与合规承诺'
+        : '照片清晰完整 · 审核通过后方可经营',
+      'form.stallCommitment': isStall ? this.data.form.stallCommitment : false
     })
   },
   selectRole(e) {
@@ -246,6 +267,9 @@ Page({
   toggleAgree() {
     this.setData({ 'form.agreed': !this.data.form.agreed })
   },
+  toggleStallCommitment() {
+    this.setData({ 'form.stallCommitment': !this.data.form.stallCommitment })
+  },
   openMerchantLegal() {
     legal.openDoc('merchant')
   },
@@ -290,6 +314,10 @@ Page({
       wx.showToast({ title: '请同意入驻协议', icon: 'none' })
       return
     }
+    if (this.data.selected === 'stall' && !this.data.form.stallCommitment) {
+      wx.showToast({ title: '请勾选地摊合规经营承诺', icon: 'none' })
+      return
+    }
     const licenses = { ...(this.data.fileUrls || {}) }
     const reqLic = ROLE_FIELDS[this.data.selected].licenses.filter((x) => x.required)
     for (const l of reqLic) {
@@ -298,6 +326,10 @@ Page({
         return
       }
     }
+    // 未上传的选填证照不传空值，避免后台误判
+    Object.keys(licenses).forEach((k) => {
+      if (!licenses[k]) delete licenses[k]
+    })
     this.setData({ submitting: true })
     try {
       const form = this.data.form
@@ -316,6 +348,7 @@ Page({
         longitude: this.data.longitude,
         applicantUserId: session.userId || undefined,
         agreed: true,
+        stallCommitment: this.data.selected === 'stall' ? !!form.stallCommitment : undefined,
         licenses
       })
       this.setData({ submitting: false })

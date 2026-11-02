@@ -1,6 +1,6 @@
-<view class="page">
+<view class="page page--tabbed">
   <view class="m-page-head">
-    <text class="m-page-head__title">{{title}}</text>
+    <text class="m-page-head__title">{{title || '供应链'}}</text>
     <text class="m-page-head__desc">{{desc}}</text>
   </view>
 
@@ -63,4 +63,5 @@
     </view>
   </view>
 
+  <role-tabbar role="merchant" active="supply" />
 </view>

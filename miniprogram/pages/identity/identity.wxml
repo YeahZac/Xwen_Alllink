@@ -1,5 +1,5 @@
 <view class="page identity">
-  <text class="identity__lead">同一微信账号可在 C 端与已开通的经营身份之间切换</text>
+  <text class="identity__lead">同一微信账号可在消费者 / 商家 / 合伙人 / 创始人 / 负责人之间切换；未开通可在线申请，填写手机号后等待审核</text>
 
   <view class="id-cards">
     <view

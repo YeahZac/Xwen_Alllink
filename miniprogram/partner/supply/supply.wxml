@@ -1,0 +1,16 @@
+<view class="page page--tabbed">
+  <view class="m-page-head">
+    <text class="m-page-head__title">供应链</text>
+    <text class="m-page-head__desc">浏览供货商 · 采购请到「采购」Tab</text>
+  </view>
+  <view wx:if="{{loading}}" class="empty">加载中…</view>
+  <view wx:elif="{{!list.length}}" class="empty">暂无供货商</view>
+  <view class="row" wx:for="{{list}}" wx:key="id">
+    <image wx:if="{{item.coverImage}}" class="row__img" src="{{item.coverImage}}" mode="aspectFill" />
+    <view class="row__main">
+      <text class="row__t">{{item.name}}</text>
+      <text class="row__s">{{item.city || ''}} · {{item.distance || ''}}</text>
+    </view>
+  </view>
+  <role-tabbar role="partner" active="supply" />
+</view>

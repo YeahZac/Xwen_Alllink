@@ -45,6 +45,13 @@
     </view>
 
     <view class="m-list">
+      <view wx:if="{{loggedIn}}" class="m-row" bindtap="goIdentity">
+        <view class="m-row__main">
+          <text class="m-row__title">切换身份</text>
+          <text class="m-row__sub">消费者 / 商家 / 合伙人 / 创始人</text>
+        </view>
+        <text class="m-row__arrow">›</text>
+      </view>
       <view class="m-row" bindtap="goOrders">
         <view class="m-row__main">
           <text class="m-row__title">我的订单</text>
@@ -59,7 +66,8 @@
       </view>
       <view class="m-row" bindtap="goApply">
         <view class="m-row__main">
-          <text class="m-row__title">申请入驻开店</text>
+          <text class="m-row__title">申请成为商家</text>
+          <text class="m-row__sub">地摊可无营业执照与食品证</text>
         </view>
         <text class="m-row__arrow">›</text>
       </view>

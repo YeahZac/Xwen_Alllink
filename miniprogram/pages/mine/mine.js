@@ -95,6 +95,10 @@ Page({
   goApply() {
     wx.navigateTo({ url: '/pages/apply/apply' })
   },
+  goIdentity() {
+    if (!this.requireLogin()) return
+    wx.navigateTo({ url: '/pages/identity/identity' })
+  },
   goSupplyNeed() {
     if (!this.requireLogin()) return
     wx.navigateTo({ url: '/pages/supply-need/supply-need' })

@@ -1,0 +1,8 @@
+{
+  "navigationStyle": "custom",
+  "navigationBarTextStyle": "white",
+  "usingComponents": {
+    "page-nav": "/components/page-nav/page-nav",
+    "role-tabbar": "/components/role-tabbar/role-tabbar"
+  }
+}

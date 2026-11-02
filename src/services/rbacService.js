@@ -15,12 +15,16 @@ const PAGE_CATALOG = [
   { pageKey: 'stores_cross', pageName: '异业门店', groupName: '用户与门店', sortOrder: 35 },
   { pageKey: 'stores_supply', pageName: '供应链', groupName: '用户与门店', sortOrder: 40 },
   { pageKey: 'applies', pageName: '入驻审核', groupName: '用户与门店', sortOrder: 45 },
+  { pageKey: 'partner_ops', pageName: '合伙人运营', groupName: '用户与门店', sortOrder: 46 },
+  { pageKey: 'identity_flags', pageName: '身份授权', groupName: '用户与门店', sortOrder: 47 },
   { pageKey: 'cities', pageName: '经营城市', groupName: '用户与门店', sortOrder: 48 },
   { pageKey: 'orders', pageName: '订单中心', groupName: '交易运营', sortOrder: 50 },
   { pageKey: 'points', pageName: '积分与额度', groupName: '交易运营', sortOrder: 55 },
   { pageKey: 'settlements', pageName: '结算抽成', groupName: '交易运营', sortOrder: 60 },
   { pageKey: 'withdraws', pageName: '提现审核', groupName: '交易运营', sortOrder: 65 },
+  { pageKey: 'partner_purchases', pageName: '合伙人采购', groupName: '交易运营', sortOrder: 68 },
   { pageKey: 'referrals', pageName: '推荐记录', groupName: '交易运营', sortOrder: 70 },
+  { pageKey: 'op_logs', pageName: '操作日志', groupName: '交易运营', sortOrder: 72 },
   { pageKey: 'goods_sku', pageName: '商品SKU', groupName: '内容管理', sortOrder: 80 },
   { pageKey: 'goods', pageName: '商品目录', groupName: '内容管理', sortOrder: 85 },
   { pageKey: 'goods_categories', pageName: '商品类目', groupName: '内容管理', sortOrder: 88 },
@@ -75,7 +79,96 @@ async function ensureRbacBootstrap() {
        display_name='超级管理员', role_id=1, status=1`,
     { h: hash, salt: DEFAULT_SALT }
   )
+  await ensureOpsRolesAndAccounts(hash)
   return { pages: PAGE_CATALOG.length, superAdmin: 'admin' }
+}
+
+/** 说明书运营角色：创始人 / 合伙人 / 负责人（Web 后台账号，默认密码 123456） */
+const OPS_ROLE_DEFS = [
+  {
+    id: 2,
+    code: 'founder_ops',
+    name: '创始人',
+    remark: '平台总控：入驻/合伙人审核、名单授权、订单积分与日志',
+    pages: [
+      'dashboard',
+      'applies',
+      'partner_ops',
+      'identity_flags',
+      'users_all',
+      'users_consumer',
+      'orders',
+      'points',
+      'withdraws',
+      'partner_purchases',
+      'op_logs',
+      'complaints',
+      'needs',
+      'referrals'
+    ]
+  },
+  {
+    id: 3,
+    code: 'partner_ops',
+    name: '合伙人',
+    remark: '区域合伙人运营：推广审核协同、采购单、推荐记录',
+    pages: ['dashboard', 'partner_ops', 'partner_purchases', 'referrals', 'orders', 'points']
+  },
+  {
+    id: 4,
+    code: 'lead_ops',
+    name: '负责人',
+    remark: '创始人权限子集：审核与订单积分查看，不含系统账号配置',
+    pages: ['dashboard', 'applies', 'partner_ops', 'orders', 'points', 'withdraws', 'op_logs', 'needs']
+  }
+]
+
+const OPS_ACCOUNTS = [
+  { id: 2, username: 'founder', displayName: '创始人运营', roleId: 2 },
+  { id: 3, username: 'partner', displayName: '合伙人运营', roleId: 3 },
+  { id: 4, username: 'lead', displayName: '负责人运营', roleId: 4 }
+]
+
+async function ensureOpsRolesAndAccounts(passwordHash) {
+  const hash = passwordHash || hashPassword('123456', DEFAULT_SALT)
+  for (const role of OPS_ROLE_DEFS) {
+    await query(
+      `INSERT INTO admin_roles (id, code, name, remark, is_system, status)
+       VALUES (:id, :code, :name, :remark, 1, 1)
+       ON DUPLICATE KEY UPDATE name=VALUES(name), remark=VALUES(remark), code=VALUES(code), status=1, is_system=1`,
+      {
+        id: role.id,
+        code: role.code,
+        name: role.name,
+        remark: role.remark
+      }
+    )
+    for (const pageKey of role.pages) {
+      await query(
+        `INSERT INTO admin_role_permissions (role_id, page_key, can_view, can_edit)
+         VALUES (:rid, :pk, 1, 1)
+         ON DUPLICATE KEY UPDATE can_view=1, can_edit=1`,
+        { rid: role.id, pk: pageKey }
+      )
+    }
+    // 明确不授 screen / sys_* 等敏感页（超管除外）
+  }
+  for (const acc of OPS_ACCOUNTS) {
+    await query(
+      `INSERT INTO admin_accounts (id, username, password_hash, password_salt, display_name, role_id, status)
+       VALUES (:id, :u, :h, :salt, :n, :rid, 1)
+       ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash), password_salt=VALUES(password_salt),
+         display_name=VALUES(display_name), role_id=VALUES(role_id), status=1`,
+      {
+        id: acc.id,
+        u: acc.username,
+        h: hash,
+        salt: DEFAULT_SALT,
+        n: acc.displayName,
+        rid: acc.roleId
+      }
+    )
+  }
 }
 
 /** 业务新增页面时调用：登记权限点并自动授予超级管理员 */
@@ -459,6 +552,8 @@ module.exports = {
   hashPassword,
   isSuperAdmin,
   ensureRbacBootstrap,
+  ensureOpsRolesAndAccounts,
+  OPS_ACCOUNTS,
   registerPagePermission,
   listPermissionCatalog,
   getRolePermissions,

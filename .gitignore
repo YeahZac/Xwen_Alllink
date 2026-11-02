@@ -7,3 +7,9 @@ node_modules/
 coverage/
 dist/
 tmp/
+.ui-audit/
+# 大图已上云；本地仅作素材源，不进主包也不强推仓库体积
+miniprogram/assets/covers/
+miniprogram/assets/banners/
+miniprogram/assets/legal/
+miniprogram/assets/icons/entry/

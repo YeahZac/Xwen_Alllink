@@ -16,16 +16,36 @@ const KEYS = {
 
 const ROLE_HOME = {
   consumer: '/pages/index/index',
+  merchant: '/merchant/home/home',
   stall: '/merchant/home/home',
   cross: '/merchant/home/home',
-  supply: '/merchant/home/home'
+  supply: '/merchant/home/home',
+  partner: '/partner/home/home',
+  founder: '/founder/home/home'
 }
 
 const ROLE_LABEL = {
   consumer: '消费者',
-  stall: '地摊商户',
-  cross: '异业门店',
-  supply: '供应链'
+  merchant: '商家',
+  stall: '商家·地摊',
+  cross: '商家·异业',
+  supply: '商家·供应链供货',
+  partner: '合伙人',
+  founder: '创始人',
+  lead: '负责人'
+}
+
+const MERCHANT_ROLES = ['stall', 'cross', 'supply', 'merchant']
+
+function isMerchantRole(role) {
+  return MERCHANT_ROLES.indexOf(role) >= 0
+}
+
+function displayRoleOf(session) {
+  if (!session) return ''
+  if (session.displayRole) return session.displayRole
+  if (isMerchantRole(session.role)) return 'merchant'
+  return session.role
 }
 
 function read(key, fallback) {
@@ -97,8 +117,17 @@ function applyAuthResult(data) {
   clearManualLogout()
   if (data.cashRate) setCashRate(data.cashRate)
   const cur = getSession() || {}
+  const role = data.role || cur.role
+  const displayRole =
+    data.displayRole ||
+    (isMerchantRole(role) ? 'merchant' : role) ||
+    cur.displayRole ||
+    ''
   const session = {
-    role: data.role || cur.role,
+    role,
+    displayRole,
+    shopType: data.shopType || (isMerchantRole(role) ? role : '') || cur.shopType || '',
+    shopTypeLabel: data.shopTypeLabel || cur.shopTypeLabel || '',
     name: data.name || data.shopName || cur.name || '',
     shopName: data.shopName || cur.shopName || '',
     merchantId: data.merchantId != null ? data.merchantId : cur.merchantId || null,
@@ -114,7 +143,8 @@ function applyAuthResult(data) {
     loginAt: Date.now()
   }
   setSession(session)
-  return { ok: true, session, home: ROLE_HOME[session.role] || ROLE_HOME.consumer }
+  const homeKey = displayRoleOf(session) || session.role
+  return { ok: true, session, home: ROLE_HOME[homeKey] || ROLE_HOME.consumer }
 }
 
 async function loginWithCode(code) {
@@ -217,9 +247,14 @@ async function refreshProfile() {
   const data = await api.profile()
   const cur = getSession() || {}
   if (data.cashRate) setCashRate(data.cashRate)
+  const role = data.role
   const session = {
     ...cur,
-    role: data.role,
+    role,
+    displayRole:
+      data.displayRole || (isMerchantRole(role) ? 'merchant' : role) || cur.displayRole || '',
+    shopType: data.shopType || (isMerchantRole(role) ? role : '') || cur.shopType || '',
+    shopTypeLabel: data.shopTypeLabel || cur.shopTypeLabel || '',
     name: data.name || data.shopName || cur.name,
     shopName: data.shopName || cur.shopName || '',
     merchantId: data.merchantId || cur.merchantId || null,
@@ -304,11 +339,20 @@ function routeAfterLogin() {
     }
   } catch (e) {}
   if (resumePendingPay()) return
-  if (s.role === 'consumer') {
+  const dr = displayRoleOf(s)
+  if (dr === 'consumer' || s.role === 'consumer') {
     wx.switchTab({ url: ROLE_HOME.consumer })
-  } else {
-    wx.reLaunch({ url: ROLE_HOME[s.role] || '/merchant/home/home' })
+    return
   }
+  if (dr === 'partner' || s.role === 'partner') {
+    wx.reLaunch({ url: ROLE_HOME.partner })
+    return
+  }
+  if (dr === 'founder' || dr === 'lead' || s.role === 'founder') {
+    wx.reLaunch({ url: ROLE_HOME.founder })
+    return
+  }
+  wx.reLaunch({ url: ROLE_HOME.merchant })
 }
 
 function ensureLoggedIn() {
@@ -345,7 +389,41 @@ function ensureConsumerOrRedirect(opts = {}) {
     return false
   }
   if (s.role !== 'consumer') {
-    wx.reLaunch({ url: '/merchant/home/home' })
+    const dr = displayRoleOf(s)
+    wx.reLaunch({
+      url: ROLE_HOME[dr] || ROLE_HOME[s.role] || ROLE_HOME.merchant
+    })
+    return false
+  }
+  return true
+}
+
+/** 身份切换页：任意已登录角色可进入（不再强制消费者） */
+function ensureIdentityAccess() {
+  return ensureLoggedIn()
+}
+
+function ensurePartnerOrRedirect() {
+  const s = getSession()
+  if (!s || !getToken()) {
+    wx.reLaunch({ url: '/pages/login/login' })
+    return false
+  }
+  if (s.role !== 'partner') {
+    routeAfterLogin()
+    return false
+  }
+  return true
+}
+
+function ensureFounderOrRedirect() {
+  const s = getSession()
+  if (!s || !getToken()) {
+    wx.reLaunch({ url: '/pages/login/login' })
+    return false
+  }
+  if (s.role !== 'founder') {
+    routeAfterLogin()
     return false
   }
   return true
@@ -396,8 +474,8 @@ function ensureMerchantOrRedirect() {
     wx.reLaunch({ url: '/pages/login/login' })
     return false
   }
-  if (s.role === 'consumer') {
-    wx.switchTab({ url: '/pages/index/index' })
+  if (!isMerchantRole(s.role)) {
+    routeAfterLogin()
     return false
   }
   return true
@@ -476,6 +554,9 @@ function setConsumerPoints(n) {
 module.exports = {
   ROLE_HOME,
   ROLE_LABEL,
+  MERCHANT_ROLES,
+  isMerchantRole,
+  displayRoleOf,
   getCashRate,
   setCashRate,
   pointsToCash,
@@ -497,7 +578,10 @@ module.exports = {
   routeAfterLogin,
   ensureLoggedIn,
   ensureConsumerOrRedirect,
+  ensureIdentityAccess,
   ensureMerchantOrRedirect,
+  ensurePartnerOrRedirect,
+  ensureFounderOrRedirect,
   enterAsGuest,
   preferGuestBrowse,
   getCart,

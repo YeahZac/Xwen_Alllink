@@ -5,6 +5,7 @@ const dataCache = require('../../utils/data-cache')
 const homePrefetch = require('../../utils/home-prefetch')
 const scan = require('../../utils/scan')
 const navigate = require('../../utils/navigate')
+const coverPack = require('../../utils/cover-pack')
 
 function splitTags(raw, fallback) {
   if (Array.isArray(raw) && raw.length) {
@@ -465,7 +466,12 @@ Page({
           ...s,
           itemType: 'stall',
           initial: s.initial || (s.name || '摊').slice(0, 1),
-          coverImage: s.coverImage || '',
+          coverImage: coverPack.resolveCover({
+            ...s,
+            role: 'stall',
+            itemType: 'stall',
+            bizType: s.bizType || s.category || s.tag
+          }),
           badge: s.open === false ? '休息中' : cuisineOf(s),
           rating: Number(s.rating || 4.8).toFixed(1),
           descLine: firstUnique([s.desc, s.category, cuisineOf(s)], used),
@@ -492,7 +498,12 @@ Page({
           ...s,
           itemType: 'cross',
           initial: s.initial || (s.name || '异').slice(0, 1),
-          coverImage: s.coverImage || '',
+          coverImage: coverPack.resolveCover({
+            ...s,
+            role: 'cross',
+            itemType: 'cross',
+            bizType: s.bizType || s.category || s.tag
+          }),
           badge: cuisineOf(s),
           rating: Number(s.rating || 4.7).toFixed(1),
           descLine: firstUnique([s.category, cuisineOf(s)], used),
@@ -519,7 +530,12 @@ Page({
           ...s,
           itemType: 'supply',
           initial: s.initial || (s.name || '供').slice(0, 1),
-          coverImage: s.coverImage || '',
+          coverImage: coverPack.resolveCover({
+            ...s,
+            role: 'supply',
+            itemType: 'supply',
+            bizType: s.bizType || s.category || s.tag
+          }),
           badge: cuisineOf(s),
           rating: '',
           descLine: firstUnique([cuisineOf(s) + '供货', s.city], used),
@@ -643,5 +659,10 @@ Page({
   },
   goSupplyNeed() {
     wx.navigateTo({ url: '/pages/supply-need/supply-need' })
+  },
+  onCoverError(e) {
+    const idx = Number(e.currentTarget.dataset.index)
+    if (Number.isNaN(idx) || idx < 0) return
+    this.setData({ [`displayList[${idx}].coverError`]: true })
   }
 })

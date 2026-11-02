@@ -4,6 +4,10 @@
   background: var(--color-bg);
 }
 
+.page--tabbed {
+  padding-bottom: calc(140rpx + env(safe-area-inset-bottom)) !important;
+}
+
 .m-home-shell {
   padding: var(--space-md) var(--space-page) var(--space-md);
 }

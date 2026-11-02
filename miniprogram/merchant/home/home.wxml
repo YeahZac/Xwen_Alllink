@@ -1,11 +1,11 @@
 <!-- 商户工作台 · 对齐 ok-merchant.jpg -->
-<view class="page m-home page--flush">
+<view class="page m-home page--flush page--tabbed">
   <page-nav title="{{navTitle}}" tone="solid" show-home="{{true}}" home-url="/pages/index/index" />
 
   <view class="m-home-shell">
     <view class="shop-card">
       <text class="shop-card__name">{{shopName}}</text>
-      <text class="shop-card__meta ellipsis-1">{{userName}} · {{roleName}} · 万业互联云</text>
+      <text class="shop-card__meta ellipsis-1">{{userName}} · {{roleName}} · 商家端</text>
       <text class="shop-card__tags ellipsis-1">{{heroMeta}}</text>
       <view class="kpi">
         <view class="kpi__cell">
@@ -52,8 +52,11 @@
       <view wx:if="{{role !== 'supply'}}" class="btn-outline-primary" bindtap="goAssets">{{assetsHint}}</view>
       <view wx:if="{{role === 'stall'}}" class="btn-outline-primary" bindtap="onQr">摊位码</view>
       <view wx:if="{{role === 'cross'}}" class="btn-outline-primary" bindtap="onQr">门店码</view>
+      <view class="btn-outline-primary" bindtap="onSwitchConsumer">切回消费者</view>
+      <view class="btn-outline-primary" bindtap="goIdentity">切换身份</view>
     </view>
 
     <view class="btn-gradient logout" bindtap="onLogout">退出登录</view>
   </view>
+  <role-tabbar role="merchant" active="home" />
 </view>

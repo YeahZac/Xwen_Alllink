@@ -354,23 +354,24 @@ async function getProfile(auth) {
       cashRate: rate
     }
   }
-  if (auth.role === 'consumer') {
+  if (auth.role === 'consumer' || auth.role === 'partner' || auth.role === 'founder') {
     let rows
     try {
       rows = await query(
-        'SELECT id, nickname, invite_code, points_balance, phone, avatar_url, gender FROM users WHERE id = :id',
+        `SELECT id, nickname, invite_code, points_balance, phone, avatar_url, gender,
+                IFNULL(is_partner,0) AS is_partner, IFNULL(is_founder,0) AS is_founder
+         FROM users WHERE id = :id`,
         { id: auth.userId }
       )
     } catch (e) {
       rows = await query(
-        'SELECT id, nickname, invite_code, points_balance, phone, avatar_url FROM users WHERE id = :id',
+        'SELECT id, nickname, invite_code, points_balance, phone, avatar_url, gender FROM users WHERE id = :id',
         { id: auth.userId }
       )
     }
     if (!rows.length) throw new HttpError(404, '用户不存在')
     const u = rows[0]
-    return {
-      role: 'consumer',
+    const base = {
       userId: u.id,
       name: u.nickname,
       inviteCode: u.invite_code,
@@ -381,8 +382,17 @@ async function getProfile(auth) {
       needPhone: !u.phone,
       points: u.points_balance,
       cashValue: pointsToCash(u.points_balance, rate),
-      cashRate: rate
+      cashRate: rate,
+      isPartner: !!Number(u.is_partner),
+      isFounder: !!Number(u.is_founder)
     }
+    if (auth.role === 'partner') {
+      return { ...base, role: 'partner', shopName: '区域合伙人', displayRole: 'partner' }
+    }
+    if (auth.role === 'founder') {
+      return { ...base, role: 'founder', shopName: '平台总控', displayRole: 'founder' }
+    }
+    return { ...base, role: 'consumer', displayRole: 'consumer' }
   }
   const rows = await query(
     `SELECT id, role, name, invite_code, city, address, status, cover_url, materials_json,
@@ -398,8 +408,12 @@ async function getProfile(auth) {
     'SELECT balance FROM merchant_points_pool WHERE merchant_id = :id',
     { id: m.id }
   )
+  const shopTypeLabel = SHOP_TYPE_LABEL[m.role] || m.role
   return {
     role: m.role,
+    displayRole: 'merchant',
+    shopType: m.role,
+    shopTypeLabel,
     merchantId: m.id,
     userId: auth.userId || m.owner_user_id || 0,
     name: m.contact_name || m.name,
@@ -416,40 +430,57 @@ async function getProfile(auth) {
   }
 }
 
+/** 登录可切换的四类身份（对齐说明书）；商家内部再分经营类型 */
+const SHOP_TYPE_LABEL = {
+  stall: '地摊',
+  cross: '异业门店',
+  supply: '供应链供货'
+}
+
 const IDENTITY_ROLES = [
   {
     role: 'consumer',
-    label: 'C端用户',
-    seal: 'C',
-    desc: '逛市集、点餐、积分兑换',
+    label: '消费者',
+    seal: '顾',
+    desc: '点餐、下单、饭票/积分、逛市集',
     applyTitle: '',
     applyPath: ''
   },
   {
-    role: 'stall',
-    label: '地摊商户',
-    seal: '摊',
-    desc: '摆摊点餐与收款经营',
-    applyTitle: '立即申请入驻地摊',
-    applyPath: '/pages/apply/apply?role=stall'
-  },
-  {
-    role: 'cross',
-    label: '异业门店',
+    role: 'merchant',
+    label: '商家',
     seal: '店',
-    desc: '异业核销与积分收银',
-    applyTitle: '立即申请入驻异业门店',
-    applyPath: '/pages/apply/apply?role=cross'
+    desc: '门店经营：地摊 / 异业 / 供应链供货',
+    applyTitle: '立即申请成为商家',
+    applyPath: '/pages/apply/apply'
   },
   {
-    role: 'supply',
-    label: '供应链',
-    seal: '供',
-    desc: '供货、报价与货款结算',
-    applyTitle: '立即申请入驻供应链',
-    applyPath: '/pages/apply/apply?role=supply'
+    role: 'partner',
+    label: '合伙人',
+    seal: '合',
+    desc: '区域推广佣金、商家订单与供应链采购',
+    applyTitle: '立即申请成为合伙人',
+    applyPath: '/partner/apply/apply'
+  },
+  {
+    role: 'founder',
+    label: '创始人',
+    seal: '创',
+    desc: '平台总控：审核、名单与经营监控',
+    applyTitle: '立即申请成为创始人',
+    applyPath: '/pages/identity-apply/identity-apply?role=founder'
+  },
+  {
+    role: 'lead',
+    label: '负责人',
+    seal: '负',
+    desc: '创始人权限子集：审核与经营监控（脱敏）',
+    applyTitle: '立即申请成为负责人',
+    applyPath: '/pages/identity-apply/identity-apply?role=lead'
   }
 ]
+
+const MERCHANT_SHOP_TYPES = ['stall', 'cross', 'supply']
 
 async function resolveAccountUserId(auth) {
   if (!auth) return 0
@@ -470,19 +501,104 @@ async function loadAccountUser(userId) {
   let rows
   try {
     rows = await query(
-      `SELECT id, nickname, avatar_url, phone, gender, points_balance, invite_code, openid
+      `SELECT id, nickname, avatar_url, phone, gender, points_balance, invite_code, openid,
+              IFNULL(is_partner,0) AS is_partner, IFNULL(is_founder,0) AS is_founder,
+              IFNULL(is_lead,0) AS is_lead
        FROM users WHERE id = :id AND status = 1 LIMIT 1`,
       { id: userId }
     )
   } catch (e) {
     rows = await query(
-      `SELECT id, nickname, avatar_url, phone, points_balance, invite_code, openid
+      `SELECT id, nickname, avatar_url, phone, gender, points_balance, invite_code, openid,
+              IFNULL(is_partner,0) AS is_partner, IFNULL(is_founder,0) AS is_founder
        FROM users WHERE id = :id AND status = 1 LIMIT 1`,
       { id: userId }
     )
   }
   if (!rows.length) throw new HttpError(404, '用户不存在')
-  return pickUserRow(rows[0])
+  const u = pickUserRow(rows[0])
+  u.is_partner = Number(rows[0].is_partner) || 0
+  u.is_founder = Number(rows[0].is_founder) || 0
+  u.is_lead = Number(rows[0].is_lead) || 0
+  return u
+}
+
+async function findPendingPartnerApply(userId) {
+  if (!userId) return null
+  try {
+    const rows = await query(
+      `SELECT id, apply_no AS applyNo, status, city
+       FROM partner_applications
+       WHERE user_id = :uid AND status = 'pending'
+       ORDER BY id DESC LIMIT 1`,
+      { uid: userId }
+    )
+    return rows[0] || null
+  } catch (_) {
+    return null
+  }
+}
+
+async function findPendingPlatformRoleApply(userId, applyRole) {
+  if (!userId || !applyRole) return null
+  try {
+    const rows = await query(
+      `SELECT id, apply_no AS applyNo, apply_role AS applyRole, status, contact_phone AS contactPhone
+       FROM platform_role_applications
+       WHERE user_id = :uid AND apply_role = :role AND status = 'pending'
+       ORDER BY id DESC LIMIT 1`,
+      { uid: userId, role: applyRole }
+    )
+    return rows[0] || null
+  } catch (_) {
+    return null
+  }
+}
+
+function partnerSession(user) {
+  const token = signToken({
+    role: 'partner',
+    userId: user.id,
+    merchantId: null,
+    shopName: '区域合伙人'
+  })
+  return {
+    token,
+    role: 'partner',
+    displayRole: 'partner',
+    userId: user.id,
+    name: user.nickname || '合伙人',
+    shopName: '区域合伙人',
+    avatarUrl: user.avatar_url || '',
+    coverUrl: user.avatar_url || '',
+    phone: user.phone || '',
+    inviteCode: user.invite_code,
+    points: user.points_balance
+  }
+}
+
+function founderSession(user, { asLead = false } = {}) {
+  const token = signToken({
+    role: 'founder',
+    userId: user.id,
+    merchantId: null,
+    shopName: asLead ? '平台负责人' : '平台总控',
+    isLead: asLead ? 1 : 0
+  })
+  return {
+    token,
+    role: 'founder',
+    displayRole: asLead ? 'lead' : 'founder',
+    isLead: !!asLead,
+    userId: user.id,
+    name: user.nickname || (asLead ? '负责人' : '创始人'),
+    shopName: asLead ? '平台负责人' : '平台总控',
+    avatarUrl: user.avatar_url || '',
+    coverUrl: user.avatar_url || '',
+    phone: user.phone || '',
+    inviteCode: user.invite_code,
+    points: user.points_balance
+  }
 }
 
 async function findOwnedMerchants(userId, phone) {
@@ -527,6 +643,9 @@ async function merchantSessionFromRow(m, userId) {
   return {
     token,
     role: m.role,
+    displayRole: 'merchant',
+    shopType: m.role,
+    shopTypeLabel: SHOP_TYPE_LABEL[m.role] || m.role,
     merchantId: m.id,
     userId: userId || 0,
     shopName: m.name,
@@ -537,22 +656,26 @@ async function merchantSessionFromRow(m, userId) {
 }
 
 /**
- * 同一微信 openid / 手机号账号下的身份清单：
- * C 端恒在；地摊 / 异业 / 供应链最多各一张开通卡（业务上通常只开其一）。
+ * 同一微信账号下的身份清单（说明书四端）：
+ * 消费者 / 商家（聚合 stall|cross|supply）/ 合伙人 / 创始人
  */
 async function listIdentities(auth) {
   const userId = await resolveAccountUserId(auth)
   const user = await loadAccountUser(userId)
   const merchants = await findOwnedMerchants(userId, user.phone)
   const pending = await findPendingApplies(user.phone)
-  const byRole = {}
-  for (const m of merchants) {
-    if (!byRole[m.role]) byRole[m.role] = m
-  }
-  const pendingByRole = {}
-  for (const a of pending) {
-    if (!pendingByRole[a.role]) pendingByRole[a.role] = a
-  }
+  const partnerPending = await findPendingPartnerApply(userId)
+  const founderPending = await findPendingPlatformRoleApply(userId, 'founder')
+  const leadPending = await findPendingPlatformRoleApply(userId, 'lead')
+  const activeMerchant =
+    merchants.find((m) => Number(auth.merchantId) === Number(m.id)) ||
+    merchants.find((m) => Number(m.status) === 1) ||
+    merchants[0] ||
+    null
+  const anyPending = pending[0] || null
+  const merchantOpened = merchants.length > 0
+  const merchantActive = MERCHANT_SHOP_TYPES.includes(auth.role)
+  const shopTypeLabel = activeMerchant ? SHOP_TYPE_LABEL[activeMerchant.role] || activeMerchant.role : ''
 
   const cards = IDENTITY_ROLES.map((meta) => {
     if (meta.role === 'consumer') {
@@ -571,27 +694,102 @@ async function listIdentities(auth) {
         applyPath: ''
       }
     }
-    const m = byRole[meta.role]
-    const app = pendingByRole[meta.role]
-    const opened = !!m
-    const active = opened && auth.role === meta.role && Number(auth.merchantId) === Number(m.id)
+    if (meta.role === 'merchant') {
+      let badge = '未开通'
+      if (merchantOpened) badge = '已开通'
+      else if (anyPending) badge = '审核中'
+      const shopName = merchantOpened
+        ? `${activeMerchant.name} · ${shopTypeLabel}`
+        : anyPending
+          ? anyPending.shopName
+          : ''
+      return {
+        role: 'merchant',
+        label: meta.label,
+        seal: meta.seal,
+        desc: meta.desc,
+        opened: merchantOpened,
+        active: merchantActive,
+        pending: !merchantOpened && !!anyPending,
+        merchantId: activeMerchant ? Number(activeMerchant.id) : null,
+        shopType: activeMerchant ? activeMerchant.role : '',
+        shopTypeLabel,
+        shopName,
+        badge,
+        applyTitle: meta.applyTitle,
+        applyPath: meta.applyPath,
+        applyNo: anyPending ? anyPending.applyNo : '',
+        shops: merchants.map((m) => ({
+          merchantId: Number(m.id),
+          shopType: m.role,
+          shopTypeLabel: SHOP_TYPE_LABEL[m.role] || m.role,
+          shopName: m.name,
+          status: Number(m.status)
+        }))
+      }
+    }
+    if (meta.role === 'partner') {
+      const opened = !!Number(user.is_partner)
+      let badge = '未开通'
+      if (opened) badge = '已开通'
+      else if (partnerPending) badge = '审核中'
+      return {
+        role: 'partner',
+        label: meta.label,
+        seal: meta.seal,
+        desc: meta.desc,
+        opened,
+        active: auth.role === 'partner',
+        pending: !opened && !!partnerPending,
+        merchantId: null,
+        shopName: opened ? '区域合伙人' : '',
+        badge,
+        applyTitle: meta.applyTitle,
+        applyPath: meta.applyPath,
+        applyNo: partnerPending ? partnerPending.applyNo : ''
+      }
+    }
+    if (meta.role === 'founder') {
+      const opened = !!Number(user.is_founder)
+      let badge = '未开通'
+      if (opened) badge = '已开通'
+      else if (founderPending) badge = '审核中'
+      return {
+        role: 'founder',
+        label: meta.label,
+        seal: meta.seal,
+        desc: meta.desc,
+        opened,
+        active: auth.role === 'founder' && !Number(auth.isLead),
+        pending: !opened && !!founderPending,
+        merchantId: null,
+        shopName: opened ? '平台总控' : '',
+        badge,
+        applyTitle: meta.applyTitle,
+        applyPath: meta.applyPath,
+        applyNo: founderPending ? founderPending.applyNo : ''
+      }
+    }
+    // lead
+    const opened = !!Number(user.is_lead) || !!Number(user.is_founder)
     let badge = '未开通'
-    if (opened) badge = '已开通'
-    else if (app) badge = '审核中'
+    if (Number(user.is_founder)) badge = '已开通(创始人含)'
+    else if (Number(user.is_lead)) badge = '已开通'
+    else if (leadPending) badge = '审核中'
     return {
-      role: meta.role,
+      role: 'lead',
       label: meta.label,
       seal: meta.seal,
       desc: meta.desc,
       opened,
-      active,
-      pending: !opened && !!app,
-      merchantId: opened ? Number(m.id) : null,
-      shopName: opened ? m.name : app ? app.shopName : '',
+      active: auth.role === 'founder' && !!Number(auth.isLead),
+      pending: !opened && !!leadPending,
+      merchantId: null,
+      shopName: opened ? '平台负责人' : '',
       badge,
       applyTitle: meta.applyTitle,
       applyPath: meta.applyPath,
-      applyNo: app ? app.applyNo : ''
+      applyNo: leadPending ? leadPending.applyNo : ''
     }
   })
 
@@ -600,20 +798,42 @@ async function listIdentities(auth) {
     phone: user.phone || '',
     openidBound: true,
     currentRole: auth.role,
+    currentDisplayRole: MERCHANT_SHOP_TYPES.includes(auth.role)
+      ? 'merchant'
+      : auth.role,
     currentMerchantId: auth.merchantId || null,
     cards
   }
 }
 
 async function switchIdentity(auth, { role, merchantId } = {}) {
-  const targetRole = String(role || '').trim()
+  let targetRole = String(role || '').trim()
   const userId = await resolveAccountUserId(auth)
   const user = await loadAccountUser(userId)
+
+  // 兼容旧客户端直接传 stall|cross|supply
+  if (MERCHANT_SHOP_TYPES.includes(targetRole)) {
+    targetRole = 'merchant'
+  }
 
   if (targetRole === 'consumer') {
     return consumerSession(user)
   }
-  if (!['stall', 'cross', 'supply'].includes(targetRole)) {
+  if (targetRole === 'partner') {
+    if (!Number(user.is_partner)) throw new HttpError(403, '当前暂未开通合伙人身份')
+    return partnerSession(user)
+  }
+  if (targetRole === 'founder') {
+    if (!Number(user.is_founder)) throw new HttpError(403, '当前暂未开通创始人身份')
+    return founderSession(user, { asLead: false })
+  }
+  if (targetRole === 'lead') {
+    if (!Number(user.is_lead) && !Number(user.is_founder)) {
+      throw new HttpError(403, '当前暂未开通负责人身份')
+    }
+    return founderSession(user, { asLead: true })
+  }
+  if (targetRole !== 'merchant') {
     throw new HttpError(400, '无效的身份类型')
   }
 
@@ -621,26 +841,28 @@ async function switchIdentity(auth, { role, merchantId } = {}) {
   let target = null
   const mid = Number(merchantId) || 0
   if (mid) {
-    target = merchants.find((m) => Number(m.id) === mid && m.role === targetRole) || null
+    target = merchants.find((m) => Number(m.id) === mid) || null
   } else {
-    target = merchants.find((m) => m.role === targetRole) || null
+    target = merchants.find((m) => Number(m.status) === 1) || merchants[0] || null
   }
   if (!target) {
-    const meta = IDENTITY_ROLES.find((x) => x.role === targetRole)
-    throw new HttpError(403, `当前暂未开通${meta ? meta.label : '该身份'}`)
+    throw new HttpError(403, '当前暂未开通商家身份')
   }
   if (Number(target.status) !== 1) {
     throw new HttpError(403, '该商户已停用，暂不可切换')
   }
 
-  // 回填 owner_user_id，保证后续始终按同一微信账号识别
   await query(
     `UPDATE merchants SET owner_user_id = :uid
      WHERE id = :id AND (owner_user_id IS NULL OR owner_user_id = 0)`,
     { uid: userId, id: target.id }
   )
 
-  return merchantSessionFromRow(target, userId)
+  const session = await merchantSessionFromRow(target, userId)
+  session.displayRole = 'merchant'
+  session.shopType = target.role
+  session.shopTypeLabel = SHOP_TYPE_LABEL[target.role] || target.role
+  return session
 }
 
 module.exports = {
@@ -652,5 +874,8 @@ module.exports = {
   getProfile,
   listIdentities,
   switchIdentity,
+  SHOP_TYPE_LABEL,
+  MERCHANT_SHOP_TYPES,
+  IDENTITY_ROLES,
   loginAdmin: (username, password) => rbacService.loginByPassword(username, password)
 }

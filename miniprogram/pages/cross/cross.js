@@ -3,6 +3,7 @@ const api = require('../../utils/api')
 const location = require('../../utils/location')
 const dataCache = require('../../utils/data-cache')
 const homePrefetch = require('../../utils/home-prefetch')
+const coverPack = require('../../utils/cover-pack')
 
 /** 分类页：合并异业 + 地摊，按 id 去重 */
 function mergeRedeemStores(crossRows, stallRows) {
@@ -75,7 +76,11 @@ Page({
           ...s,
           role,
           initial: s.initial || (s.name || '').slice(0, 1),
-          coverImage: s.coverImage || '',
+          coverImage: coverPack.resolveCover({
+            ...s,
+            role,
+            bizType: s.bizType || s.category || s.tag
+          }),
           // 文案不用「异业」字样
           metaText: [s.category || s.tag, roleLabel, s.distance || s.city]
             .map((v) => String(v || '').trim())

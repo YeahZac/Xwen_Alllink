@@ -172,6 +172,21 @@ async function ensureSchema() {
     console.warn('[schema] admin rbac harden', e.message)
   }
   try {
+    await runSqlStatements('26_user_identities.sql', 'user identities')
+  } catch (e) {
+    console.warn('[schema] user identities', e.message)
+  }
+  try {
+    await runSqlStatements('27_partner_founder_ops.sql', 'partner founder ops')
+  } catch (e) {
+    console.warn('[schema] partner founder ops', e.message)
+  }
+  try {
+    await runSqlStatements('28_ops_roles_and_platform_applies.sql', 'ops roles platform applies')
+  } catch (e) {
+    console.warn('[schema] ops roles platform applies', e.message)
+  }
+  try {
     const rbacService = require('../services/rbacService')
     await rbacService.ensureRbacBootstrap()
   } catch (e) {

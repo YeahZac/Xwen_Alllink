@@ -1,0 +1,15 @@
+<view class="page page--tabbed">
+  <view class="m-page-head">
+    <text class="m-page-head__title">商家订单</text>
+    <text class="m-page-head__desc">管辖区内推广相关商家近单</text>
+  </view>
+  <view wx:if="{{loading}}" class="empty">加载中…</view>
+  <view wx:elif="{{!list.length}}" class="empty">暂无关联订单</view>
+  <view class="row" wx:for="{{list}}" wx:key="id">
+    <view class="row__main">
+      <text class="row__t">{{item.shopName || '门店'}} · {{item.orderNo || item.id}}</text>
+      <text class="row__s">{{item.statusText || item.status || ''}} · ¥{{item.amount || 0}} · {{item.createdAt || ''}}</text>
+    </view>
+  </view>
+  <role-tabbar role="partner" active="orders" />
+</view>
