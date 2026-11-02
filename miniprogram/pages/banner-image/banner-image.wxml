@@ -1,0 +1,12 @@
+<view class="page">
+  <image
+    wx:if="{{src}}"
+    class="img"
+    src="{{src}}"
+    mode="widthFix"
+    show-menu-by-longpress="{{true}}"
+    bindtap="onPreview"
+  />
+  <view wx:else class="empty">暂无图片</view>
+  <text wx:if="{{title}}" class="title">{{title}}</text>
+</view>

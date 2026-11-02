@@ -33,7 +33,7 @@
       <text>{{shopOpen ? '营业中 · 点此歇业' : '歇业中 · 点此开业'}}</text>
     </view>
 
-    <ad-banner role="{{role}}" height="240" force="{{true}}" />
+    <ad-banner role="{{role}}" page-key="home" height="240" force="{{true}}" />
 
     <view class="menu-grid">
       <view

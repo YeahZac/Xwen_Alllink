@@ -2,11 +2,22 @@ const api = require('../../utils/api')
 const { mergeBanners } = require('../../utils/banner-pack')
 const mediaCache = require('../../utils/media-cache')
 
+const TAB_PREFIXES = [
+  '/pages/index/',
+  '/pages/cross/',
+  '/pages/points/',
+  '/pages/mine/'
+]
+
 Component({
   properties: {
     role: {
       type: String,
       value: 'consumer'
+    },
+    pageKey: {
+      type: String,
+      value: ''
     },
     height: {
       type: Number,
@@ -22,16 +33,15 @@ Component({
     current: 0
   },
   observers: {
-    role(r) {
-      this.load(r)
+    'role, pageKey'() {
+      this.load()
     }
   },
   lifetimes: {
     attached() {
-      // 先塞兜底，避免接口慢时整块空白
       const scope = this.properties.role || 'consumer'
       this.setData({ list: mergeBanners(scope, []) })
-      this.load(scope)
+      this.load()
     }
   },
   methods: {
@@ -47,11 +57,12 @@ Component({
       }
       return next
     },
-    async load(role) {
-      const scope = role || 'consumer'
+    async load() {
+      const scope = this.properties.role || 'consumer'
+      const pageKey = this.properties.pageKey || ''
       let rows = []
       try {
-        rows = await api.banners(scope)
+        rows = await api.banners(scope, pageKey)
       } catch (_) {
         rows = []
       }
@@ -71,7 +82,6 @@ Component({
       const pack = mergeBanners(this.properties.role || 'consumer', [])
       const fallback = pack[idx % pack.length]
       const cloud = fallback && fallback.image
-      // 云端失败时保留本地占位，避免整块空白
       if (cloud && cloud !== item.image) {
         this.setData({
           [`list[${idx}].image`]: cloud,
@@ -87,24 +97,66 @@ Component({
     onTap(e) {
       const idx = e.currentTarget.dataset.index
       const item = this.data.list[idx]
-      if (!item || !item.link || item.linkType === 'none') {
+      if (!item) return
+      const linkType = String(item.linkType || 'none')
+      const title = encodeURIComponent(item.title || item.jumpName || '')
+      if (linkType === 'none' || linkType === '') return
+
+      if (linkType === 'image_detail') {
+        const src = item.linkImageUrl || item.image
+        if (!src) return
+        wx.navigateTo({
+          url: `/pages/banner-image/banner-image?src=${encodeURIComponent(src)}&title=${title}`
+        })
         return
       }
-      const link = String(item.link)
-      if (
-        item.linkType === 'switchTab' ||
-        link.indexOf('/pages/index/') === 0 ||
-        link.indexOf('/pages/cross/') === 0 ||
-        link.indexOf('/pages/points/') === 0 ||
-        link.indexOf('/pages/mine/') === 0
-      ) {
-        wx.switchTab({ url: link.split('?')[0] })
-      } else if (item.linkType === 'navigate' || link.charAt(0) === '/') {
-        wx.navigateTo({
-          url: link,
-          fail: () => wx.switchTab({ url: link.split('?')[0], fail: () => {} })
+
+      if (linkType === 'miniprogram') {
+        const appId = String(item.linkAppid || '').trim()
+        const path = String(item.link || '').trim()
+        if (!appId) {
+          wx.showToast({ title: '未配置小程序', icon: 'none' })
+          return
+        }
+        wx.navigateToMiniProgram({
+          appId,
+          path: path || '',
+          fail: () => wx.showToast({ title: '无法打开该小程序', icon: 'none' })
         })
+        return
       }
+
+      if (linkType === 'url') {
+        const url = String(item.link || '').trim()
+        if (!/^https?:\/\//i.test(url)) {
+          wx.showToast({ title: '链接无效', icon: 'none' })
+          return
+        }
+        wx.navigateTo({
+          url: `/pages/webview/webview?url=${encodeURIComponent(url)}&title=${title}`,
+          fail: () =>
+            wx.showModal({
+              title: '无法打开网页',
+              content: '请在小程序后台将业务域名加入白名单后再试',
+              showCancel: false
+            })
+        })
+        return
+      }
+
+      // page / 兼容旧 navigate、switchTab
+      const link = String(item.link || '').trim()
+      if (!link) return
+      const pathOnly = link.split('?')[0]
+      const isTab = TAB_PREFIXES.some((p) => pathOnly.indexOf(p) === 0)
+      if (isTab || linkType === 'switchTab') {
+        wx.switchTab({ url: pathOnly, fail: () => {} })
+        return
+      }
+      wx.navigateTo({
+        url: link.charAt(0) === '/' ? link : `/${link}`,
+        fail: () => wx.switchTab({ url: pathOnly, fail: () => {} })
+      })
     }
   }
 })

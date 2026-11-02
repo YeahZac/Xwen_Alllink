@@ -561,54 +561,236 @@ async function listPurchaseOrders({ page, pageSize, limit } = {}) {
 }
 
 /* ---------- banners ---------- */
-async function listAllBanners() {
-  return query(
-    `SELECT id, role_scope AS roleScope, title, sub_title AS subTitle, image_url AS imageUrl,
-            link_url AS linkUrl, link_type AS linkType, sort_order AS sortOrder, status,
-            start_at AS startAt, end_at AS endAt
-     FROM banners ORDER BY role_scope, sort_order, id`
-  )
+const BANNER_ROLES = {
+  consumer: 'C端消费者',
+  stall: '地摊商家',
+  cross: '异业商家',
+  supply: '供应链商家',
+  partner: '合伙人',
+  founder: '创始人',
+  login: '入驻/登录'
+}
+
+const BANNER_PAGES = {
+  consumer: [
+    { key: 'index', label: '首页顶部' },
+    { key: 'cross', label: '分类兑换顶' },
+    { key: 'points', label: '饭票积分顶' },
+    { key: 'mine', label: '我的页顶' }
+  ],
+  stall: [{ key: 'home', label: '商家工作台顶' }],
+  cross: [{ key: 'home', label: '商家工作台顶' }],
+  supply: [{ key: 'home', label: '商家工作台顶' }],
+  partner: [{ key: 'home', label: '合伙人首页顶' }],
+  founder: [{ key: 'home', label: '创始人首页顶' }],
+  login: [{ key: 'apply', label: '入驻申请页顶' }]
+}
+
+const BANNER_LINK_TYPES = {
+  image_detail: '图片详情',
+  page: '小程序页面',
+  miniprogram: '其他小程序路径',
+  url: '外链网址'
+}
+
+function normalizeBannerLinkType(raw) {
+  const t = String(raw || '').trim()
+  if (t === 'navigate' || t === 'switchTab') return 'page'
+  if (['image_detail', 'page', 'miniprogram', 'url', 'none'].includes(t)) return t
+  return 'page'
+}
+
+function assertBannerPayload(body) {
+  const roleScope = String(body.roleScope || '').trim()
+  if (!BANNER_ROLES[roleScope]) throw new HttpError(400, '请选择展示端')
+  const pageKey = String(body.pageKey || '').trim()
+  const pages = BANNER_PAGES[roleScope] || []
+  if (!pages.some((p) => p.key === pageKey)) throw new HttpError(400, '请选择展示位置')
+  const title = String(body.title || body.jumpName || '').trim()
+  if (!title) throw new HttpError(400, '请填写跳转名称')
+  const imageUrl = String(body.imageUrl || '').trim()
+  if (!imageUrl) throw new HttpError(400, '请上传 Banner 图片')
+  const linkType = normalizeBannerLinkType(body.linkType)
+  const linkUrl = String(body.linkUrl || '').trim()
+  const linkAppid = String(body.linkAppid || '').trim()
+  const linkImageUrl = String(body.linkImageUrl || '').trim()
+  if (linkType === 'image_detail' && !linkImageUrl) {
+    throw new HttpError(400, '请上传详情图片')
+  }
+  if (linkType === 'page' && !linkUrl) throw new HttpError(400, '请填写小程序页面路径')
+  if (linkType === 'miniprogram') {
+    if (!linkAppid) throw new HttpError(400, '请填写其他小程序 AppID')
+    if (!linkUrl) throw new HttpError(400, '请填写其他小程序页面路径')
+  }
+  if (linkType === 'url' && !/^https?:\/\//i.test(linkUrl)) {
+    throw new HttpError(400, '外链须以 http:// 或 https:// 开头')
+  }
+  return {
+    roleScope,
+    pageKey,
+    title,
+    imageUrl,
+    linkType,
+    linkUrl: linkType === 'image_detail' ? '' : linkUrl,
+    linkAppid: linkType === 'miniprogram' ? linkAppid : '',
+    linkImageUrl: linkType === 'image_detail' ? linkImageUrl : '',
+    remark: String(body.remark || '').trim(),
+    sortOrder: Number(body.sortOrder) || 0,
+    status: body.status === 0 ? 0 : 1
+  }
+}
+
+async function listAllBanners({ roleScope, pageKey } = {}) {
+  const params = {}
+  let where = 'WHERE 1=1'
+  if (roleScope) {
+    where += ' AND role_scope=:role'
+    params.role = roleScope
+  }
+  if (pageKey) {
+    where += ' AND page_key=:page'
+    params.page = pageKey
+  }
+  let rows
+  try {
+    rows = await query(
+      `SELECT id, role_scope AS roleScope, page_key AS pageKey, title, title AS jumpName,
+              sub_title AS subTitle, image_url AS imageUrl, link_url AS linkUrl,
+              link_type AS linkType, link_appid AS linkAppid, link_image_url AS linkImageUrl,
+              remark, sort_order AS sortOrder, status,
+              start_at AS startAt, end_at AS endAt
+       FROM banners ${where}
+       ORDER BY role_scope, page_key, sort_order, id`,
+      params
+    )
+  } catch (e) {
+    if (!e || e.code !== 'ER_BAD_FIELD_ERROR') throw e
+    rows = await query(
+      `SELECT id, role_scope AS roleScope, page_key AS pageKey, title, title AS jumpName,
+              sub_title AS subTitle, image_url AS imageUrl, link_url AS linkUrl,
+              link_type AS linkType, sort_order AS sortOrder, status
+       FROM banners ${where}
+       ORDER BY role_scope, page_key, sort_order, id`,
+      params
+    )
+  }
+  return rows.map((r) => {
+    const linkType = normalizeBannerLinkType(r.linkType)
+    const pages = BANNER_PAGES[r.roleScope] || []
+    const pageMeta = pages.find((p) => p.key === r.pageKey)
+    return {
+      ...r,
+      linkType,
+      roleLabel: BANNER_ROLES[r.roleScope] || r.roleScope,
+      pageLabel: pageMeta ? pageMeta.label : r.pageKey || '—',
+      linkTypeLabel: BANNER_LINK_TYPES[linkType] || linkType,
+      remark: r.remark || r.subTitle || '',
+      linkAppid: r.linkAppid || '',
+      linkImageUrl: r.linkImageUrl || ''
+    }
+  })
+}
+
+function bannerMeta() {
+  return {
+    roles: Object.keys(BANNER_ROLES).map((key) => ({ key, label: BANNER_ROLES[key] })),
+    pages: BANNER_PAGES,
+    linkTypes: Object.keys(BANNER_LINK_TYPES).map((key) => ({
+      key,
+      label: BANNER_LINK_TYPES[key]
+    }))
+  }
 }
 
 async function saveBanner(body) {
+  const p = assertBannerPayload(body)
   if (body.id) {
-    await query(
-      `UPDATE banners SET role_scope=:role, title=:title, sub_title=:sub, image_url=:img,
-       link_url=:link, link_type=:lt, sort_order=:sort, status=:status,
-       start_at=:startAt, end_at=:endAt WHERE id=:id`,
-      {
-        id: Number(body.id),
-        role: body.roleScope || 'consumer',
-        title: body.title,
-        sub: body.subTitle || '',
-        img: body.imageUrl || '',
-        link: body.linkUrl || '',
-        lt: body.linkType || 'none',
-        sort: Number(body.sortOrder) || 0,
-        status: body.status === 0 ? 0 : 1,
-        startAt: body.startAt || null,
-        endAt: body.endAt || null
-      }
-    )
+    try {
+      await query(
+        `UPDATE banners SET role_scope=:role, page_key=:page, title=:title, sub_title=:remark,
+         image_url=:img, link_url=:link, link_type=:lt, link_appid=:appid, link_image_url=:limg,
+         remark=:remark, sort_order=:sort, status=:status, start_at=NULL, end_at=NULL
+         WHERE id=:id`,
+        {
+          id: Number(body.id),
+          role: p.roleScope,
+          page: p.pageKey,
+          title: p.title,
+          remark: p.remark,
+          img: p.imageUrl,
+          link: p.linkUrl,
+          lt: p.linkType,
+          appid: p.linkAppid || null,
+          limg: p.linkImageUrl || null,
+          sort: p.sortOrder,
+          status: p.status
+        }
+      )
+    } catch (e) {
+      if (!e || e.code !== 'ER_BAD_FIELD_ERROR') throw e
+      await query(
+        `UPDATE banners SET role_scope=:role, page_key=:page, title=:title, sub_title=:remark,
+         image_url=:img, link_url=:link, link_type=:lt, sort_order=:sort, status=:status
+         WHERE id=:id`,
+        {
+          id: Number(body.id),
+          role: p.roleScope,
+          page: p.pageKey,
+          title: p.title,
+          remark: p.remark,
+          img: p.imageUrl,
+          link: p.linkUrl,
+          lt: p.linkType,
+          sort: p.sortOrder,
+          status: p.status
+        }
+      )
+    }
     return { id: Number(body.id) }
   }
-  const r = await query(
-    `INSERT INTO banners (role_scope, title, sub_title, image_url, link_url, link_type, sort_order, status, start_at, end_at)
-     VALUES (:role, :title, :sub, :img, :link, :lt, :sort, :status, :startAt, :endAt)`,
-    {
-      role: body.roleScope || 'consumer',
-      title: body.title,
-      sub: body.subTitle || '',
-      img: body.imageUrl || '',
-      link: body.linkUrl || '',
-      lt: body.linkType || 'none',
-      sort: Number(body.sortOrder) || 0,
-      status: body.status === 0 ? 0 : 1,
-      startAt: body.startAt || null,
-      endAt: body.endAt || null
-    }
-  )
-  return { id: r.insertId }
+  try {
+    const r = await query(
+      `INSERT INTO banners
+        (role_scope, page_key, title, sub_title, image_url, link_url, link_type, link_appid,
+         link_image_url, remark, sort_order, status)
+       VALUES
+        (:role, :page, :title, :remark, :img, :link, :lt, :appid, :limg, :remark, :sort, :status)`,
+      {
+        role: p.roleScope,
+        page: p.pageKey,
+        title: p.title,
+        remark: p.remark,
+        img: p.imageUrl,
+        link: p.linkUrl,
+        lt: p.linkType,
+        appid: p.linkAppid || null,
+        limg: p.linkImageUrl || null,
+        sort: p.sortOrder,
+        status: p.status
+      }
+    )
+    return { id: r.insertId }
+  } catch (e) {
+    if (!e || e.code !== 'ER_BAD_FIELD_ERROR') throw e
+    const r = await query(
+      `INSERT INTO banners
+        (role_scope, page_key, title, sub_title, image_url, link_url, link_type, sort_order, status)
+       VALUES
+        (:role, :page, :title, :remark, :img, :link, :lt, :sort, :status)`,
+      {
+        role: p.roleScope,
+        page: p.pageKey,
+        title: p.title,
+        remark: p.remark,
+        img: p.imageUrl,
+        link: p.linkUrl,
+        lt: p.linkType,
+        sort: p.sortOrder,
+        status: p.status
+      }
+    )
+    return { id: r.insertId }
+  }
 }
 
 async function deleteBanner(id) {
@@ -995,6 +1177,7 @@ module.exports = {
   listPurchaseOrders,
   getOrderDetail,
   listAllBanners,
+  bannerMeta,
   saveBanner,
   deleteBanner,
   setBannerStatus,

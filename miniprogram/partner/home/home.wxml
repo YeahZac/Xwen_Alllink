@@ -2,6 +2,7 @@
   <page-nav title="合伙人中心" tone="solid" show-home="{{true}}" home-url="/pages/index/index" />
 
   <view class="m-home-shell">
+    <ad-banner role="partner" page-key="home" height="220" force="{{true}}" />
     <view class="shop-card">
       <text class="shop-card__name">区域合伙人</text>
       <text class="shop-card__meta">{{name}} · 邀请码 {{shareCode || '—'}}</text>

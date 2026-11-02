@@ -197,6 +197,51 @@ async function ensureSchema() {
     console.warn('[schema] apply review logs', e.message)
   }
   try {
+    await pool.query(
+      "ALTER TABLE `banners` MODIFY COLUMN `role_scope` VARCHAR(32) NOT NULL COMMENT '端 consumer/stall/cross/supply/partner/founder/login'"
+    )
+  } catch (e) {
+    console.warn('[schema] banners role_scope', e.message)
+  }
+  try {
+    await pool.query(
+      "ALTER TABLE `banners` MODIFY COLUMN `link_type` VARCHAR(32) NOT NULL DEFAULT 'page' COMMENT 'image_detail|page|miniprogram|url|none'"
+    )
+  } catch (e) {
+    console.warn('[schema] banners link_type', e.message)
+  }
+  try {
+    await addColumn(
+      'banners',
+      'link_appid',
+      "`link_appid` VARCHAR(64) DEFAULT NULL COMMENT '其他小程序 AppID' AFTER `link_url`"
+    )
+    await addColumn(
+      'banners',
+      'link_image_url',
+      "`link_image_url` VARCHAR(1024) DEFAULT NULL COMMENT '图片详情' AFTER `link_appid`"
+    )
+    await addColumn(
+      'banners',
+      'remark',
+      "`remark` VARCHAR(255) DEFAULT NULL COMMENT '备注' AFTER `link_image_url`"
+    )
+    await pool.query(
+      `UPDATE banners SET link_type='page' WHERE link_type IN ('navigate','switchTab')`
+    )
+    await pool.query(
+      `UPDATE banners SET remark=sub_title
+       WHERE (remark IS NULL OR remark='') AND sub_title IS NOT NULL AND sub_title<>''`
+    )
+  } catch (e) {
+    console.warn('[schema] banner link fields', e.message)
+  }
+  try {
+    await runSqlStatements('32_banner_fields.sql', 'banner fields')
+  } catch (e) {
+    console.warn('[schema] banner fields sql', e.message)
+  }
+  try {
     await addColumn(
       'admin_accounts',
       'user_id',

@@ -27,7 +27,7 @@
       </view>
     </view>
 
-    <ad-banner role="consumer" height="220" force="{{true}}" />
+    <ad-banner role="consumer" page-key="mine" height="220" force="{{true}}" />
 
     <view class="stats-card">
       <view class="stat" bindtap="goPoints">

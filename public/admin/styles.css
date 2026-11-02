@@ -414,6 +414,31 @@ tr:hover td { background: #fafbfc; }
 .modal-card footer { margin-top: 12px; justify-content: flex-end; }
 .empty { padding: 28px; text-align: center; color: var(--muted); }
 
+.banner-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.banner-tab {
+  border: 1px solid var(--border, #e5e7eb);
+  background: #fff;
+  color: var(--muted, #64748b);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.banner-tab.on {
+  background: #fff1f0;
+  border-color: #ff4d4f;
+  color: #ff4d4f;
+}
+.banner-tab:hover {
+  border-color: #ff7875;
+}
+
 .switch {
   position: relative;
   display: inline-flex;

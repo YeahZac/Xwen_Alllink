@@ -2,6 +2,7 @@
   <page-nav title="创始人总控" tone="solid" show-home="{{true}}" home-url="/pages/index/index" />
 
   <view class="m-home-shell">
+    <ad-banner role="founder" page-key="home" height="220" force="{{true}}" />
     <view class="shop-card">
       <text class="shop-card__name">平台总控</text>
       <text class="shop-card__meta">{{name}} · 万业互联云</text>

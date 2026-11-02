@@ -16,14 +16,23 @@ const BANNER_IMAGES = {
 const LOCAL_BANNER =
   /\/assets\/banners\/|(consumer-[123]|stall-[12]|cross-[12]|supply-[12]|login-[12])\.png$|placehold|picsum|unsplash|\/admin\/(banner|cover)\//i
 
+function normalizePublicLinkType(raw) {
+  const t = String(raw || '').trim()
+  if (t === 'navigate' || t === 'switchTab') return 'page'
+  if (['image_detail', 'page', 'miniprogram', 'url', 'none'].includes(t)) return t
+  return 'page'
+}
+
 async function listBanners(role, page) {
   const scope = role || 'consumer'
   const slot = String(page || '').trim()
   let rows
   try {
     rows = await query(
-      `SELECT id, role_scope AS role, page_key AS pageKey, title, sub_title AS sub, image_url AS image,
-              link_url AS link, link_type AS linkType, sort_order AS sortOrder
+      `SELECT id, role_scope AS role, page_key AS pageKey, title, title AS jumpName,
+              IFNULL(NULLIF(remark,''), sub_title) AS sub, image_url AS image,
+              link_url AS link, link_type AS linkType, link_appid AS linkAppid,
+              link_image_url AS linkImageUrl, sort_order AS sortOrder
        FROM banners
        WHERE role_scope = :scope AND status = 1
          AND (start_at IS NULL OR start_at <= NOW())
@@ -38,15 +47,20 @@ async function listBanners(role, page) {
   } catch (e) {
     if (!e || e.code !== 'ER_BAD_FIELD_ERROR') throw e
     rows = await query(
-      `SELECT id, role_scope AS role, title, sub_title AS sub, image_url AS image,
+      `SELECT id, role_scope AS role, page_key AS pageKey, title, title AS jumpName,
+              sub_title AS sub, image_url AS image,
               link_url AS link, link_type AS linkType, sort_order AS sortOrder
        FROM banners
        WHERE role_scope = :scope AND status = 1
          AND (start_at IS NULL OR start_at <= NOW())
          AND (end_at IS NULL OR end_at >= NOW())
+         AND (:slot = '' OR page_key = :slot OR page_key IS NULL OR page_key = '')
        ORDER BY sort_order ASC, id ASC`,
-      { scope }
+      { scope, slot }
     )
+    if (slot && rows.some((row) => row.pageKey)) {
+      rows = rows.filter((row) => row.pageKey === slot)
+    }
   }
   const pack = BANNER_IMAGES[scope] || BANNER_IMAGES.consumer
   return rows.map((row, i) => {
@@ -55,6 +69,9 @@ async function listBanners(role, page) {
     if (!image || !ready || LOCAL_BANNER.test(image)) {
       row.image = pack[i % pack.length]
     }
+    row.linkType = normalizePublicLinkType(row.linkType)
+    row.linkAppid = row.linkAppid || ''
+    row.linkImageUrl = row.linkImageUrl || ''
     return row
   })
 }

@@ -1,0 +1,5 @@
+<web-view wx:if="{{url}}" src="{{url}}"></web-view>
+<view wx:else class="empty">
+  <text class="empty__t">无法打开链接</text>
+  <text class="empty__d">请确认业务域名已加入小程序白名单</text>
+</view>

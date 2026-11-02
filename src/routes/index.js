@@ -700,9 +700,24 @@ router.get('/admin/points/pool-ledger', ...adminOnly, requirePage('points'), asy
   }
 })
 
+router.get('/admin/banners/meta', ...adminOnly, requirePage('banners'), async (req, res, next) => {
+  try {
+    res.json(ok(adminService.bannerMeta()))
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.get('/admin/banners', ...adminOnly, requirePage('banners'), async (req, res, next) => {
   try {
-    res.json(ok(await adminService.listAllBanners()))
+    res.json(
+      ok(
+        await adminService.listAllBanners({
+          roleScope: req.query.role || req.query.roleScope || '',
+          pageKey: req.query.page || req.query.pageKey || ''
+        })
+      )
+    )
   } catch (e) {
     next(e)
   }

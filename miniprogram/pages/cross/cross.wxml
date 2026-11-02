@@ -8,7 +8,7 @@
   </view>
 
   <view class="cross-body">
-    <ad-banner role="consumer" height="240" force="{{true}}" />
+    <ad-banner role="consumer" page-key="cross" height="240" force="{{true}}" />
 
     <text class="cross-tip">积分够就兑 · 不够可按门店现金价全额支付</text>
 

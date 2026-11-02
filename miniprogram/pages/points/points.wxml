@@ -18,7 +18,7 @@
       </view>
 
       <view class="points-body">
-        <ad-banner role="consumer" height="220" force="{{true}}" />
+        <ad-banner role="consumer" page-key="points" height="220" force="{{true}}" />
 
         <text class="section-title">积分明细</text>
         <text class="section-desc">来自商家额度池划拨 · 可追溯每笔消费</text>

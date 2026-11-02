@@ -121,12 +121,15 @@ function mergeBanners(role, rows) {
     const image = isMissingImage(item.image) ? fallback.image : item.image
     return {
       id: item.id || `local-${role}-${i}`,
-      title: item.title || fallback.title,
-      sub: item.sub || fallback.sub,
+      title: item.jumpName || item.title || fallback.title,
+      jumpName: item.jumpName || item.title || fallback.title,
+      sub: item.sub || item.remark || fallback.sub,
       image,
       placeholder: fallback.placeholder || cdn.PLACEHOLDER_BANNER,
       link: item.link != null && item.link !== undefined ? item.link : fallback.link,
       linkType: item.linkType || fallback.linkType,
+      linkAppid: item.linkAppid || '',
+      linkImageUrl: item.linkImageUrl || '',
       imgError: !String(image || '').trim()
     }
   })

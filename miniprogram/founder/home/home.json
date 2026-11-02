@@ -3,6 +3,7 @@
   "navigationBarTextStyle": "white",
   "usingComponents": {
     "page-nav": "/components/page-nav/page-nav",
-    "role-tabbar": "/components/role-tabbar/role-tabbar"
+    "role-tabbar": "/components/role-tabbar/role-tabbar",
+    "ad-banner": "/components/ad-banner/ad-banner"
   }
 }

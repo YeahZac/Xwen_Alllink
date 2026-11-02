@@ -1,5 +1,5 @@
 <view class="page apply">
-  <ad-banner role="login" height="240" />
+  <ad-banner role="login" page-key="apply" height="240" />
 
   <view class="steps surface">
     <view class="step {{step >= 1 ? 'step--on' : ''}}"><text>1</text><text class="step__l">类型</text></view>

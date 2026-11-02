@@ -2469,24 +2469,88 @@ async function renderSettlements() {
 
 async function renderBanners() {
   const editable = canEdit('banners')
+  const meta = await api('/admin/banners/meta').catch(() => ({
+    roles: [
+      { key: 'consumer', label: 'C端消费者' },
+      { key: 'stall', label: '地摊商家' },
+      { key: 'cross', label: '异业商家' },
+      { key: 'supply', label: '供应链商家' },
+      { key: 'partner', label: '合伙人' },
+      { key: 'founder', label: '创始人' },
+      { key: 'login', label: '入驻/登录' }
+    ],
+    pages: {
+      consumer: [
+        { key: 'index', label: '首页顶部' },
+        { key: 'cross', label: '分类兑换顶' },
+        { key: 'points', label: '饭票积分顶' },
+        { key: 'mine', label: '我的页顶' }
+      ],
+      stall: [{ key: 'home', label: '商家工作台顶' }],
+      cross: [{ key: 'home', label: '商家工作台顶' }],
+      supply: [{ key: 'home', label: '商家工作台顶' }],
+      partner: [{ key: 'home', label: '合伙人首页顶' }],
+      founder: [{ key: 'home', label: '创始人首页顶' }],
+      login: [{ key: 'apply', label: '入驻申请页顶' }]
+    },
+    linkTypes: [
+      { key: 'image_detail', label: '图片详情' },
+      { key: 'page', label: '小程序页面' },
+      { key: 'miniprogram', label: '其他小程序路径' },
+      { key: 'url', label: '外链网址' }
+    ]
+  }))
+  const stateBanner = {
+    role: (meta.roles[0] && meta.roles[0].key) || 'consumer',
+    page: ''
+  }
+  const fillPages = () => {
+    const pages = meta.pages[stateBanner.role] || []
+    if (!pages.some((p) => p.key === stateBanner.page)) {
+      stateBanner.page = pages[0] ? pages[0].key : ''
+    }
+    $('bPage').innerHTML = pages
+      .map((p) => `<option value="${esc(p.key)}" ${p.key === stateBanner.page ? 'selected' : ''}>${esc(p.label)}</option>`)
+      .join('')
+  }
   content().innerHTML = `
+    <div class="banner-tabs" id="bRoleTabs">
+      ${(meta.roles || [])
+        .map(
+          (r) =>
+            `<button type="button" class="banner-tab ${r.key === stateBanner.role ? 'on' : ''}" data-role="${esc(
+              r.key
+            )}">${esc(r.label)}</button>`
+        )
+        .join('')}
+    </div>
     <div class="toolbar">
+      <label for="bPage">展示位置</label>
+      <select id="bPage"></select>
       <button class="btn" id="btnReload">刷新</button>
       ${editable ? '<button class="btn primary" id="btnAdd">新建 Banner</button>' : ''}
     </div>
+    <p class="muted" style="margin:0 0 12px">按「用户端 + 展示位置」分别管理；关闭后小程序对应位置不展示。</p>
     <div id="list"></div>`
+  fillPages()
   const load = async () => {
-    const rows = await api('/admin/banners')
-    $('list').innerHTML = table(
-      ['预览', 'ID', '范围', '标题', '副标', '排序', '展示', '操作'],
-      rows
-        .map(
-          (b) => {
+    const qs = new URLSearchParams({
+      role: stateBanner.role,
+      page: stateBanner.page
+    })
+    const rows = await api(`/admin/banners?${qs}`)
+    $('list').innerHTML =
+      table(
+        ['预览', 'ID', '跳转名称', '跳转类型', '备注', '是否展示', '操作'],
+        rows
+          .map((b) => {
             const on = Number(b.status) === 1
             return `<tr class="${on ? '' : 'is-off'}">
         <td>${thumb(b.imageUrl)}</td>
-        <td>${b.id}</td><td>${esc(b.roleScope)}</td><td>${esc(b.title)}</td>
-        <td>${esc(b.subTitle)}</td><td>${b.sortOrder}</td>
+        <td>${b.id}</td>
+        <td>${esc(b.jumpName || b.title)}</td>
+        <td>${esc(b.linkTypeLabel || b.linkType)}</td>
+        <td>${esc(b.remark || '—')}</td>
         <td>${switchControl({
           on,
           onLabel: '展示',
@@ -2502,13 +2566,16 @@ async function renderBanners() {
               : '-'
           }
         </td></tr>`
-          }
-        )
-        .join('')
-    )
+          })
+          .join('')
+      ) || '<div class="empty">该端/位置暂无 Banner</div>'
     bindThumbs($('list'))
     $('list').querySelectorAll('[data-edit]').forEach((btn) => {
-      btn.onclick = () => editBanner(JSON.parse(decodeURIComponent(btn.getAttribute('data-edit'))), load)
+      btn.onclick = () =>
+        editBanner(JSON.parse(decodeURIComponent(btn.getAttribute('data-edit'))), load, meta, {
+          roleScope: stateBanner.role,
+          pageKey: stateBanner.page
+        })
     })
     bindToggleSwitch($('list'), '[data-banner-switch]', async (input, on) => {
       const id = Number(input.getAttribute('data-banner-switch'))
@@ -2527,45 +2594,145 @@ async function renderBanners() {
         })
     })
   }
-  if ($('btnAdd')) $('btnAdd').onclick = () => editBanner(null, load)
+  $('bRoleTabs').querySelectorAll('[data-role]').forEach((btn) => {
+    btn.onclick = () => {
+      stateBanner.role = btn.getAttribute('data-role')
+      $('bRoleTabs').querySelectorAll('.banner-tab').forEach((el) => el.classList.remove('on'))
+      btn.classList.add('on')
+      fillPages()
+      runAction(load)
+    }
+  })
+  $('bPage').onchange = () => {
+    stateBanner.page = $('bPage').value
+    runAction(load)
+  }
+  if ($('btnAdd')) {
+    $('btnAdd').onclick = () =>
+      editBanner(null, load, meta, { roleScope: stateBanner.role, pageKey: stateBanner.page })
+  }
   $('btnReload').onclick = () => runAction(load)
   await load()
 }
 
-function editBanner(b, reload) {
-  b = b || { roleScope: 'consumer', title: '', subTitle: '', imageUrl: '', sortOrder: 0, status: 1, startAt: '', endAt: '' }
+function bannerLinkFieldsHtml(b, linkTypes) {
+  const lt = b.linkType || 'page'
+  const types = (linkTypes || [])
+    .map(
+      (t) =>
+        `<option value="${esc(t.key)}" ${t.key === lt ? 'selected' : ''}>${esc(t.label)}</option>`
+    )
+    .join('')
+  return `
+    <label>跳转类型
+      <select name="linkType" id="f_linkType">${types}</select>
+    </label>
+    <div id="bannerLinkExtra"></div>
+    <p class="muted tip" id="bannerLinkTip"></p>`
+}
+
+function renderBannerLinkExtra(linkType, b = {}) {
+  const box = $('bannerLinkExtra')
+  const tip = $('bannerLinkTip')
+  if (!box) return
+  if (linkType === 'image_detail') {
+    box.innerHTML = mediaField('linkImageUrl', '详情图片（必填一张）', b.linkImageUrl || '', 'banner')
+    if (tip) tip.textContent = '用户点击 Banner 后全屏查看该图片'
+  } else if (linkType === 'page') {
+    box.innerHTML = field('linkUrl', '小程序页面路径（如 /pages/cross/cross）', b.linkUrl || '')
+    if (tip) tip.textContent = '填写本小程序内页面路径，Tab 页会自动 switchTab'
+  } else if (linkType === 'miniprogram') {
+    box.innerHTML =
+      field('linkAppid', '其他小程序 AppID', b.linkAppid || '') +
+      field('linkUrl', '其他小程序页面路径', b.linkUrl || '')
+    if (tip) tip.textContent = '需在微信公众平台配置「跳转小程序」合法名单'
+  } else if (linkType === 'url') {
+    box.innerHTML = field('linkUrl', '网址（https://…）', b.linkUrl || '')
+    if (tip) {
+      tip.textContent =
+        '小程序打开外链须在「业务域名」配置白名单；未配置时用户将无法打开该网页'
+    }
+  } else {
+    box.innerHTML = ''
+    if (tip) tip.textContent = ''
+  }
+  bindMediaFields(box)
+}
+
+function editBanner(b, reload, meta, defaults = {}) {
+  const roles = (meta && meta.roles) || []
+  const pagesMap = (meta && meta.pages) || {}
+  const linkTypes = (meta && meta.linkTypes) || []
+  b = b || {
+    roleScope: defaults.roleScope || 'consumer',
+    pageKey: defaults.pageKey || 'index',
+    title: '',
+    imageUrl: '',
+    linkType: 'page',
+    linkUrl: '',
+    linkAppid: '',
+    linkImageUrl: '',
+    remark: '',
+    status: 1
+  }
+  if (b.linkType === 'navigate' || b.linkType === 'switchTab') b.linkType = 'page'
+  const roleOptions = roles
+    .map(
+      (r) =>
+        `<option value="${esc(r.key)}" ${r.key === b.roleScope ? 'selected' : ''}>${esc(r.label)}</option>`
+    )
+    .join('')
+  const pageOptions = (pagesMap[b.roleScope] || [])
+    .map(
+      (p) =>
+        `<option value="${esc(p.key)}" ${p.key === b.pageKey ? 'selected' : ''}>${esc(p.label)}</option>`
+    )
+    .join('')
   openModal(
     b.id ? '编辑 Banner' : '新建 Banner',
-    field('roleScope', '范围 consumer/stall/cross/supply/login', b.roleScope) +
-      field('title', '标题', b.title) +
-      field('subTitle', '副标题', b.subTitle) +
-      mediaField('imageUrl', 'Banner 图片', b.imageUrl || '', 'banner') +
-      field('linkUrl', '跳转', b.linkUrl || '') +
-      field('linkType', '链接类型 navigate/switchTab/none', b.linkType || 'none') +
-      field('sortOrder', '排序', b.sortOrder, 'number') +
-      selectOnOff('status', b.status ?? 1, { onLabel: '展示', offLabel: '隐藏' }) +
-      field('startAt', '开始时间(可选)', b.startAt ? String(b.startAt).slice(0, 19).replace('T', ' ') : '') +
-      field('endAt', '结束时间(可选)', b.endAt ? String(b.endAt).slice(0, 19).replace('T', ' ') : ''),
+    `<label>展示端<select name="roleScope" id="f_roleScope">${roleOptions}</select></label>
+     <label>展示位置<select name="pageKey" id="f_pageKey">${pageOptions}</select></label>` +
+      mediaField('imageUrl', 'Banner 图片（必填一张）', b.imageUrl || '', 'banner') +
+      field('title', '跳转名称（必填）', b.title || b.jumpName || '') +
+      bannerLinkFieldsHtml(b, linkTypes) +
+      field('remark', '备注', b.remark || '', 'textarea') +
+      selectOnOff('status', b.status ?? 1, { onLabel: '展示', offLabel: '隐藏' }),
     async () => {
       await api('/admin/banners', {
         method: 'POST',
         body: JSON.stringify({
           id: b.id,
           roleScope: formVal('roleScope'),
+          pageKey: formVal('pageKey'),
           title: formVal('title'),
-          subTitle: formVal('subTitle'),
           imageUrl: formVal('imageUrl'),
-          linkUrl: formVal('linkUrl'),
           linkType: formVal('linkType'),
-          sortOrder: Number(formVal('sortOrder') || 0),
-          status: Number(formVal('status') || 0),
-          startAt: formVal('startAt') || null,
-          endAt: formVal('endAt') || null
+          linkUrl: formVal('linkUrl'),
+          linkAppid: formVal('linkAppid'),
+          linkImageUrl: formVal('linkImageUrl'),
+          remark: formVal('remark'),
+          status: Number(formVal('status') || 0)
         })
       })
       reload()
-    }
+    },
+    true
   )
+  renderBannerLinkExtra(b.linkType || 'page', b)
+  const roleSel = $('f_roleScope')
+  const pageSel = $('f_pageKey')
+  const typeSel = $('f_linkType')
+  if (roleSel && pageSel) {
+    roleSel.onchange = () => {
+      const pages = pagesMap[roleSel.value] || []
+      pageSel.innerHTML = pages
+        .map((p) => `<option value="${esc(p.key)}">${esc(p.label)}</option>`)
+        .join('')
+    }
+  }
+  if (typeSel) {
+    typeSel.onchange = () => renderBannerLinkExtra(typeSel.value, b)
+  }
 }
 
 async function renderConfigs() {

@@ -1,0 +1,23 @@
+.page {
+  min-height: 100vh;
+  background: #0f1115;
+  padding-bottom: calc(48rpx + env(safe-area-inset-bottom));
+}
+.img {
+  display: block;
+  width: 100%;
+  background: #1a1d24;
+}
+.title {
+  display: block;
+  margin: 24rpx 32rpx 0;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 28rpx;
+  line-height: 1.4;
+}
+.empty {
+  padding: 160rpx 32rpx;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 28rpx;
+}
