@@ -3,17 +3,20 @@
 
   <view class="mine-shell">
     <view wx:if="{{!loggedIn}}" class="profile-card" bindtap="goLogin">
-      <view class="avatar">万</view>
+      <image class="avatar avatar--image" src="/assets/brand/logo.png" mode="aspectFill" />
       <view class="profile__info">
         <text class="profile__name">点击登录</text>
-        <text class="profile__role">登录后查看订单、积分与资料</text>
+        <text class="profile__role">{{slogan}}</text>
       </view>
       <text class="m-row__arrow">›</text>
     </view>
     <view wx:else class="profile-card">
       <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
-        <image wx:if="{{coverUrl}}" class="avatar avatar--image" src="{{coverUrl}}" mode="aspectFill" />
-        <view wx:else class="avatar">万</view>
+        <image
+          class="avatar avatar--image"
+          src="{{coverUrl || '/assets/brand/logo.png'}}"
+          mode="aspectFill"
+        />
       </button>
       <view class="profile__info">
         <input
@@ -23,7 +26,7 @@
           value="{{name}}"
           bindblur="onNicknameBlur"
         />
-        <text class="profile__role ellipsis-1">{{roleLabel || '消费者'}} · 万业互联云</text>
+        <text class="profile__role ellipsis-1">{{slogan}}</text>
       </view>
     </view>
 

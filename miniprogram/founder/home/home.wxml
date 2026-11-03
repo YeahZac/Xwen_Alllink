@@ -1,5 +1,5 @@
 <view class="page m-home page--flush page--tabbed">
-  <page-nav title="创始人总控" tone="solid" show-home="{{true}}" home-url="/pages/index/index" />
+  <page-nav title="创始人总控" tone="solid" show-home="{{true}}" home-url="/pages/index/index" home-switch-consumer="{{true}}" />
 
   <view class="m-home-shell">
     <ad-banner role="founder" page-key="home" height="220" force="{{true}}" />

@@ -116,17 +116,18 @@ Page({
     }
   },
   async onShow() {
-    // 启动页=首页：游客可逛；仅商户身份才改道工作台
+    // 启动页=首页：未登录/纯 C 端可逛；已登录且当前落在 B 端身份则进对应工作台
     try {
       const app = getApp()
-      const guest = !!(app && app.globalData && app.globalData.preferGuest) ||
-        !!(store.preferGuestBrowse && store.preferGuestBrowse())
-      if (!guest && app && app.globalData && app.globalData.bootPromise) {
-        // 不阻塞门店加载：会话路由与列表并行
+      if (app && app.globalData && app.globalData.bootPromise) {
         app.globalData.bootPromise
           .then((boot) => {
             app.globalData.bootPromise = null
             if (boot && boot.ok && boot.session && boot.session.role && boot.session.role !== 'consumer') {
+              try {
+                wx.removeStorageSync('wy_guest_browse')
+                if (app.globalData) app.globalData.preferGuest = false
+              } catch (_) {}
               store.routeAfterLogin()
             }
           })
@@ -135,11 +136,14 @@ Page({
           })
       }
     } catch (_) {}
-    if (!store.ensureConsumerOrRedirect({ allowGuest: true })) return
-    if (store.isLoggedIn() && store.getSession() && store.getSession().role !== 'consumer') {
-      store.routeAfterLogin()
-      return
+    if (store.isLoggedIn()) {
+      const s = store.getSession()
+      if (s && s.role && s.role !== 'consumer') {
+        store.routeAfterLogin()
+        return
+      }
     }
+    if (!store.ensureConsumerOrRedirect({ allowGuest: true })) return
 
     location.ensureDefaultLoc()
     this._loadError = ''

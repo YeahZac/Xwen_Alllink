@@ -11,7 +11,7 @@
 .mine .profile-card {
   display: flex;
   align-items: center;
-  gap: var(--space-md);
+  gap: 50rpx; /* 25px：头像与昵称区间距 */
   padding: var(--space-lg);
   margin-bottom: var(--space-md);
   background: var(--color-surface);

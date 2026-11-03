@@ -9,6 +9,7 @@ Page({
     loggedIn: false,
     name: '',
     roleLabel: '',
+    slogan: '供货 · 点餐 · 积分额度 · 异业闭环',
     points: 0,
     orderCount: 0,
     coverUrl: '',
@@ -16,6 +17,13 @@ Page({
     gender: 0,
     genderText: '',
     genderOptions: GENDER_OPTIONS
+  },
+  onLoad() {
+    try {
+      const app = getApp()
+      const slogan = app && app.globalData && app.globalData.brand && app.globalData.brand.slogan
+      if (slogan) this.setData({ slogan })
+    } catch (_) {}
   },
   async onShow() {
     if (!store.isLoggedIn()) {
@@ -191,6 +199,6 @@ Page({
   },
   onLogout() {
     store.logout()
-    wx.reLaunch({ url: '/pages/login/login' })
+    store.enterAsGuest()
   }
 })

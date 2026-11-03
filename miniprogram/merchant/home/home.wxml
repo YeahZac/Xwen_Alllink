@@ -1,6 +1,6 @@
 <!-- 商户工作台 · 对齐 ok-merchant.jpg -->
 <view class="page m-home page--flush page--tabbed">
-  <page-nav title="{{navTitle}}" tone="solid" show-home="{{true}}" home-url="/pages/index/index" />
+  <page-nav title="{{navTitle}}" tone="solid" show-home="{{true}}" home-url="/pages/index/index" home-switch-consumer="{{true}}" />
 
   <view class="m-home-shell">
     <view class="shop-card">

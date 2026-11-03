@@ -5,7 +5,7 @@
     </view>
 
     <view class="auth-brand">
-      <view class="auth-mark">万</view>
+      <image class="auth-logo" src="/assets/brand/logo.png" mode="aspectFit" />
       <text class="auth-name">万业互联云</text>
       <text class="auth-tag">附近好店 · 积分可兑</text>
     </view>

@@ -34,6 +34,6 @@ Page({
   },
   onLogout() {
     store.logout()
-    wx.reLaunch({ url: '/pages/login/login' })
+    store.enterAsGuest()
   }
 })

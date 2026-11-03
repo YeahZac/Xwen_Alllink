@@ -306,15 +306,47 @@ function resumePendingPay() {
   return true
 }
 
+/** B 端左上角「回首页」：切到消费者身份再进 C 端，避免闪回工作台 */
+async function switchToConsumerHome() {
+  const s = getSession()
+  if (!s || !getToken()) {
+    enterAsGuest()
+    return true
+  }
+  if (s.role === 'consumer' || displayRoleOf(s) === 'consumer') {
+    wx.switchTab({
+      url: ROLE_HOME.consumer,
+      fail: () => wx.reLaunch({ url: ROLE_HOME.consumer })
+    })
+    return true
+  }
+  try {
+    wx.showLoading({ title: '切换中', mask: true })
+    const data = await api.switchIdentity({ role: 'consumer' })
+    applyAuthResult(data)
+    wx.hideLoading()
+    try {
+      wx.removeStorageSync('wy_guest_browse')
+      const app = getApp()
+      if (app && app.globalData) app.globalData.preferGuest = false
+    } catch (_) {}
+    wx.switchTab({
+      url: ROLE_HOME.consumer,
+      fail: () => wx.reLaunch({ url: ROLE_HOME.consumer })
+    })
+    return true
+  } catch (e) {
+    wx.hideLoading()
+    wx.showToast({ title: (e && e.message) || '无法回到消费者首页', icon: 'none' })
+    return false
+  }
+}
+
 function routeAfterLogin() {
   const s = getSession()
   if (!s) {
-    // 游客浏览中：不要再强制拉回登录
-    if (preferGuestBrowse()) {
-      wx.reLaunch({ url: '/pages/index/index' })
-      return
-    }
-    wx.reLaunch({ url: '/pages/login/login' })
+    // 未登录默认进 C 端逛，交易时再拉登录
+    enterAsGuest()
     return
   }
   try {
@@ -577,6 +609,7 @@ module.exports = {
   clearManualLogout,
   requireRole,
   routeAfterLogin,
+  switchToConsumerHome,
   ensureLoggedIn,
   ensureConsumerOrRedirect,
   ensureIdentityAccess,

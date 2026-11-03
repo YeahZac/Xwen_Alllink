@@ -1,5 +1,5 @@
 <view class="page m-home page--flush page--tabbed">
-  <page-nav title="商家·我的" tone="solid" show-home="{{true}}" home-url="/pages/index/index" />
+  <page-nav title="商家·我的" tone="solid" show-home="{{true}}" home-url="/pages/index/index" home-switch-consumer="{{true}}" />
   <view class="m-home-shell">
     <view class="shop-card">
       <text class="shop-card__name">{{shopName}}</text>
