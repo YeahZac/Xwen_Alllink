@@ -11,13 +11,19 @@
       <text class="m-row__arrow">›</text>
     </view>
     <view wx:else class="profile-card">
-      <button class="avatar-btn" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+      <view class="avatar-wrap">
         <image
           class="avatar avatar--image"
           src="{{coverUrl || '/assets/brand/logo.png'}}"
           mode="aspectFill"
         />
-      </button>
+        <button
+          class="avatar-hit"
+          open-type="chooseAvatar"
+          bindchooseavatar="onChooseAvatar"
+          hover-class="none"
+        ></button>
+      </view>
       <view class="profile__info">
         <input
           class="profile__name-input"

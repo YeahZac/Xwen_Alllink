@@ -10,13 +10,23 @@
 
 .mine .profile-card {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: 50rpx; /* 25px：头像与昵称区间距 */
+  gap: 0;
   padding: var(--space-lg);
   margin-bottom: var(--space-md);
   background: var(--color-surface);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-soft);
+}
+
+.avatar-wrap {
+  position: relative;
+  width: 96rpx;
+  height: 96rpx;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
 }
 
 .avatar {
@@ -33,40 +43,54 @@
   flex-shrink: 0;
 }
 
-.avatar-btn {
-  padding: 0;
-  margin: 0;
-  background: transparent;
-  border: none;
-  line-height: 1;
-  width: 96rpx;
-  height: 96rpx;
-  flex-shrink: 0;
+/* 透明点击层：避免 button 默认宽度把昵称顶开 */
+.avatar-hit {
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  width: 96rpx !important;
+  height: 96rpx !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: 96rpx !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  opacity: 0;
 }
 
-.avatar-btn::after {
+.avatar-hit::after {
   display: none;
 }
 
 .avatar--image {
   display: block;
+  width: 96rpx;
+  height: 96rpx;
   background: var(--color-surface-soft);
 }
 
 .profile__info {
   flex: 1;
   min-width: 0;
+  /* 微信 nickname input 自带约 8~10px 左内边距，外距用 16px 使文字视觉距头像约 25px */
+  margin-left: 16px;
 }
 
 .profile__name,
 .profile__name-input {
   display: block;
+  width: 100%;
   height: 48rpx;
-  padding: 0;
+  padding: 0 !important;
+  margin: 0 !important;
   color: var(--color-ink);
   font-size: var(--font-title);
   font-weight: 800;
   line-height: var(--lh-snug);
+  box-sizing: border-box;
+  text-indent: 0 !important;
 }
 
 .profile__role {
