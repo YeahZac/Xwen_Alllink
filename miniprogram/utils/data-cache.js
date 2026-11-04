@@ -6,9 +6,9 @@
 const PREFIX = 'wy_dc_'
 
 const TTL = {
-  homeLists: 3 * 60 * 1000,
-  crossStores: 3 * 60 * 1000,
-  supplyMerchants: 5 * 60 * 1000,
+  homeLists: 10 * 60 * 1000,
+  crossStores: 10 * 60 * 1000,
+  supplyMerchants: 10 * 60 * 1000,
   points: 60 * 1000
 }
 

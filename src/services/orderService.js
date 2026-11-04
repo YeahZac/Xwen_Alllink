@@ -86,29 +86,51 @@ async function listCrossStores(opts = {}) {
      ORDER BY m.id DESC`
   )
   const located = applyGeo(stores.map((r) => enrichCoverRow(r)), opts)
+  const withItems =
+    opts.withItems === true || opts.withItems === '1' || opts.withItems === 1
+  // 列表页不需要商品明细；避免 N+1 拖慢首屏（详情页走 /cross-stores/:id）
+  if (!withItems) {
+    for (const s of located) {
+      s.role = s.role || 'cross'
+      s.roleLabel = s.role === 'stall' ? '点餐' : '兑换'
+      s.items = []
+    }
+    return located
+  }
+  const crossIds = located.filter((s) => (s.role || 'cross') === 'cross').map((s) => Number(s.id))
+  let goodsByMid = {}
+  if (crossIds.length) {
+    const idList = crossIds.filter((n) => Number.isFinite(n) && n > 0)
+    if (idList.length) {
+      let goodsRows = []
+      try {
+        goodsRows = await query(
+          `SELECT merchant_id AS merchantId, id, name, points_need AS pointsNeed, cash_price AS cashPrice,
+                  desc_text AS \`desc\`, image_url AS coverImage, sku_code AS sku,
+                  IFNULL(allow_mix,1) AS allowMix
+           FROM cross_goods
+           WHERE merchant_id IN (${idList.join(',')}) AND on_sale=1 AND deleted_at IS NULL`
+        )
+      } catch (e) {
+        goodsRows = await query(
+          `SELECT merchant_id AS merchantId, id, name, points_need AS pointsNeed, cash_price AS cashPrice,
+                  desc_text AS \`desc\`, image_url AS coverImage, sku_code AS sku, 1 AS allowMix
+           FROM cross_goods
+           WHERE merchant_id IN (${idList.join(',')}) AND on_sale=1 AND deleted_at IS NULL`
+        )
+      }
+      goodsByMid = goodsRows.reduce((acc, g) => {
+        const mid = String(g.merchantId)
+        if (!acc[mid]) acc[mid] = []
+        acc[mid].push(g)
+        return acc
+      }, {})
+    }
+  }
   for (const s of located) {
     s.role = s.role || 'cross'
     s.roleLabel = s.role === 'stall' ? '点餐' : '兑换'
-    if (s.role !== 'cross') {
-      s.items = []
-      continue
-    }
-    try {
-      s.items = await query(
-        `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice,
-                desc_text AS \`desc\`, image_url AS coverImage, sku_code AS sku,
-                IFNULL(allow_mix,1) AS allowMix
-         FROM cross_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
-        { id: s.id }
-      )
-    } catch (e) {
-      s.items = await query(
-        `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice,
-                desc_text AS \`desc\`, image_url AS coverImage, sku_code AS sku, 1 AS allowMix
-         FROM cross_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
-        { id: s.id }
-      )
-    }
+    s.items = s.role === 'cross' ? goodsByMid[String(s.id)] || [] : []
   }
   return located
 }

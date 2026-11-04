@@ -377,9 +377,9 @@ Page({
         ? await store.refreshProfile().catch(() => sessionHint)
         : sessionHint
       const [stalls, crossStores, supplyMerchants, pointsData] = await Promise.all([
-        api.stalls(q),
-        api.crossStores(q),
-        api.supplyMerchants(q).catch(() => []),
+        api.stalls(q, { timeout: 25000 }),
+        api.crossStores(q, { timeout: 25000 }),
+        api.supplyMerchants(q, { timeout: 25000 }).catch(() => []),
         loggedIn
           ? api.myPoints().catch(() => ({ points: session.points || 0, cashValue: 0 }))
           : Promise.resolve({ points: 0, cashValue: 0 })
@@ -397,12 +397,22 @@ Page({
           })
           .catch(() => {})
       }
-      const payload = {
+      let payload = {
         stalls: stalls || [],
         crossStores: crossStores || [],
         supplyMerchants: supplyMerchants || [],
         points: pointsData.points != null ? pointsData.points : store.getConsumerPoints(),
         cashValue: pointsData.cashValue
+      }
+      if (
+        !(payload.stalls.length || payload.crossStores.length || payload.supplyMerchants.length)
+      ) {
+        const boot = require('../../utils/catalog-bootstrap').homePayload()
+        payload = {
+          ...boot,
+          points: payload.points,
+          cashValue: payload.cashValue
+        }
       }
       dataCache.write(cacheKey, payload, dataCache.TTL.homeLists)
       location.setListOrigin(origin)
@@ -410,16 +420,22 @@ Page({
       this.applyHomePayload(payload, session)
     } catch (e) {
       if (seq !== this._reloadSeq) return
-      if (cached && cached.data && this.data.displayList.length) {
+      if (this.data.displayList.length) {
         this.setData({ loading: false })
         return
       }
-      this._loadError = (e && e.message) || '加载失败'
-      this.setData({
-        loading: false,
-        loadHint: this._loadError
-      })
-      wx.showToast({ title: this._loadError, icon: 'none' })
+      try {
+        const boot = require('../../utils/catalog-bootstrap').homePayload()
+        this.applyHomePayload(boot, sessionHint)
+        this.setData({ loading: false, loadHint: '' })
+      } catch (_) {
+        this._loadError = (e && e.message) || '加载失败'
+        this.setData({
+          loading: false,
+          loadHint: this._loadError
+        })
+      }
+      wx.showToast({ title: (e && e.message) || '加载失败', icon: 'none' })
     }
   },
   async _silentRefresh(seq, q, cacheKey, sessionHint, origin) {

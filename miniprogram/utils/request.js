@@ -43,7 +43,7 @@ function friendlyCallError(err) {
   return (err && (err.errMsg || err.message)) || '云托管调用失败，请检查服务名与环境'
 }
 
-function request({ path, method = 'GET', data, auth = true, header = {}, _retry = 0, timeout = 15000 }) {
+function request({ path, method = 'GET', data, auth = true, header = {}, _retry = 0, timeout = 20000 }) {
   ensureCloud()
   const apiPath = path.startsWith('/api') ? path : `${config.apiPrefix}${path.startsWith('/') ? path : `/${path}`}`
   const headers = {
@@ -138,13 +138,13 @@ function request({ path, method = 'GET', data, auth = true, header = {}, _retry 
           const e = new Error(friendlyCallError(err))
           e.errCode = err && err.errCode
           e.errMsg = err && err.errMsg
-          // 冷启动超时：自动重试一次，给实例拉起时间
-          if (_retry < 1 && isCallContainerTimeout(err)) {
+          // 冷启动超时：最多再试 2 次，拉起云托管实例
+          if (_retry < 2 && isCallContainerTimeout(err)) {
             setTimeout(() => {
               request({ path, method, data, auth, header, _retry: _retry + 1, timeout })
                 .then(resolve)
                 .catch(reject)
-            }, 1200)
+            }, 800 + _retry * 800)
             return
           }
           if (config.baseUrl) {

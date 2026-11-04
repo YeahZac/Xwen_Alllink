@@ -180,17 +180,24 @@ const api = {
       auth: false
     }),
 
-  stalls: (q) => request({ path: `/stalls${toQuery(q)}`, auth: false }),
+  stalls: (q, opts = {}) =>
+    request({ path: `/stalls${toQuery(q)}`, auth: false, timeout: opts.timeout || 25000 }),
 
   stallMenu: (id) => request({ path: `/stalls/${id}/menu`, auth: false }),
 
-  crossStores: (q) => request({ path: `/cross-stores${toQuery(q)}`, auth: false }),
+  crossStores: (q, opts = {}) =>
+    request({ path: `/cross-stores${toQuery(q)}`, auth: false, timeout: opts.timeout || 25000 }),
 
   crossStore: (id) => request({ path: `/cross-stores/${id}`, auth: false }),
 
   supplyGoods: () => request({ path: '/supply/goods', auth: false }),
 
-  supplyMerchants: (q) => request({ path: `/supply/merchants${toQuery(q)}`, auth: false }),
+  supplyMerchants: (q, opts = {}) =>
+    request({
+      path: `/supply/merchants${toQuery(q)}`,
+      auth: false,
+      timeout: opts.timeout || 25000
+    }),
 
   payStall: (body) => request({ path: '/orders/stall/pay', method: 'POST', data: body }),
 

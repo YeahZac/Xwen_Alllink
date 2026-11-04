@@ -99,11 +99,14 @@ function applyGeo(rows, opts = {}) {
   const hasOrigin = lat != null && lng != null
   let list = Array.isArray(rows) ? rows.slice() : []
   if (city) {
+    // 优先当前城市；过滤结果为空时回退全量（审核机/异地打开不致空白）
+    let filtered
     if (city.indexOf('深圳') === 0) {
-      list = list.filter((r) => String(r.city || '').indexOf('深圳') === 0)
+      filtered = list.filter((r) => String(r.city || '').indexOf('深圳') === 0)
     } else {
-      list = list.filter((r) => String(r.city || '') === city)
+      filtered = list.filter((r) => String(r.city || '') === city)
     }
+    if (filtered.length) list = filtered
   }
   list = list.map((r) => {
     const withCoord = ensureMerchantCoords(r)

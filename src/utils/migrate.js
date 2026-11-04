@@ -242,6 +242,11 @@ async function ensureSchema() {
     console.warn('[schema] banner fields sql', e.message)
   }
   try {
+    await runSqlStatements('33_ensure_open_ops_content.sql', 'ensure open ops content')
+  } catch (e) {
+    console.warn('[schema] ensure open ops content', e.message)
+  }
+  try {
     await addColumn(
       'admin_accounts',
       'user_id',

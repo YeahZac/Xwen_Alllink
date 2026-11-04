@@ -6,6 +6,7 @@
  */
 const location = require('./location')
 const dataCache = require('./data-cache')
+const catalogBootstrap = require('./catalog-bootstrap')
 
 let prefetchPromise = null
 let lastPayload = null
@@ -15,20 +16,33 @@ function queryKey(q) {
   return dataCache.homeKey(q || {})
 }
 
+function hasStores(payload) {
+  if (!payload) return false
+  return (
+    (payload.stalls && payload.stalls.length) ||
+    (payload.crossStores && payload.crossStores.length) ||
+    (payload.supplyMerchants && payload.supplyMerchants.length)
+  )
+}
+
 async function fetchHomeLists(q) {
   const api = require('./api')
+  const opts = { timeout: 25000 }
   const [stalls, crossStores, supplyMerchants] = await Promise.all([
-    api.stalls(q),
-    api.crossStores(q),
-    api.supplyMerchants(q).catch(() => [])
+    api.stalls(q, opts),
+    api.crossStores(q, opts),
+    api.supplyMerchants(q, opts).catch(() => [])
   ])
-  return {
+  const payload = {
     stalls: stalls || [],
     crossStores: crossStores || [],
     supplyMerchants: supplyMerchants || [],
     points: 0,
     cashValue: 0
   }
+  // 云侧空结果时保留底包，避免审核空白
+  if (!hasStores(payload)) return { ...catalogBootstrap.homePayload(), networkEmpty: true }
+  return payload
 }
 
 function publish(payload, key) {
@@ -54,8 +68,11 @@ function start(warmPromise) {
 
   // 先把磁盘缓存挂到内存，首页 onLoad 可同步渲染
   const cached = dataCache.read(key)
-  if (cached && cached.data) {
+  if (cached && cached.data && hasStores(cached.data)) {
     publish(cached.data, key)
+  } else {
+    // 无缓存时立刻挂底包，首帧就有门店卡，不等云托管冷启动
+    publish(catalogBootstrap.homePayload(), key)
   }
 
   // 云托管预热并行，不 await
@@ -70,7 +87,8 @@ function start(warmPromise) {
       return publish(payload, key)
     } catch (e) {
       console.warn('[home-prefetch]', (e && e.message) || e)
-      return getPayload()
+      const fallback = getPayload()
+      return hasStores(fallback) ? fallback : publish(catalogBootstrap.homePayload(), key)
     }
   })()
 
@@ -89,7 +107,8 @@ function refreshWithQuery(q) {
       return publish(payload, key)
     } catch (e) {
       console.warn('[home-prefetch:refresh]', (e && e.message) || e)
-      return getPayload()
+      const fallback = getPayload()
+      return hasStores(fallback) ? fallback : publish(catalogBootstrap.homePayload(), key)
     }
   })()
   return prefetchPromise

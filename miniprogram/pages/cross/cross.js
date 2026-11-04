@@ -4,6 +4,7 @@ const location = require('../../utils/location')
 const dataCache = require('../../utils/data-cache')
 const homePrefetch = require('../../utils/home-prefetch')
 const coverPack = require('../../utils/cover-pack')
+const catalogBootstrap = require('../../utils/catalog-bootstrap')
 
 /** 分类页：合并异业 + 地摊，按 id 去重 */
 function mergeRedeemStores(crossRows, stallRows) {
@@ -37,6 +38,14 @@ Page({
     cashValue: '0.00',
     loading: true
   },
+  onLoad() {
+    // 首帧先灌底包，避免审核卡在「正在加载兑换门店」
+    this.applyPayload({
+      stores: catalogBootstrap.crossStores(),
+      points: store.getConsumerPoints(),
+      cashValue: store.pointsToCash(store.getConsumerPoints())
+    })
+  },
   async onShow() {
     if (!store.ensureConsumerOrRedirect({ allowGuest: true })) return
     location.ensureDefaultLoc()
@@ -44,7 +53,7 @@ Page({
     const cacheKey = `cross:all:${dataCache.homeKey(q)}`
 
     const cached = dataCache.read(cacheKey)
-    if (cached && cached.data) {
+    if (cached && cached.data && cached.data.stores && cached.data.stores.length) {
       this.applyPayload(cached.data)
       if (cached.fresh) {
         this.fetchAndApply(q, cacheKey, { silent: true })
@@ -52,17 +61,21 @@ Page({
       }
     } else {
       const home = homePrefetch.getPayload()
-      if (home && (home.crossStores || home.stalls)) {
+      if (home && ((home.crossStores && home.crossStores.length) || (home.stalls && home.stalls.length))) {
         this.applyPayload({
           stores: mergeRedeemStores(home.crossStores, home.stalls),
           points: home.points,
           cashValue: home.cashValue
         })
-      } else {
-        this.setData({ loading: true })
+      } else if (!this.data.stores.length) {
+        this.applyPayload({
+          stores: catalogBootstrap.crossStores(),
+          points: store.getConsumerPoints(),
+          cashValue: store.pointsToCash(store.getConsumerPoints())
+        })
       }
     }
-    await this.fetchAndApply(q, cacheKey, { silent: false })
+    await this.fetchAndApply(q, cacheKey, { silent: !!this.data.stores.length })
   },
   applyPayload(payload) {
     const points = payload.points != null ? payload.points : store.getConsumerPoints()
@@ -100,13 +113,16 @@ Page({
       const loggedIn = store.isLoggedIn()
       // 并行拉异业 + 地摊；不依赖后端 includeStall 是否已发布
       const [crossRows, stallRows, pointsData] = await Promise.all([
-        api.crossStores({ ...q, includeStall: 1 }).catch(() => api.crossStores(q)),
-        api.stalls(q).catch(() => []),
+        api
+          .crossStores({ ...q, includeStall: 1 }, { timeout: 25000 })
+          .catch(() => api.crossStores(q, { timeout: 25000 })),
+        api.stalls(q, { timeout: 25000 }).catch(() => []),
         loggedIn
           ? api.myPoints().catch(() => ({ points: store.getConsumerPoints(), cashValue: 0 }))
           : Promise.resolve({ points: 0, cashValue: 0 })
       ])
-      const stores = mergeRedeemStores(crossRows, stallRows)
+      let stores = mergeRedeemStores(crossRows, stallRows)
+      if (!stores.length) stores = catalogBootstrap.crossStores()
       const payload = {
         stores,
         points: pointsData.points != null ? pointsData.points : 0,
@@ -115,11 +131,17 @@ Page({
       dataCache.write(cacheKey, payload, dataCache.TTL.crossStores)
       this.applyPayload(payload)
     } catch (e) {
-      if (!silent && !this.data.stores.length) {
-        this.setData({ loading: false })
-        wx.showToast({ title: e.message || '加载失败', icon: 'none' })
+      if (!this.data.stores.length) {
+        this.applyPayload({
+          stores: catalogBootstrap.crossStores(),
+          points: store.getConsumerPoints(),
+          cashValue: store.pointsToCash(store.getConsumerPoints())
+        })
       } else {
         this.setData({ loading: false })
+      }
+      if (!silent) {
+        wx.showToast({ title: e.message || '加载失败', icon: 'none' })
       }
     }
   },
