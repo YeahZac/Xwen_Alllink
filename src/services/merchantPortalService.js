@@ -306,6 +306,20 @@ async function getGoods(merchantId, role, id) {
   return item
 }
 
+async function deleteGoods(merchantId, role, id) {
+  const mid = Number(merchantId)
+  const gid = Number(id)
+  if (!mid || !gid) throw new HttpError(400, '参数无效')
+  const table = role === 'stall' ? 'stall_goods' : role === 'cross' ? 'cross_goods' : 'supply_goods'
+  const rows = await query(
+    `SELECT id FROM ${table} WHERE id=:id AND merchant_id=:mid AND deleted_at IS NULL LIMIT 1`,
+    { id: gid, mid }
+  )
+  if (!rows.length) throw new HttpError(404, '商品不存在或无权操作')
+  const opsService = require('./opsService')
+  return opsService.softDeleteGoods(role === 'stall' ? 'stall' : role === 'cross' ? 'cross' : 'supply', gid)
+}
+
 async function listCustomers(merchantId, role, { limit = 50 } = {}) {
   const mid = Number(merchantId)
   const lim = Math.min(Number(limit) || 50, 100)
@@ -432,6 +446,7 @@ module.exports = {
   listGoods,
   getGoods,
   saveGoods,
+  deleteGoods,
   listCustomers,
   listFlow,
   listSupplyMerchants,

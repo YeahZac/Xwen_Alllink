@@ -170,8 +170,10 @@
   box-shadow: var(--shadow-seal);
 }
 
-.qty__btn:active {
+.qty__btn:active,
+.qty__btn--pressed {
   opacity: 0.85;
+  transform: scale(0.94);
 }
 
 .qty__n {

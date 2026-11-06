@@ -7,7 +7,7 @@ const referralService = require('./referralService')
 const { parseMaybeJson, pickCoverFromLicenses } = require('../utils/mediaPick')
 
 const ROLE_LICENSE_RULES = {
-  // 地摊：无需营业执照 / 食品经营许可证（食品证选填）；核验身份证 + 摊位照 + 合规承诺
+  // 地摊（微信收付通小微）：身份证人像/国徽 + 经营场景照；无营业执照/食品证亦可
   // 异业 / 供应链：需营业执照；三类均需门店/摊位封面图，审核通过后写入 merchants.cover_url
   stall: ['idCardFront', 'idCardBack', 'storePhoto'],
   cross: ['businessLicense', 'idCardFront', 'idCardBack', 'storePhoto'],
@@ -16,7 +16,7 @@ const ROLE_LICENSE_RULES = {
 
 /** 地摊可选上传材料（有则存档，无则不拦） */
 const ROLE_OPTIONAL_LICENSES = {
-  stall: ['foodLicense', 'businessLicense']
+  stall: ['foodLicense', 'businessLicense', 'idCardHandheld']
 }
 
 function assertApplyPayload(body) {
@@ -43,6 +43,27 @@ function assertApplyPayload(body) {
   const licenses = body.licenses || {}
   for (const key of ROLE_LICENSE_RULES[role]) {
     if (!licenses[key]) throw new HttpError(400, `请上传必填证照：${key}`)
+  }
+  // 微信小微进件必填文本字段（写入 license_json，供运营台与进件）
+  if (role === 'stall') {
+    const idNo = String(body.idCardNumber || licenses.idCardNumber || '')
+      .trim()
+      .toUpperCase()
+    if (!/^\d{17}[\dX]$/.test(idNo)) {
+      throw new HttpError(400, '请填写正确的经营者身份证号码')
+    }
+    const begin = String(body.idCardValidBegin || licenses.idCardValidBegin || '').trim()
+    const end = String(body.idCardValidEnd || licenses.idCardValidEnd || '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(begin)) {
+      throw new HttpError(400, '请填写身份证有效期起（YYYY-MM-DD）')
+    }
+    if (!(end === '长期' || /^\d{4}-\d{2}-\d{2}$/.test(end))) {
+      throw new HttpError(400, '请填写身份证有效期止（日期或长期）')
+    }
+    const bankNo = String(body.bankAccountNo || licenses.bankAccountNo || '').replace(/\s/g, '')
+    if (!bankNo) throw new HttpError(400, '请填写本人结算银行卡号')
+    const bankName = String(body.bankName || licenses.bankName || '').trim()
+    if (!bankName) throw new HttpError(400, '请填写开户银行')
   }
   // 全部入驻类型均需地图定位（便于查询与导航）；经营城市由坐标自动识别
   const lat = Number(body.latitude)
@@ -95,7 +116,22 @@ async function submitApply(body) {
   if (body.role === 'stall' && body.stallCommitment) {
     licensePayload.stallCommitment = true
     licensePayload.stallCommitmentAt = new Date().toISOString()
-    licensePayload.stallPath = 'no_license_personal' // 无证个人经营者路径标记，供运营台审核
+    licensePayload.stallPath = 'no_license_personal' // 无证个人经营者 / 微信小微路径
+    licensePayload.microPaySubject = licensePayload.microPaySubject || 'SUBJECT_TYPE_MICRO'
+    licensePayload.microBizType = licensePayload.microBizType || body.microBizType || 'MICRO_TYPE_MOBILE'
+    licensePayload.idCardName = body.legalPerson
+    licensePayload.idCardNumber = String(body.idCardNumber || licensePayload.idCardNumber || '')
+      .trim()
+      .toUpperCase()
+    licensePayload.idCardValidBegin = body.idCardValidBegin || licensePayload.idCardValidBegin
+    licensePayload.idCardValidEnd = body.idCardValidEnd || licensePayload.idCardValidEnd
+    licensePayload.bankAccountName =
+      body.bankAccountName || licensePayload.bankAccountName || body.legalPerson
+    licensePayload.bankAccountNo = String(
+      body.bankAccountNo || licensePayload.bankAccountNo || ''
+    ).replace(/\s/g, '')
+    licensePayload.bankName = body.bankName || licensePayload.bankName
+    licensePayload.bankAccountType = 'BANK_ACCOUNT_TYPE_PERSONAL'
   }
   try {
     await query(

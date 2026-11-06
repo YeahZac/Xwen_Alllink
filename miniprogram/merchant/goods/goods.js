@@ -123,6 +123,52 @@ Page({
       }
     })
   },
+  onPointsGrant(e) {
+    const id = e.currentTarget.dataset.id
+    const g = this.data.list.find((x) => String(x.id) === String(id))
+    if (!g) return
+    wx.showModal({
+      title: '修改消费赠积分',
+      editable: true,
+      placeholderText: `当前赠 ${g.pointsGrant || 0} 积分`,
+      confirmText: '保存',
+      success: async (result) => {
+        if (!result.confirm) return
+        const pointsGrant = Number(result.content)
+        if (!Number.isFinite(pointsGrant) || pointsGrant < 0) {
+          wx.showToast({ title: '请输入正确的积分', icon: 'none' })
+          return
+        }
+        try {
+          await this.saveGoods(g, { pointsGrant: Math.floor(pointsGrant) })
+          wx.showToast({ title: '赠分已更新', icon: 'success' })
+          this.onShow()
+        } catch (err) {
+          wx.showToast({ title: err.message || '保存失败', icon: 'none' })
+        }
+      }
+    })
+  },
+  onDelete(e) {
+    const id = e.currentTarget.dataset.id
+    const g = this.data.list.find((x) => String(x.id) === String(id))
+    if (!g) return
+    wx.showModal({
+      title: '删除商品',
+      content: `确认删除「${g.name}」？删除后不可恢复。`,
+      confirmColor: '#ff4d4f',
+      success: async (r) => {
+        if (!r.confirm) return
+        try {
+          await api.deleteMerchantGoods(id)
+          wx.showToast({ title: '已删除', icon: 'success' })
+          this.onShow()
+        } catch (err) {
+          wx.showToast({ title: err.message || '删除失败', icon: 'none' })
+        }
+      }
+    })
+  },
   async onOptions(e) {
     const id = e.currentTarget.dataset.id
     const g = this.data.list.find((x) => String(x.id) === String(id))

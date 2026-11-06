@@ -247,6 +247,7 @@ const api = {
   merchantGoodsDetail: (id) => request({ path: `/merchant/goods/${id}` }),
   saveMerchantGoods: (body) =>
     request({ path: '/merchant/goods', method: 'POST', data: body }),
+  deleteMerchantGoods: (id) => request({ path: `/merchant/goods/${id}`, method: 'DELETE' }),
   merchantGoodsOptions: (id) => request({ path: `/merchant/goods/${id}/options` }),
   saveMerchantGoodsOptions: (id, groups) =>
     request({ path: `/merchant/goods/${id}/options`, method: 'PUT', data: { groups } }),

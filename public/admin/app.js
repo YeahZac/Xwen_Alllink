@@ -431,14 +431,25 @@ const LICENSE_LABELS = {
   businessLicense: '营业执照',
   foodLicense: '食品经营许可证',
   foodCirculation: '食品流通许可证',
-  idCardFront: '身份证正面',
-  idCardBack: '身份证反面',
+  idCardFront: '身份证人像面',
+  idCardBack: '身份证国徽面',
+  idCardHandheld: '手持身份证（建议）',
   stallPhoto: '摊位照片',
-  storePhoto: '门店照片',
+  storePhoto: '摊位/门店场景照',
   warehousePhoto: '仓库照片',
   stallCommitment: '地摊合规承诺',
   stallCommitmentAt: '承诺时间',
-  stallPath: '入驻路径'
+  stallPath: '入驻路径',
+  idCardName: '证件姓名',
+  idCardNumber: '身份证号',
+  idCardValidBegin: '证件有效期起',
+  idCardValidEnd: '证件有效期止',
+  bankAccountName: '结算户名',
+  bankAccountNo: '结算卡号',
+  bankName: '开户银行',
+  bankAccountType: '账户类型',
+  microBizType: '小微经营类型',
+  microPaySubject: '微信主体类型'
 }
 
 const STALL_PATH_LABELS = {
@@ -1019,7 +1030,7 @@ async function showStoreDetail(id, listReload) {
     btnMats.onclick = () => {
       const keys =
         d.role === 'stall'
-          ? ['idCardFront', 'idCardBack', 'storePhoto', 'foodLicense']
+          ? ['idCardFront', 'idCardBack', 'idCardHandheld', 'storePhoto', 'foodLicense']
           : d.role === 'supply'
             ? ['businessLicense', 'idCardFront', 'idCardBack', 'storePhoto', 'warehousePhoto']
             : ['businessLicense', 'idCardFront', 'idCardBack', 'storePhoto']
@@ -1420,8 +1431,20 @@ async function showApplyDetail(id, reload) {
   const r = await api(`/admin/applies/${id}`)
   const licenses = r.licenses || {}
   const metaKeys = new Set(['adminRemark', 'stallCommitment', 'stallCommitmentAt', 'stallPath'])
+  const textMicroKeys = [
+    'idCardName',
+    'idCardNumber',
+    'idCardValidBegin',
+    'idCardValidEnd',
+    'bankAccountName',
+    'bankAccountNo',
+    'bankName',
+    'bankAccountType',
+    'microBizType',
+    'microPaySubject'
+  ]
   const licenseEntries = Object.entries(licenses).filter(([k, v]) => {
-    if (metaKeys.has(k)) return false
+    if (metaKeys.has(k) || textMicroKeys.includes(k)) return false
     const url = typeof v === 'string' ? v : v?.url || ''
     return /^https?:\/\//.test(url) || String(url).startsWith('/')
   })
@@ -1433,13 +1456,17 @@ async function showApplyDetail(id, reload) {
         })
         .join('')}</div>`
     : '<p class="muted">未上传证照</p>'
+  const microTextHtml = textMicroKeys
+    .filter((k) => licenses[k])
+    .map((k) => `<div><b>${esc(LICENSE_LABELS[k] || k)}：</b>${esc(licenses[k])}</div>`)
+    .join('')
   const isStallNoLicense = r.role === 'stall' && (licenses.stallPath === 'no_license_personal' || licenses.stallCommitment)
   const stallTip = isStallNoLicense
-    ? `<p class="ok">地摊无证路径：${esc(STALL_PATH_LABELS[licenses.stallPath] || '无证个人经营者')} · 已勾选合规承诺${
+    ? `<p class="ok">地摊小微路径：${esc(STALL_PATH_LABELS[licenses.stallPath] || '无证个人经营者')} · 已勾选合规承诺${
         licenses.stallCommitmentAt ? `（${esc(licenses.stallCommitmentAt)}）` : ''
-      }。审核重点：身份证与本人一致、摊位实景可辨、无虚假材料；食品证非必填。</p>`
+      }。审核重点：姓名/身份证/结算卡同名、证件清晰、摊位场景可辨；食品证非微信必填。</p>`
     : r.role === 'stall'
-      ? '<p class="muted">地摊申请：可不要求营业执照与食品经营许可证。</p>'
+      ? '<p class="muted">地摊可走微信小微：可不要求营业执照与食品经营许可证。</p>'
       : ''
   const personLabel = r.role === 'stall' ? '经营者' : '法人'
   const canApprove = canEdit('applies') && (r.status === 'pending' || r.status === 'rejected')
@@ -1451,6 +1478,7 @@ async function showApplyDetail(id, reload) {
      <p>联系人 ${esc(r.contactName)} ${esc(r.contactPhone)}</p>
      <p class="muted">${esc(r.city)} ${esc(r.address)}</p>
      ${stallTip}
+     ${microTextHtml ? `<div class="panel" style="margin:8px 0;padding:10px 12px">${microTextHtml}</div>` : ''}
      ${r.rejectReason ? `<p class="err">最近驳回：${esc(r.rejectReason)}</p>` : ''}
      ${licenses.adminRemark ? `<p class="muted">审核备注：${esc(licenses.adminRemark)}</p>` : ''}
      <h4>${r.role === 'stall' ? '身份核验资料' : '证照资料'}（点击放大）</h4>${licenseHtml}

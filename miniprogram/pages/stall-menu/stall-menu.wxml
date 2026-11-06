@@ -57,11 +57,17 @@
                 <view
                   class="qty__btn"
                   wx:if="{{cartMap[g.id]}}"
-                  bindtap="dec"
+                  catchtap="dec"
                   data-id="{{g.id}}"
+                  hover-class="qty__btn--pressed"
                 >−</view>
                 <text class="qty__n" wx:if="{{cartMap[g.id]}}">{{cartMap[g.id]}}</text>
-                <view class="qty__btn qty__btn--plus" bindtap="inc" data-id="{{g.id}}">+</view>
+                <view
+                  class="qty__btn qty__btn--plus"
+                  catchtap="inc"
+                  data-id="{{g.id}}"
+                  hover-class="qty__btn--pressed"
+                >+</view>
               </view>
             </view>
           </view>

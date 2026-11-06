@@ -71,7 +71,8 @@ Page({
       wx.redirectTo({ url: scan.scanPayUrl(query.id) })
       return
     }
-    if (!store.ensureConsumerOrRedirect()) return
+    // 允许游客先看菜单；加购时再登录（soft），避免 reLaunch 丢掉门店 id
+    if (!store.ensureConsumerOrRedirect({ allowGuest: true, soft: true })) return
     const stallId = query.id
     if (!stallId) {
       wx.showToast({ title: '缺少门店', icon: 'none' })
@@ -130,8 +131,21 @@ Page({
     }
   },
   onShow() {
-    if (!store.ensureConsumerOrRedirect()) return
+    if (!store.ensureConsumerOrRedirect({ allowGuest: true, soft: true })) return
     this.refreshCart()
+  },
+  requireLoginForOrder() {
+    if (store.isLoggedIn() && store.getSession() && store.getSession().role === 'consumer') {
+      return true
+    }
+    wx.showToast({ title: '请先登录后再点餐', icon: 'none' })
+    setTimeout(() => {
+      wx.navigateTo({
+        url: '/pages/login/login',
+        fail: () => wx.reLaunch({ url: '/pages/login/login' })
+      })
+    }, 400)
+    return false
   },
   refreshCart() {
     const cart = store.getCart()
@@ -140,7 +154,7 @@ Page({
       cart.items.forEach((i) => {
         const k = i.lineKey || String(i.id)
         cartMap[k] = i.qty
-        cartMap[i.id] = (cartMap[i.id] || 0) + i.qty
+        cartMap[i.id] = (cartMap[i.id] || 0) + Number(i.qty || 0)
       })
     }
     const summary =
@@ -150,7 +164,13 @@ Page({
     this.setData({ cartMap, summary })
   },
   findGoods(id) {
-    return (this.data.menu || []).find((g) => String(g.id) === String(id))
+    const hit = (this.data.menu || []).find((g) => String(g.id) === String(id))
+    if (hit) return hit
+    for (const cat of this.data.categories || []) {
+      const g = (cat.list || []).find((row) => String(row.id) === String(id))
+      if (g) return g
+    }
+    return null
   },
   openSheet(goods) {
     const groups = (goods.optionGroups || []).map((g) => ({
@@ -214,6 +234,7 @@ Page({
     return true
   },
   confirmSheet() {
+    if (!this.requireLoginForOrder()) return
     if (!this.validateSheet()) return
     const g = this.data.sheetGoods
     const unit = this.data.sheetUnit
@@ -231,19 +252,28 @@ Page({
     )
     this.closeSheet()
     this.refreshCart()
+    wx.showToast({ title: '已加入', icon: 'success' })
   },
   inc(e) {
     const id = e.currentTarget.dataset.id
+    if (!this.requireLoginForOrder()) return
     const g = this.findGoods(id)
-    if (!g) return
-    if (g.hasOptions) {
+    if (!g) {
+      wx.showToast({ title: '菜品加载异常，请下拉刷新', icon: 'none' })
+      return
+    }
+    const groups = g.optionGroups || []
+    // 仅当确有规格组时弹层；避免 hasOptions 脏数据导致「点了没反应」
+    if ((g.hasOptions && groups.length) || groups.length > 0) {
       this.openSheet(g)
       return
     }
     store.addToCart(this.data.stallId, g, 1)
     this.refreshCart()
+    wx.vibrateShort({ type: 'light' })
   },
   dec(e) {
+    if (!this.requireLoginForOrder()) return
     const id = e.currentTarget.dataset.id
     const cart = store.getCart()
     if (String(cart.stallId) !== String(this.data.stallId)) return
@@ -258,6 +288,7 @@ Page({
     this.refreshCart()
   },
   goConfirm() {
+    if (!this.requireLoginForOrder()) return
     if (!this.data.summary.totalQty) {
       wx.showToast({ title: '请先选择菜品', icon: 'none' })
       return

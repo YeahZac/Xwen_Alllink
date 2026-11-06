@@ -283,7 +283,7 @@ router.get('/apply/license-rules', (_req, res) => {
       optional: applyService.ROLE_OPTIONAL_LICENSES || {},
       notes: {
         stall:
-          '地摊可不提供营业执照与食品经营许可证；必填身份证正反面、摊位照，并勾选合规经营承诺（stallCommitment）'
+          '地摊走微信收付通「小微」：无营业执照/食品证亦可。必填：经营者真实姓名、身份证号、证件有效期、身份证人像/国徽面、摊位场景照、本人结算卡（户名须同名）、联系手机，并勾选合规承诺。手持身份证为平台建议项（微信不强制）。'
       }
     })
   )
@@ -1861,6 +1861,21 @@ router.get(
   async (req, res, next) => {
     try {
       res.json(ok(await merchantPortalService.getGoods(req.auth.merchantId, req.auth.role, req.params.id)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.delete(
+  '/merchant/goods/:id',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(await merchantPortalService.deleteGoods(req.auth.merchantId, req.auth.role, req.params.id))
+      )
     } catch (e) {
       next(e)
     }

@@ -24,16 +24,23 @@ const TYPE_META = {
 const ROLE_FIELDS = {
   stall: {
     label: '地摊经营',
-    // 地摊常见无营业执照、无食品经营许可证：走「身份证 + 摊位照 + 合规承诺」路径；有食品证可自愿上传
+    // 对齐微信收付通「小微」进件：身份证正反面+姓名号码有效期+本人结算卡+经营场景照
+    // 手持身份证非微信必填，平台侧建议上传便于人工核验
     licenses: [
-      { key: 'idCardFront', label: '经营者身份证正面', required: true },
-      { key: 'idCardBack', label: '经营者身份证反面', required: true },
-      { key: 'storePhoto', label: '摊位封面照片', required: true },
+      { key: 'idCardFront', label: '身份证人像面', required: true, tip: '微信进件必填' },
+      { key: 'idCardBack', label: '身份证国徽面', required: true, tip: '微信进件必填' },
+      {
+        key: 'idCardHandheld',
+        label: '手持身份证照片（建议）',
+        required: false,
+        tip: '平台人工审核建议上传；微信小微进件不强制'
+      },
+      { key: 'storePhoto', label: '摊位/经营场景照', required: true, tip: '微信进件经营场景材料' },
       {
         key: 'foodLicense',
         label: '食品经营许可证（选填）',
         required: false,
-        tip: '有证建议上传，加快审核'
+        tip: '支付进件不强制；售卖热食建议补办'
       }
     ]
   },
@@ -72,12 +79,61 @@ const CREDIT_CODE_FIELD = {
   required: true
 }
 
+const STALL_MICRO_FIELDS = [
+  {
+    key: 'idCardNumber',
+    label: '身份证号码',
+    required: true,
+    maxLength: 18,
+    placeholder: '与证件一致，微信小微进件必填'
+  },
+  {
+    key: 'idCardValidBegin',
+    label: '身份证有效期起',
+    required: true,
+    placeholder: '如 2020-01-01'
+  },
+  {
+    key: 'idCardValidEnd',
+    label: '身份证有效期止',
+    required: true,
+    placeholder: '如 2030-01-01 或 长期'
+  },
+  {
+    key: 'bankAccountName',
+    label: '结算户名',
+    required: true,
+    placeholder: '须与经营者姓名一致'
+  },
+  {
+    key: 'bankAccountNo',
+    label: '结算银行卡号',
+    required: true,
+    type: 'number',
+    maxLength: 32,
+    placeholder: '本人借记卡'
+  },
+  {
+    key: 'bankName',
+    label: '开户银行',
+    required: true,
+    placeholder: '如 招商银行深圳分行'
+  },
+  {
+    key: 'microBizType',
+    label: '经营类型',
+    required: true,
+    placeholder: '流动经营/便民服务（地摊默认）'
+  }
+]
+
 function baseFieldsForRole(role) {
-  // 地摊：无需统一社会信用代码；「法人」改为「经营者」
+  // 地摊：无需统一社会信用代码；补齐微信小微进件字段
   if (role === 'stall') {
-    return BASE_FIELDS_COMMON.map((f) =>
-      f.key === 'legalPerson' ? { ...f, label: '经营者姓名' } : { ...f }
+    const base = BASE_FIELDS_COMMON.map((f) =>
+      f.key === 'legalPerson' ? { ...f, label: '经营者姓名（真实姓名）' } : { ...f }
     )
+    return [...base, ...STALL_MICRO_FIELDS]
   }
   return [BASE_FIELDS_COMMON[0], CREDIT_CODE_FIELD, ...BASE_FIELDS_COMMON.slice(1)]
 }
@@ -99,6 +155,13 @@ Page({
       city: '',
       address: '',
       referrerCode: '',
+      idCardNumber: '',
+      idCardValidBegin: '',
+      idCardValidEnd: '',
+      bankAccountName: '',
+      bankAccountNo: '',
+      bankName: '',
+      microBizType: '流动经营/便民服务',
       agreed: false,
       stallCommitment: false
     },
@@ -170,6 +233,33 @@ Page({
     if (selected !== 'stall' && !String(form.creditCode || '').trim()) {
       wx.showToast({ title: '请填写统一社会信用代码', icon: 'none' })
       return false
+    }
+    if (selected === 'stall') {
+      const idNo = String(form.idCardNumber || '').trim().toUpperCase()
+      if (!/^\d{17}[\dX]$/.test(idNo)) {
+        wx.showToast({ title: '请填写正确的身份证号码', icon: 'none' })
+        return false
+      }
+      const begin = String(form.idCardValidBegin || '').trim()
+      const end = String(form.idCardValidEnd || '').trim()
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(begin)) {
+        wx.showToast({ title: '身份证有效期起格式应为 YYYY-MM-DD', icon: 'none' })
+        return false
+      }
+      if (!(end === '长期' || /^\d{4}-\d{2}-\d{2}$/.test(end))) {
+        wx.showToast({ title: '身份证有效期止应为日期或「长期」', icon: 'none' })
+        return false
+      }
+      if (!String(form.bankAccountNo || '').replace(/\s/g, '')) {
+        wx.showToast({ title: '请填写结算银行卡号', icon: 'none' })
+        return false
+      }
+      const bankNameOwner = String(form.bankAccountName || '').trim()
+      const legal = String(form.legalPerson || '').trim()
+      if (bankNameOwner && legal && bankNameOwner !== legal) {
+        wx.showToast({ title: '结算户名须与经营者姓名一致', icon: 'none' })
+        return false
+      }
     }
     const lat = Number(latitude)
     const lng = Number(longitude)
@@ -334,6 +424,21 @@ Page({
     try {
       const form = this.data.form
       const session = store.getSession() || {}
+      if (this.data.selected === 'stall') {
+        // 写入证照 JSON，供运营台与后续微信小微进件使用
+        licenses.microPaySubject = 'SUBJECT_TYPE_MICRO'
+        licenses.microBizType = form.microBizType || 'MICRO_TYPE_MOBILE'
+        licenses.idCardName = form.legalPerson
+        licenses.idCardNumber = String(form.idCardNumber || '')
+          .trim()
+          .toUpperCase()
+        licenses.idCardValidBegin = form.idCardValidBegin
+        licenses.idCardValidEnd = form.idCardValidEnd
+        licenses.bankAccountName = form.bankAccountName || form.legalPerson
+        licenses.bankAccountNo = String(form.bankAccountNo || '').replace(/\s/g, '')
+        licenses.bankName = form.bankName
+        licenses.bankAccountType = 'BANK_ACCOUNT_TYPE_PERSONAL'
+      }
       const result = await api.submitApply({
         role: this.data.selected,
         shopName: form.shopName,
@@ -349,6 +454,13 @@ Page({
         applicantUserId: session.userId || undefined,
         agreed: true,
         stallCommitment: this.data.selected === 'stall' ? !!form.stallCommitment : undefined,
+        idCardNumber: form.idCardNumber,
+        idCardValidBegin: form.idCardValidBegin,
+        idCardValidEnd: form.idCardValidEnd,
+        bankAccountName: form.bankAccountName,
+        bankAccountNo: form.bankAccountNo,
+        bankName: form.bankName,
+        microBizType: form.microBizType,
         licenses
       })
       this.setData({ submitting: false })
