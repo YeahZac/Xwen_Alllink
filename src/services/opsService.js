@@ -2,8 +2,45 @@ const { query, withTransaction } = require('../utils/db')
 const { HttpError } = require('../utils/response')
 const { parsePaging, pageResult } = require('../utils/paging')
 const { enrichScreen } = require('./screenSim')
+const { orderNo, shortCode } = require('../utils/id')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链', consumer: 'C端用户' }
+const PLATFORM_ROLE_LABEL = { partner: '合伙人', founder: '创始人', lead: '负责人' }
+
+async function resolveBizOwner(adminId) {
+  const id = Number(adminId) || 0
+  if (!id) return null
+  try {
+    const rows = await query(
+      `SELECT a.id, a.username, a.display_name AS displayName, a.status
+       FROM admin_accounts a WHERE a.id=:id LIMIT 1`,
+      { id }
+    )
+    if (!rows.length) return null
+    return {
+      id: Number(rows[0].id),
+      username: rows[0].username,
+      displayName: rows[0].displayName || rows[0].username,
+      status: Number(rows[0].status)
+    }
+  } catch (_) {
+    return null
+  }
+}
+
+async function assertBizOwnerAdminId(adminId) {
+  if (adminId === undefined || adminId === null || adminId === '') return null
+  const id = Number(adminId)
+  if (!id || id < 0) throw new HttpError(400, '商务负责人无效')
+  if (id === 0) return null
+  const rows = await query(
+    `SELECT id, status FROM admin_accounts WHERE id=:id LIMIT 1`,
+    { id }
+  )
+  if (!rows.length) throw new HttpError(400, '商务负责人不存在，请从后台账号中选择')
+  if (Number(rows[0].status) !== 1) throw new HttpError(400, '商务负责人账号已停用')
+  return id
+}
 
 async function one(sql, params) {
   const rows = await query(sql, params || {})
@@ -163,7 +200,9 @@ function mapMerchantIdentity(m, pickCoverFromLicenses, parseMaybeJson) {
     coverUrl,
     avatarUrl: coverUrl,
     address: m.address,
-    contactName: m.contactName
+    contactName: m.contactName,
+    bizOwnerAdminId: m.bizOwnerAdminId != null ? Number(m.bizOwnerAdminId) : null,
+    bizOwnerName: m.bizOwnerName || ''
   }
 }
 
@@ -269,17 +308,38 @@ async function listAllIdentities({ role, q, page, pageSize, limit } = {}) {
       params.q = `%${q}%`
     }
     const countRows = await query(`SELECT COUNT(*) AS c FROM merchants m${where}`, params)
-    const merchants = await query(
-      `SELECT m.id AS merchantId, m.role AS identity,
-              CASE m.role WHEN 'stall' THEN '地摊' WHEN 'cross' THEN '异业' ELSE '供应链' END AS identityLabel,
-              m.name, m.invite_code AS code, m.contact_phone AS phone, NULL AS points,
-              m.status, m.deleted_at AS deletedAt, m.created_at AS createdAt,
-              m.city, m.materials_json AS materials, m.cover_url AS coverUrl,
-              m.address, m.contact_name AS contactName
-       FROM merchants m${where}
-       ORDER BY m.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
-      params
-    )
+    let merchants
+    try {
+      merchants = await query(
+        `SELECT m.id AS merchantId, m.role AS identity,
+                CASE m.role WHEN 'stall' THEN '地摊' WHEN 'cross' THEN '异业' ELSE '供应链' END AS identityLabel,
+                m.name, m.invite_code AS code, m.contact_phone AS phone, NULL AS points,
+                m.status, m.deleted_at AS deletedAt, m.created_at AS createdAt,
+                m.city, m.materials_json AS materials, m.cover_url AS coverUrl,
+                m.address, m.contact_name AS contactName,
+                m.biz_owner_admin_id AS bizOwnerAdminId,
+                a.display_name AS bizOwnerName
+         FROM merchants m
+         LEFT JOIN admin_accounts a ON a.id = m.biz_owner_admin_id
+         ${where}
+         ORDER BY m.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+        params
+      )
+    } catch (e) {
+      if (!/Unknown column.*biz_owner_admin_id/i.test(String(e.message || ''))) throw e
+      merchants = await query(
+        `SELECT m.id AS merchantId, m.role AS identity,
+                CASE m.role WHEN 'stall' THEN '地摊' WHEN 'cross' THEN '异业' ELSE '供应链' END AS identityLabel,
+                m.name, m.invite_code AS code, m.contact_phone AS phone, NULL AS points,
+                m.status, m.deleted_at AS deletedAt, m.created_at AS createdAt,
+                m.city, m.materials_json AS materials, m.cover_url AS coverUrl,
+                m.address, m.contact_name AS contactName,
+                NULL AS bizOwnerAdminId, '' AS bizOwnerName
+         FROM merchants m${where}
+         ORDER BY m.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+        params
+      )
+    }
     const list = merchants.map((m) => mapMerchantIdentity(m, pickCoverFromLicenses, parseMaybeJson))
     return pageResult(list, Number(countRows[0]?.c) || 0, paging)
   }
@@ -332,11 +392,29 @@ async function listAllIdentities({ role, q, page, pageSize, limit } = {}) {
                   m.name, m.invite_code AS code, m.contact_phone AS phone, NULL AS points,
                   m.status, m.deleted_at AS deletedAt, m.created_at AS createdAt,
                   m.city, m.materials_json AS materials, m.cover_url AS coverUrl,
-                  m.address, m.contact_name AS contactName
-           FROM merchants m${merchantWhere}
+                  m.address, m.contact_name AS contactName,
+                  m.biz_owner_admin_id AS bizOwnerAdminId,
+                  a.display_name AS bizOwnerName
+           FROM merchants m
+           LEFT JOIN admin_accounts a ON a.id = m.biz_owner_admin_id
+           ${merchantWhere}
            ORDER BY m.id DESC LIMIT ${fetchLimit}`,
           merchantParams
-        )
+        ).catch(async (e) => {
+          if (!/Unknown column.*biz_owner_admin_id/i.test(String(e.message || ''))) throw e
+          return query(
+            `SELECT m.id AS merchantId, m.role AS identity,
+                    CASE m.role WHEN 'stall' THEN '地摊' WHEN 'cross' THEN '异业' ELSE '供应链' END AS identityLabel,
+                    m.name, m.invite_code AS code, m.contact_phone AS phone, NULL AS points,
+                    m.status, m.deleted_at AS deletedAt, m.created_at AS createdAt,
+                    m.city, m.materials_json AS materials, m.cover_url AS coverUrl,
+                    m.address, m.contact_name AS contactName,
+                    NULL AS bizOwnerAdminId, '' AS bizOwnerName
+             FROM merchants m${merchantWhere}
+             ORDER BY m.id DESC LIMIT ${fetchLimit}`,
+            merchantParams
+          )
+        })
       : Promise.resolve([])
   ])
   const merged = [
@@ -349,13 +427,27 @@ async function listAllIdentities({ role, q, page, pageSize, limit } = {}) {
 }
 
 async function getStoreDetail(merchantId) {
-  const rows = await query(
-    `SELECT m.*, IFNULL(p.balance,0) AS pool_balance
-     FROM merchants m
-     LEFT JOIN merchant_points_pool p ON p.merchant_id=m.id
-     WHERE m.id=:id AND m.deleted_at IS NULL`,
-    { id: merchantId }
-  )
+  let rows
+  try {
+    rows = await query(
+      `SELECT m.*, IFNULL(p.balance,0) AS pool_balance,
+              a.display_name AS biz_owner_name, a.username AS biz_owner_username
+       FROM merchants m
+       LEFT JOIN merchant_points_pool p ON p.merchant_id=m.id
+       LEFT JOIN admin_accounts a ON a.id = m.biz_owner_admin_id
+       WHERE m.id=:id AND m.deleted_at IS NULL`,
+      { id: merchantId }
+    )
+  } catch (e) {
+    if (!/Unknown column.*biz_owner_admin_id/i.test(String(e.message || ''))) throw e
+    rows = await query(
+      `SELECT m.*, IFNULL(p.balance,0) AS pool_balance
+       FROM merchants m
+       LEFT JOIN merchant_points_pool p ON p.merchant_id=m.id
+       WHERE m.id=:id AND m.deleted_at IS NULL`,
+      { id: merchantId }
+    )
+  }
   if (!rows.length) throw new HttpError(404, '门店不存在')
   const m = rows[0]
   let materials = m.materials_json
@@ -397,6 +489,7 @@ async function getStoreDetail(merchantId) {
 
   const { pickCoverFromLicenses } = require('../utils/mediaPick')
   const coverUrl = m.cover_url || pickCoverFromLicenses(materials) || ''
+  const bizOwnerAdminId = m.biz_owner_admin_id != null ? Number(m.biz_owner_admin_id) : null
   return {
     id: m.id,
     role: m.role,
@@ -416,6 +509,9 @@ async function getStoreDetail(merchantId) {
     status: m.status,
     poolBalance: m.pool_balance,
     materials: materials || {},
+    bizOwnerAdminId,
+    bizOwnerName: m.biz_owner_name || '',
+    bizOwnerUsername: m.biz_owner_username || '',
     goods: (goods || []).map((g) => ({
       ...g,
       goodsType: m.role,
@@ -428,7 +524,7 @@ async function getStoreDetail(merchantId) {
   }
 }
 
-/** 运营台编辑门店基础信息（可含封面、类目） */
+/** 运营台编辑门店基础信息（可含封面、类目、商务负责人） */
 async function updateStore(id, body = {}) {
   const rows = await query('SELECT id, role FROM merchants WHERE id=:id AND deleted_at IS NULL', { id })
   if (!rows.length) throw new HttpError(404, '门店不存在')
@@ -445,7 +541,8 @@ async function updateStore(id, body = {}) {
     coverUrl: 'cover_url',
     bizType: 'biz_type',
     latitude: 'latitude',
-    longitude: 'longitude'
+    longitude: 'longitude',
+    creditCode: 'credit_code'
   }
   for (const [k, col] of Object.entries(map)) {
     if (body[k] === undefined) continue
@@ -456,6 +553,11 @@ async function updateStore(id, body = {}) {
           ? null
           : Number(body[k])
         : body[k]
+  }
+  if (body.bizOwnerAdminId !== undefined) {
+    const ownerId = await assertBizOwnerAdminId(body.bizOwnerAdminId)
+    fields.push('biz_owner_admin_id = :bizOwnerAdminId')
+    params.bizOwnerAdminId = ownerId
   }
   if (body.materials && typeof body.materials === 'object') {
     fields.push('materials_json = CAST(:materialsJson AS JSON)')
@@ -470,8 +572,273 @@ async function updateStore(id, body = {}) {
     }
   }
   if (!fields.length) throw new HttpError(400, '没有可更新字段')
-  await query(`UPDATE merchants SET ${fields.join(', ')} WHERE id=:id`, params)
+  try {
+    await query(`UPDATE merchants SET ${fields.join(', ')} WHERE id=:id`, params)
+  } catch (e) {
+    if (/Unknown column.*biz_owner_admin_id/i.test(String(e.message || ''))) {
+      throw new HttpError(503, '请先执行 sql/34_merchant_biz_owner.sql 增加商务负责人字段')
+    }
+    throw e
+  }
   return getStoreDetail(Number(id))
+}
+
+/** 运营台直接新建门店（地摊/异业/供应链），无需走入驻审核 */
+async function createStore(body = {}) {
+  const role = String(body.role || '').trim()
+  if (!['stall', 'cross', 'supply'].includes(role)) {
+    throw new HttpError(400, '请选择门店类型：地摊/异业/供应链')
+  }
+  const name = String(body.name || '').trim()
+  if (!name) throw new HttpError(400, '请填写店铺名称')
+  const contactName = String(body.contactName || body.legalPerson || name).trim()
+  const contactPhone = String(body.contactPhone || '').trim()
+  if (!contactPhone) throw new HttpError(400, '请填写联系电话')
+  const city = String(body.city || '').trim()
+  if (!city) throw new HttpError(400, '请填写城市')
+  const address = String(body.address || '').trim()
+  const legalPerson = String(body.legalPerson || contactName).trim()
+  const creditCode = String(body.creditCode || '').trim()
+  if (role !== 'stall' && !creditCode) {
+    throw new HttpError(400, '异业/供应链请填写统一社会信用代码')
+  }
+  const bizOwnerAdminId = await assertBizOwnerAdminId(body.bizOwnerAdminId)
+  const status = body.status === 2 ? 2 : 1
+  const inviteCode = shortCode(role === 'stall' ? 'D' : role === 'cross' ? 'Y' : 'G')
+  const merchantNo = orderNo('M')
+  const coverUrl = String(body.coverUrl || '').trim() || null
+  const bizType = String(body.bizType || '').trim() || null
+  const lat =
+    body.latitude === '' || body.latitude == null ? null : Number(body.latitude)
+  const lng =
+    body.longitude === '' || body.longitude == null ? null : Number(body.longitude)
+
+  const baseParams = [
+    merchantNo,
+    role,
+    name,
+    creditCode || null,
+    legalPerson,
+    contactName,
+    contactPhone,
+    city,
+    address || null,
+    lat,
+    lng,
+    status,
+    inviteCode,
+    coverUrl
+  ]
+
+  const merchantId = await withTransaction(async (conn) => {
+    async function insertMerchant(withBizOwner, withExtras) {
+      if (withExtras && withBizOwner) {
+        const [r] = await conn.execute(
+          `INSERT INTO merchants
+            (merchant_no, role, name, credit_code, legal_person, contact_name, contact_phone,
+             city, address, latitude, longitude, status, invite_code, cover_url, biz_type,
+             biz_owner_admin_id, level_code, trial_end_at, service_status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal',
+                   DATE_ADD(CURDATE(), INTERVAL 1 MONTH), 'trial')`,
+          [...baseParams, bizType, bizOwnerAdminId]
+        )
+        return r
+      }
+      if (withExtras && !withBizOwner) {
+        const [r] = await conn.execute(
+          `INSERT INTO merchants
+            (merchant_no, role, name, credit_code, legal_person, contact_name, contact_phone,
+             city, address, latitude, longitude, status, invite_code, cover_url, biz_type,
+             level_code, trial_end_at, service_status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal',
+                   DATE_ADD(CURDATE(), INTERVAL 1 MONTH), 'trial')`,
+          [...baseParams, bizType]
+        )
+        return r
+      }
+      if (withBizOwner) {
+        const [r] = await conn.execute(
+          `INSERT INTO merchants
+            (merchant_no, role, name, credit_code, legal_person, contact_name, contact_phone,
+             city, address, latitude, longitude, status, invite_code, cover_url, biz_owner_admin_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [...baseParams, bizOwnerAdminId]
+        )
+        return r
+      }
+      const [r] = await conn.execute(
+        `INSERT INTO merchants
+          (merchant_no, role, name, credit_code, legal_person, contact_name, contact_phone,
+           city, address, latitude, longitude, status, invite_code, cover_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        baseParams
+      )
+      return r
+    }
+
+    let ins
+    try {
+      ins = await insertMerchant(true, true)
+    } catch (e) {
+      const msg = String(e.message || '')
+      if (/Unknown column.*biz_owner_admin_id/i.test(msg)) {
+        if (bizOwnerAdminId) {
+          throw new HttpError(503, '请先执行 sql/34_merchant_biz_owner.sql 增加商务负责人字段')
+        }
+        try {
+          ins = await insertMerchant(false, true)
+        } catch (e2) {
+          if (/Unknown column.*(level_code|trial_end_at|service_status|biz_type)/i.test(String(e2.message || ''))) {
+            ins = await insertMerchant(false, false)
+          } else throw e2
+        }
+      } else if (/Unknown column.*(level_code|trial_end_at|service_status|biz_type)/i.test(msg)) {
+        try {
+          ins = await insertMerchant(true, false)
+        } catch (e2) {
+          if (/Unknown column.*biz_owner_admin_id/i.test(String(e2.message || ''))) {
+            if (bizOwnerAdminId) {
+              throw new HttpError(503, '请先执行 sql/34_merchant_biz_owner.sql 增加商务负责人字段')
+            }
+            ins = await insertMerchant(false, false)
+          } else throw e2
+        }
+      } else {
+        throw e
+      }
+    }
+    const mid = ins.insertId
+    await conn.execute(`INSERT INTO merchant_points_pool (merchant_id, balance) VALUES (?, 0)`, [mid])
+    if (role === 'supply') {
+      await conn.execute(
+        `INSERT INTO merchant_accounts (merchant_id, account_type, balance) VALUES
+         (?, 'cash_goods', 0), (?, 'points_redeem', 0)`,
+        [mid, mid]
+      )
+    } else {
+      await conn.execute(
+        `INSERT INTO merchant_accounts (merchant_id, account_type, balance)
+         VALUES (?, 'cash_settlement', 0)`,
+        [mid]
+      )
+    }
+
+    let ownerUserId = 0
+    try {
+      const [byPhone] = await conn.execute(
+        'SELECT id FROM users WHERE phone=? AND status=1 AND deleted_at IS NULL LIMIT 1',
+        [contactPhone]
+      )
+      if (byPhone.length) ownerUserId = Number(byPhone[0].id)
+    } catch (e) {
+      if (!/deleted_at|Unknown column/i.test(String(e.message || ''))) throw e
+      const [byPhone] = await conn.execute(
+        'SELECT id FROM users WHERE phone=? AND status=1 LIMIT 1',
+        [contactPhone]
+      )
+      if (byPhone.length) ownerUserId = Number(byPhone[0].id)
+    }
+    if (!ownerUserId) {
+      const ownerInvite = `${inviteCode}_U`
+      const [uins] = await conn.execute(
+        `INSERT INTO users (invite_code, nickname, phone, points_balance, status)
+         VALUES (?, ?, ?, 0, 1)`,
+        [ownerInvite, contactName || name, contactPhone]
+      )
+      ownerUserId = Number(uins.insertId) || 0
+    }
+    if (ownerUserId) {
+      await conn.execute('UPDATE merchants SET owner_user_id=? WHERE id=?', [ownerUserId, mid])
+    }
+    return mid
+  })
+
+  return getStoreDetail(merchantId)
+}
+
+/** 运营台直接开通合伙人/创始人/负责人（非 C 端身份） */
+async function createPlatformIdentity(body = {}) {
+  const role = String(body.role || '').trim()
+  if (!['partner', 'founder', 'lead'].includes(role)) {
+    throw new HttpError(400, '请选择身份：合伙人/创始人/负责人')
+  }
+  const nickname = String(body.nickname || body.name || '').trim()
+  const phone = String(body.phone || '').trim()
+  if (!nickname) throw new HttpError(400, '请填写姓名/昵称')
+  if (!phone) throw new HttpError(400, '请填写手机号')
+
+  let userId = Number(body.userId) || 0
+  if (userId) {
+    const exists = await query(
+      'SELECT id FROM users WHERE id=:id AND deleted_at IS NULL LIMIT 1',
+      { id: userId }
+    ).catch(async (e) => {
+      if (!/deleted_at|Unknown column/i.test(String(e.message || ''))) throw e
+      return query('SELECT id FROM users WHERE id=:id LIMIT 1', { id: userId })
+    })
+    if (!exists.length) throw new HttpError(404, '用户不存在')
+  } else {
+    const byPhone = await query(
+      'SELECT id FROM users WHERE phone=:p AND deleted_at IS NULL ORDER BY id DESC LIMIT 1',
+      { p: phone }
+    ).catch(async (e) => {
+      if (!/deleted_at|Unknown column/i.test(String(e.message || ''))) throw e
+      return query('SELECT id FROM users WHERE phone=:p ORDER BY id DESC LIMIT 1', { p: phone })
+    })
+    if (byPhone.length) {
+      userId = Number(byPhone[0].id)
+      await query('UPDATE users SET nickname=:n, phone=:p, status=1 WHERE id=:id', {
+        n: nickname,
+        p: phone,
+        id: userId
+      })
+    } else {
+      const invite = shortCode(role === 'partner' ? 'P' : role === 'founder' ? 'F' : 'L')
+      const r = await query(
+        `INSERT INTO users (invite_code, nickname, phone, points_balance, status)
+         VALUES (:c, :n, :p, 0, 1)`,
+        { c: invite, n: nickname, p: phone }
+      )
+      userId = Number(r.insertId)
+    }
+  }
+
+  const col = role === 'partner' ? 'is_partner' : role === 'founder' ? 'is_founder' : 'is_lead'
+  try {
+    await query(`UPDATE users SET ${col}=1 WHERE id=:id`, { id: userId })
+    if (role === 'founder') {
+      try {
+        await query(`UPDATE users SET is_lead=1 WHERE id=:id`, { id: userId })
+      } catch (_) {}
+    }
+  } catch (e) {
+    if (/Unknown column/i.test(String(e.message || ''))) {
+      throw new HttpError(503, '请先执行 sql/26_user_identities.sql')
+    }
+    throw e
+  }
+
+  let opsAccount = null
+  try {
+    const rbacService = require('./rbacService')
+    const roleCode = role === 'partner' ? 'partner_ops' : role === 'founder' ? 'founder_ops' : 'lead_ops'
+    opsAccount = await rbacService.provisionLinkedOpsAccount({
+      userId,
+      roleCode,
+      password: String(body.password || '123456'),
+      displayName: nickname
+    })
+  } catch (e) {
+    console.warn('[ops] provision platform identity account', e.message)
+  }
+
+  return {
+    ok: true,
+    userId,
+    role,
+    roleLabel: PLATFORM_ROLE_LABEL[role],
+    opsAccount
+  }
 }
 
 async function setMerchantStatus(id, status) {
@@ -758,6 +1125,8 @@ module.exports = {
   listAllIdentities,
   getStoreDetail,
   updateStore,
+  createStore,
+  createPlatformIdentity,
   setMerchantStatus,
   softDeleteMerchant,
   updateMerchantMaterials,
@@ -768,5 +1137,6 @@ module.exports = {
   setGoodsOpen,
   softDeleteGoods,
   saveSku,
+  resolveBizOwner,
   ROLE_LABEL
 }

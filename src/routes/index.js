@@ -68,8 +68,9 @@ function requireAnyPage(pageKeys, { edit } = {}) {
 }
 
 const STORE_PAGES = ['stores_stall', 'stores_cross', 'stores_supply', 'users_all']
-const STORE_EDIT_PAGES = ['stores_stall', 'stores_cross', 'stores_supply']
+const STORE_EDIT_PAGES = ['stores_stall', 'stores_cross', 'stores_supply', 'users_all']
 const GOODS_EDIT_PAGES = ['goods_sku', 'goods', 'stores_stall', 'stores_cross', 'stores_supply']
+const PLATFORM_IDENTITY_EDIT_PAGES = ['users_all']
 
 async function requireSysEdit(req, _res, next) {
   try {
@@ -1257,6 +1258,57 @@ router.get(
   async (req, res, next) => {
     try {
       res.json(ok(await opsService.getStoreDetail(Number(req.params.id))))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get(
+  '/admin/ops/biz-owners',
+  ...adminOnly,
+  requireAnyPage(STORE_EDIT_PAGES, { edit: false }),
+  async (req, res, next) => {
+    try {
+      const rows = await rbacService.listAccounts()
+      res.json(
+        ok(
+          (rows || [])
+            .filter((a) => Number(a.status) === 1)
+            .map((a) => ({
+              id: a.id,
+              username: a.username,
+              displayName: a.displayName || a.username,
+              roleName: a.roleName || ''
+            }))
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/admin/ops/stores',
+  ...adminOnly,
+  requireAnyPage(STORE_EDIT_PAGES, { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await opsService.createStore(req.body || {})))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/admin/ops/identities',
+  ...adminOnly,
+  requireAnyPage(PLATFORM_IDENTITY_EDIT_PAGES, { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await opsService.createPlatformIdentity(req.body || {})))
     } catch (e) {
       next(e)
     }

@@ -552,6 +552,37 @@ function field(name, label, value = '', type = 'text') {
   return `<label>${label}<input name="${name}" type="${type}" value="${esc(value)}" /></label>`
 }
 
+function selectField(name, label, options, value = '') {
+  const opts = (options || [])
+    .map((o) => {
+      const v = o.value != null ? o.value : o.id
+      const t = o.label != null ? o.label : o.displayName || o.name || String(v)
+      return `<option value="${esc(String(v))}" ${String(v) === String(value) ? 'selected' : ''}>${esc(t)}</option>`
+    })
+    .join('')
+  return `<label>${esc(label)}<select name="${esc(name)}">${opts}</select></label>`
+}
+
+async function loadAdminAccountOptions({ includeEmpty = true } = {}) {
+  let rows = []
+  try {
+    rows = await api('/admin/ops/biz-owners')
+  } catch (_) {
+    try {
+      rows = (await api('/admin/rbac/accounts')) || []
+      rows = rows.filter((a) => Number(a.status) === 1)
+    } catch (e2) {
+      rows = []
+    }
+  }
+  const options = (rows || []).map((a) => ({
+    value: a.id,
+    label: `${a.displayName || a.username}（${a.username}）`
+  }))
+  if (includeEmpty) options.unshift({ value: '', label: '未指定' })
+  return options
+}
+
 /** 图片/文件上传控件：压缩后上传云托管存储，支持删除 */
 function mediaField(name, label, value = '', bizType = 'general') {
   const v = value || ''
@@ -671,6 +702,22 @@ async function renderIdentities(role) {
           ? `stores_${r}`
           : 'users_all'
     )
+  const canCreateFor = (r) => {
+    if (r === 'consumer') return false
+    if (r === 'stall' || r === 'cross' || r === 'supply') {
+      return canEdit(`stores_${r}`) || canEdit('users_all')
+    }
+    if (r === 'partner' || r === 'founder' || r === 'lead') return canEdit('users_all')
+    if (r === 'all') {
+      return (
+        canEdit('users_all') ||
+        canEdit('stores_stall') ||
+        canEdit('stores_cross') ||
+        canEdit('stores_supply')
+      )
+    }
+    return false
+  }
   const pageState = { page: 1, pageSize: 20 }
   content().innerHTML = `
     <div class="toolbar">
@@ -690,11 +737,162 @@ async function renderIdentities(role) {
       }
       <input id="fq" placeholder="昵称/邀请码/手机/店名" />
       <button class="btn" id="btnReload">查询</button>
+      <button class="btn primary" id="btnCreate" style="display:none">新增</button>
     </div>
     <div id="list"></div>`
   if ($('fIdentity')) $('fIdentity').value = filterRole
+
+  const syncCreateBtn = () => {
+    const btn = $('btnCreate')
+    if (!btn) return
+    const r = filterRole
+    if (!canCreateFor(r)) {
+      btn.style.display = 'none'
+      return
+    }
+    btn.style.display = ''
+    const labels = {
+      stall: '新增地摊门店',
+      cross: '新增异业门店',
+      supply: '新增供应链门店',
+      partner: '新增合伙人',
+      founder: '新增创始人',
+      lead: '新增负责人',
+      all: '新增（门店/身份）'
+    }
+    btn.textContent = labels[r] || '新增'
+  }
+
+  const openCreateModal = async () => {
+    const adminOpts = await loadAdminAccountOptions()
+    const r = filterRole
+    const isStore = r === 'stall' || r === 'cross' || r === 'supply'
+    const isPlatform = r === 'partner' || r === 'founder' || r === 'lead'
+    const isAll = r === 'all'
+
+    if (isPlatform || isAll) {
+      const roleSelect = isAll
+        ? selectField(
+            'role',
+            '类型',
+            [
+              { value: 'stall', label: '地摊门店' },
+              { value: 'cross', label: '异业门店' },
+              { value: 'supply', label: '供应链门店' },
+              { value: 'partner', label: '合伙人' },
+              { value: 'founder', label: '创始人' },
+              { value: 'lead', label: '负责人' }
+            ],
+            'stall'
+          )
+        : `<input type="hidden" name="role" value="${esc(r)}" />`
+      openModal(
+        isAll ? '新增门店或平台身份' : `新增${{ partner: '合伙人', founder: '创始人', lead: '负责人' }[r]}`,
+        roleSelect +
+          `<div id="createStoreFields">
+            ${field('name', '店铺名称', '')}
+            ${field('legalPerson', '法人/负责人', '')}
+            ${field('contactName', '联系人', '')}
+            ${field('contactPhone', '联系电话', '')}
+            ${field('creditCode', '统一社会信用代码（地摊可空）', '')}
+            ${field('city', '城市', '')}
+            ${field('address', '地址', '', 'textarea')}
+            ${field('bizType', '经营类目(餐饮/鲜花/蛋糕/百货商店)', '')}
+            ${selectField('bizOwnerAdminId', '商务负责人', adminOpts, '')}
+            ${mediaField('coverUrl', '门店封面', '', 'merchant')}
+          </div>
+          <div id="createPlatformFields" style="display:none">
+            ${field('nickname', '姓名/昵称', '')}
+            ${field('phone', '手机号', '')}
+            ${field('password', '后台初始密码', '123456', 'password')}
+          </div>`,
+        async () => {
+          const chosen = formVal('role') || r
+          if (['stall', 'cross', 'supply'].includes(chosen)) {
+            await api('/admin/ops/stores', {
+              method: 'POST',
+              body: JSON.stringify({
+                role: chosen,
+                name: formVal('name'),
+                legalPerson: formVal('legalPerson'),
+                contactName: formVal('contactName'),
+                contactPhone: formVal('contactPhone'),
+                creditCode: formVal('creditCode'),
+                city: formVal('city'),
+                address: formVal('address'),
+                bizType: formVal('bizType'),
+                bizOwnerAdminId: formVal('bizOwnerAdminId') || null,
+                coverUrl: formVal('coverUrl')
+              })
+            })
+          } else {
+            await api('/admin/ops/identities', {
+              method: 'POST',
+              body: JSON.stringify({
+                role: chosen,
+                nickname: formVal('nickname'),
+                phone: formVal('phone'),
+                password: formVal('password') || '123456'
+              })
+            })
+          }
+          await load()
+        },
+        true
+      )
+      const syncType = () => {
+        const chosen = formVal('role') || r
+        const storeBox = document.getElementById('createStoreFields')
+        const platBox = document.getElementById('createPlatformFields')
+        const isS = ['stall', 'cross', 'supply'].includes(chosen)
+        if (storeBox) storeBox.style.display = isS ? '' : 'none'
+        if (platBox) platBox.style.display = isS ? 'none' : ''
+      }
+      const roleEl = $('modalBody') && $('modalBody').querySelector('[name="role"]')
+      if (roleEl && roleEl.tagName === 'SELECT') roleEl.onchange = syncType
+      syncType()
+      return
+    }
+
+    openModal(
+      `新增${{ stall: '地摊', cross: '异业', supply: '供应链' }[r] || ''}门店`,
+      `<input type="hidden" name="role" value="${esc(r)}" />` +
+        field('name', '店铺名称', '') +
+        field('legalPerson', '法人/负责人', '') +
+        field('contactName', '联系人', '') +
+        field('contactPhone', '联系电话', '') +
+        field('creditCode', '统一社会信用代码（地摊可空）', '') +
+        field('city', '城市', '') +
+        field('address', '地址', '', 'textarea') +
+        field('bizType', '经营类目(餐饮/鲜花/蛋糕/百货商店)', '') +
+        selectField('bizOwnerAdminId', '商务负责人', adminOpts, '') +
+        mediaField('coverUrl', '门店封面', '', 'merchant'),
+      async () => {
+        await api('/admin/ops/stores', {
+          method: 'POST',
+          body: JSON.stringify({
+            role: r,
+            name: formVal('name'),
+            legalPerson: formVal('legalPerson'),
+            contactName: formVal('contactName'),
+            contactPhone: formVal('contactPhone'),
+            creditCode: formVal('creditCode'),
+            city: formVal('city'),
+            address: formVal('address'),
+            bizType: formVal('bizType'),
+            bizOwnerAdminId: formVal('bizOwnerAdminId') || null,
+            coverUrl: formVal('coverUrl')
+          })
+        })
+        await load()
+      },
+      true
+    )
+  }
+
   const load = async () => {
     if ($('fIdentity')) filterRole = $('fIdentity').value || 'all'
+    syncCreateBtn()
     const editable = editableFor(filterRole)
     const q = $('fq').value.trim()
     const data = unwrapList(
@@ -706,9 +904,22 @@ async function renderIdentities(role) {
     )
     pageState.page = data.page
     const rows = data.list
+    const showBizOwner =
+      filterRole === 'all' || filterRole === 'stall' || filterRole === 'cross' || filterRole === 'supply'
     $('list').innerHTML =
       table(
-        ['预览', '身份', '名称', '账号/邀请码', '电话', '积分/城市', '状态', '注册', '操作'],
+        [
+          '预览',
+          '身份',
+          '名称',
+          '账号/邀请码',
+          '电话',
+          '积分/城市',
+          ...(showBizOwner ? ['商务负责人'] : []),
+          '状态',
+          '注册',
+          '操作'
+        ],
         rows
           .map((r) => {
             const isStore = !!r.merchantId
@@ -719,6 +930,11 @@ async function renderIdentities(role) {
           <td>${esc(r.name)}</td><td><code>${esc(r.code)}</code></td>
           <td>${esc(r.phone || '-')}</td>
           <td>${isStore ? esc(r.city || '-') : esc(r.points ?? 0)}</td>
+          ${
+            showBizOwner
+              ? `<td>${isStore ? esc(r.bizOwnerName || '-') : '-'}</td>`
+              : ''
+          }
           <td>${
             isStore
               ? editable
@@ -837,12 +1053,16 @@ async function renderIdentities(role) {
     pageState.page = 1
     runAction(load)
   }
+  if ($('btnCreate')) {
+    $('btnCreate').onclick = () => runAction(openCreateModal)
+  }
   if ($('fIdentity')) {
     $('fIdentity').onchange = () => {
       pageState.page = 1
       runAction(load)
     }
   }
+  syncCreateBtn()
   await load()
 }
 
@@ -895,6 +1115,7 @@ async function showStoreDetail(id, listReload) {
     `${d.roleLabel} · ${d.name}`,
     `<p>邀请码 <code>${esc(d.inviteCode)}</code> · 编号 ${esc(d.merchantNo || '-')} · 额度池 ${d.poolBalance ?? 0}</p>
      <p class="muted">${esc(d.city)} ${esc(d.address)} · ${esc(d.contactName)} ${esc(d.contactPhone)}</p>
+     <p>商务负责人 ${esc(d.bizOwnerName || '未指定')}${d.bizOwnerUsername ? `（${esc(d.bizOwnerUsername)}）` : ''}</p>
      <p>营业状态 ${switchControl({
        on: Number(d.status) === 1,
        onLabel: '营业',
@@ -993,36 +1214,40 @@ async function showStoreDetail(id, listReload) {
 
   const btnEdit = document.getElementById('btnEditStore')
   if (btnEdit) {
-    btnEdit.onclick = () => {
-      openModal(
-        '编辑门店信息',
-        field('name', '店铺名称', d.name) +
-          field('legalPerson', '法人', d.legalPerson || '') +
-          field('contactName', '联系人', d.contactName || '') +
-          field('contactPhone', '联系电话', d.contactPhone || '') +
-          field('city', '城市', d.city || '') +
-          field('address', '地址', d.address || '', 'textarea') +
-          field('bizType', '经营类目(餐饮/鲜花/蛋糕/百货商店)', d.bizType || '') +
-          mediaField('coverUrl', '门店封面', d.coverUrl || '', 'merchant'),
-        async () => {
-          await api(`/admin/ops/stores/${id}`, {
-            method: 'PATCH',
-            body: JSON.stringify({
-              name: formVal('name'),
-              legalPerson: formVal('legalPerson'),
-              contactName: formVal('contactName'),
-              contactPhone: formVal('contactPhone'),
-              city: formVal('city'),
-              address: formVal('address'),
-              bizType: formVal('bizType'),
-              coverUrl: formVal('coverUrl')
+    btnEdit.onclick = () =>
+      runAction(async () => {
+        const adminOpts = await loadAdminAccountOptions()
+        openModal(
+          '编辑门店信息',
+          field('name', '店铺名称', d.name) +
+            field('legalPerson', '法人', d.legalPerson || '') +
+            field('contactName', '联系人', d.contactName || '') +
+            field('contactPhone', '联系电话', d.contactPhone || '') +
+            field('city', '城市', d.city || '') +
+            field('address', '地址', d.address || '', 'textarea') +
+            field('bizType', '经营类目(餐饮/鲜花/蛋糕/百货商店)', d.bizType || '') +
+            selectField('bizOwnerAdminId', '商务负责人', adminOpts, d.bizOwnerAdminId || '') +
+            mediaField('coverUrl', '门店封面', d.coverUrl || '', 'merchant'),
+          async () => {
+            await api(`/admin/ops/stores/${id}`, {
+              method: 'PATCH',
+              body: JSON.stringify({
+                name: formVal('name'),
+                legalPerson: formVal('legalPerson'),
+                contactName: formVal('contactName'),
+                contactPhone: formVal('contactPhone'),
+                city: formVal('city'),
+                address: formVal('address'),
+                bizType: formVal('bizType'),
+                bizOwnerAdminId: formVal('bizOwnerAdminId') || null,
+                coverUrl: formVal('coverUrl')
+              })
             })
-          })
-          await refresh()
-        },
-        true
-      )
-    }
+            await refresh()
+          },
+          true
+        )
+      })
   }
 
   const btnMats = document.getElementById('btnEditMats')
