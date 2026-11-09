@@ -427,6 +427,16 @@ Page({
       wx.showToast({ title: '请勾选地摊合规经营承诺', icon: 'none' })
       return
     }
+    const session = store.getSession() || {}
+    if (!session.userId || !store.getToken()) {
+      // 入驻必须登录：用户身份以服务端 JWT 为准，避免脏会话误判「已有门店」
+      if (store.beginLoginFlow) {
+        store.beginLoginFlow('from=apply')
+      } else {
+        wx.showToast({ title: '请先登录', icon: 'none' })
+      }
+      return
+    }
     const licenses = { ...(this.data.fileUrls || {}) }
     const reqLic = ROLE_FIELDS[this.data.selected].licenses.filter((x) => x.required)
     for (const l of reqLic) {
@@ -442,7 +452,6 @@ Page({
     this.setData({ submitting: true })
     try {
       const form = this.data.form
-      const session = store.getSession() || {}
       if (this.data.selected === 'stall') {
         // 写入证照 JSON，供运营台与后续微信小微进件使用
         licenses.microPaySubject = 'SUBJECT_TYPE_MICRO'
@@ -470,7 +479,6 @@ Page({
         referrerCode: form.referrerCode,
         latitude: this.data.latitude,
         longitude: this.data.longitude,
-        applicantUserId: session.userId || undefined,
         agreed: true,
         stallCommitment: this.data.selected === 'stall' ? !!form.stallCommitment : undefined,
         idCardNumber: form.idCardNumber,
@@ -491,7 +499,12 @@ Page({
       })
     } catch (e) {
       this.setData({ submitting: false })
-      wx.showToast({ title: e.message || '提交失败', icon: 'none' })
+      const msg = (e && e.message) || '提交失败'
+      if (/已有营业中|已有审核中|已绑定|该手机号已有/.test(msg)) {
+        wx.showModal({ title: '无法提交', content: msg, showCancel: false })
+      } else {
+        wx.showToast({ title: msg, icon: 'none', duration: 3500 })
+      }
     }
   }
 })

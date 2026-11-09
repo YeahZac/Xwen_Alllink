@@ -74,29 +74,95 @@ function assertApplyPayload(body) {
   }
 }
 
+function roleLabelOf(role) {
+  return { stall: '地摊', cross: '异业', supply: '供应链' }[role] || role
+}
+
+/**
+ * 一人一活跃店：手机号、微信账号分开查，避免「或」条件误报，并给出可理解的原因。
+ * @returns {{ id:number, name:string, reason:'phone'|'wechat' }|null}
+ */
+async function findActiveShopConflict({ role, phone, userId } = {}) {
+  const r = String(role || '').trim()
+  const p = String(phone || '').trim()
+  const uid = Number(userId) || 0
+  if (!r) return null
+
+  if (/^1\d{10}$/.test(p)) {
+    const byPhone = await query(
+      `SELECT id, name FROM merchants
+       WHERE role=:role AND deleted_at IS NULL AND status=1 AND contact_phone=:phone
+       ORDER BY id DESC LIMIT 1`,
+      { role: r, phone: p }
+    )
+    if (byPhone.length) {
+      return { id: Number(byPhone[0].id), name: byPhone[0].name, reason: 'phone' }
+    }
+  }
+
+  if (uid > 0) {
+    const byOwner = await query(
+      `SELECT id, name FROM merchants
+       WHERE role=:role AND deleted_at IS NULL AND status=1 AND owner_user_id=:uid
+       ORDER BY id DESC LIMIT 1`,
+      { role: r, uid }
+    )
+    if (byOwner.length) {
+      return { id: Number(byOwner[0].id), name: byOwner[0].name, reason: 'wechat' }
+    }
+  }
+  return null
+}
+
+function throwActiveShopConflict(role, hit) {
+  const roleLabel = roleLabelOf(role)
+  if (!hit) return
+  if (hit.reason === 'phone') {
+    throw new HttpError(
+      400,
+      `该手机号已有营业中的${roleLabel}门店「${hit.name}」；一人仅可经营一个${roleLabel}，请先在后台删除旧店后再申请`
+    )
+  }
+  throw new HttpError(
+    400,
+    `当前微信已绑定营业中的${roleLabel}门店「${hit.name}」；与表单手机号无关。如需换店请先在后台删除旧店，或使用其他微信登录后再申请`
+  )
+}
+
 /** 软删停业未删门店，使「已停用，可重申」与一人一店规则一致 */
 async function retireClosedMerchantsForReapply({ role, phone, userId } = {}) {
   const r = String(role || '').trim()
   const p = String(phone || '').trim()
   const uid = Number(userId) || 0
-  if (!r || !p) return { retired: 0 }
-  let rows = []
+  if (!r) return { retired: 0 }
+  const idSet = new Set()
   try {
-    rows = await query(
-      `SELECT id FROM merchants
-       WHERE role=:role AND deleted_at IS NULL AND status=2
-         AND (contact_phone=:phone ${uid ? 'OR owner_user_id=:uid' : ''})`,
-      uid ? { role: r, phone: p, uid } : { role: r, phone: p }
-    )
+    if (/^1\d{10}$/.test(p)) {
+      const byPhone = await query(
+        `SELECT id FROM merchants
+         WHERE role=:role AND deleted_at IS NULL AND status=2 AND contact_phone=:phone`,
+        { role: r, phone: p }
+      )
+      byPhone.forEach((row) => idSet.add(Number(row.id)))
+    }
+    if (uid > 0) {
+      const byOwner = await query(
+        `SELECT id FROM merchants
+         WHERE role=:role AND deleted_at IS NULL AND status=2 AND owner_user_id=:uid`,
+        { role: r, uid }
+      )
+      byOwner.forEach((row) => idSet.add(Number(row.id)))
+    }
   } catch (_) {
     return { retired: 0 }
   }
-  if (!rows.length) return { retired: 0 }
+  const ids = [...idSet]
+  if (!ids.length) return { retired: 0 }
   const opsService = require('./opsService')
   let retired = 0
-  for (const row of rows) {
+  for (const id of ids) {
     try {
-      await opsService.softDeleteMerchant(row.id)
+      await opsService.softDeleteMerchant(id)
       retired += 1
     } catch (_) {
       /* 已删或并发忽略 */
@@ -124,7 +190,13 @@ async function resolveReferrer(code) {
   throw new HttpError(400, '推荐人邀请码无效')
 }
 
-async function submitApply(body) {
+/**
+ * @param {object} body
+ * @param {{ auth?: { userId?: number }, source?: 'mp'|'admin' }} [opts]
+ *  - mp：applicantUserId 只信任登录态，忽略客户端伪造
+ *  - admin：代客入驻可带 applicantUserId；默认只按手机号一人一店
+ */
+async function submitApply(body, opts = {}) {
   assertApplyPayload(body)
   let city = String(body.city || '').trim()
   if (!city) {
@@ -133,7 +205,14 @@ async function submitApply(body) {
   }
   await cityService.ensureOpen(city)
   const referrer = await resolveReferrer(body.referrerCode)
-  const applicantUserId = Number(body.applicantUserId || body.userId) || 0
+  const source = opts.source === 'admin' ? 'admin' : 'mp'
+  const authUid = Number(opts.auth && opts.auth.userId) || 0
+  const bodyUid = Number(body.applicantUserId || body.userId) || 0
+  // 小程序：必须用 JWT 用户，防止脏会话/伪造 userId 误伤他人或误绑
+  const applicantUserId = source === 'admin' ? bodyUid : authUid
+  if (source === 'mp' && !applicantUserId) {
+    throw new HttpError(401, '请先登录后再提交入驻申请')
+  }
   const phone = String(body.contactPhone || '').trim()
 
   // 停业未删的旧店：先软删以便「可重申」与一人一店一致
@@ -143,25 +222,15 @@ async function submitApply(body) {
     userId: applicantUserId
   })
 
-  // 一人一活跃店：营业中（status=1 且未删）不可再申请同角色
-  const activeShop = await query(
-    `SELECT id, name FROM merchants
-     WHERE role=:role AND deleted_at IS NULL AND status=1
-       AND (contact_phone=:phone ${applicantUserId ? 'OR owner_user_id=:uid' : ''})
-     ORDER BY id DESC LIMIT 1`,
-    applicantUserId
-      ? { role: body.role, phone, uid: applicantUserId }
-      : { role: body.role, phone }
-  )
-  if (activeShop.length) {
-    const roleLabel = { stall: '地摊', cross: '异业', supply: '供应链' }[body.role] || body.role
-    throw new HttpError(
-      400,
-      `您已有营业中的${roleLabel}门店「${activeShop[0].name}」；如需重新入驻请先在后台删除旧店`
-    )
-  }
+  // 一人一活跃店：手机号 / 微信分查，地摊·异业·供应链同一规则
+  const activeHit = await findActiveShopConflict({
+    role: body.role,
+    phone,
+    userId: applicantUserId
+  })
+  throwActiveShopConflict(body.role, activeHit)
 
-  // 仅按手机号+角色查重，避免云库未跑 sql/22 时 applicant_user_id 缺列直接报错
+  // 审核中查重：手机号；已登录再按申请人微信防重复
   let pending = []
   try {
     pending = await query(
@@ -180,6 +249,20 @@ async function submitApply(body) {
       )
     } else {
       throw e
+    }
+  }
+  if (!pending.length && applicantUserId > 0) {
+    try {
+      pending = await query(
+        `SELECT id FROM merchant_applications
+         WHERE role=:role AND status='pending' AND deleted_at IS NULL AND applicant_user_id=:uid
+         LIMIT 1`,
+        { role: body.role, uid: applicantUserId }
+      )
+    } catch (e) {
+      if (!/Unknown column.*applicant_user_id|Unknown column.*deleted_at/i.test(String(e.message || ''))) {
+        throw e
+      }
     }
   }
   if (pending.length) {
@@ -1079,38 +1162,41 @@ async function submitAdminApply(body = {}) {
     licenses.coverUrl = body.coverUrl
   }
   // 代客草稿：证照可后补，审核前运营台详情可再改；地摊承诺由平台代勾
-  return submitApply({
-    role,
-    shopName,
-    creditCode: body.creditCode || '',
-    legalPerson,
-    contactName,
-    contactPhone,
-    city,
-    address,
-    latitude: body.latitude != null ? Number(body.latitude) : 22.5431,
-    longitude: body.longitude != null ? Number(body.longitude) : 114.0579,
-    agreed: true,
-    stallCommitment: role === 'stall' ? true : undefined,
-    idCardNumber: body.idCardNumber || '110101199001011234',
-    idCardValidBegin: body.idCardValidBegin || '2020-01-01',
-    idCardValidEnd: body.idCardValidEnd || '长期',
-    bankAccountNo: body.bankAccountNo || '6222020000000000000',
-    bankName: body.bankName || '待补全',
-    bankAccountName: body.bankAccountName || legalPerson,
-    licenses: {
-      ...licenses,
-      idCardFront: licenses.idCardFront || body.coverUrl || '/static/placeholder-id-front.png',
-      idCardBack: licenses.idCardBack || body.coverUrl || '/static/placeholder-id-back.png',
-      storePhoto: licenses.storePhoto || body.coverUrl || '/static/placeholder-store.png',
-      businessLicense:
-        role === 'stall'
-          ? licenses.businessLicense
-          : licenses.businessLicense || body.coverUrl || '/static/placeholder-license.png'
+  return submitApply(
+    {
+      role,
+      shopName,
+      creditCode: body.creditCode || '',
+      legalPerson,
+      contactName,
+      contactPhone,
+      city,
+      address,
+      latitude: body.latitude != null ? Number(body.latitude) : 22.5431,
+      longitude: body.longitude != null ? Number(body.longitude) : 114.0579,
+      agreed: true,
+      stallCommitment: role === 'stall' ? true : undefined,
+      idCardNumber: body.idCardNumber || '110101199001011234',
+      idCardValidBegin: body.idCardValidBegin || '2020-01-01',
+      idCardValidEnd: body.idCardValidEnd || '长期',
+      bankAccountNo: body.bankAccountNo || '6222020000000000000',
+      bankName: body.bankName || '待补全',
+      bankAccountName: body.bankAccountName || legalPerson,
+      licenses: {
+        ...licenses,
+        idCardFront: licenses.idCardFront || body.coverUrl || '/static/placeholder-id-front.png',
+        idCardBack: licenses.idCardBack || body.coverUrl || '/static/placeholder-id-back.png',
+        storePhoto: licenses.storePhoto || body.coverUrl || '/static/placeholder-store.png',
+        businessLicense:
+          role === 'stall'
+            ? licenses.businessLicense
+            : licenses.businessLicense || body.coverUrl || '/static/placeholder-license.png'
+      },
+      applicantUserId: body.applicantUserId || body.userId || 0,
+      referrerCode: body.referrerCode || ''
     },
-    applicantUserId: body.applicantUserId || body.userId || 0,
-    referrerCode: body.referrerCode || ''
-  })
+    { source: 'admin' }
+  )
 }
 
 module.exports = {

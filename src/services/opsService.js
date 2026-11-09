@@ -601,17 +601,18 @@ async function createStore(body = {}) {
   const contactName = String(body.contactName || body.legalPerson || name).trim()
   const contactPhone = String(body.contactPhone || '').trim()
   if (!contactPhone) throw new HttpError(400, '请填写联系电话')
-  if (role === 'stall') {
+  {
+    const roleLabel = { stall: '地摊', cross: '异业', supply: '供应链' }[role] || role
     const exist = await query(
       `SELECT id, name FROM merchants
-       WHERE role='stall' AND deleted_at IS NULL AND contact_phone=:phone
+       WHERE role=:role AND deleted_at IS NULL AND contact_phone=:phone
        ORDER BY id DESC LIMIT 1`,
-      { phone: contactPhone }
+      { role, phone: contactPhone }
     )
     if (exist.length) {
       throw new HttpError(
         400,
-        `该手机号已有地摊门店「${exist[0].name}」，一人仅可经营一个地摊；请先删除旧店后再新建`
+        `该手机号已有${roleLabel}门店「${exist[0].name}」，一人仅可经营一个${roleLabel}；请先删除旧店后再新建`
       )
     }
   }

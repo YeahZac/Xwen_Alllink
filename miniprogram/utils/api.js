@@ -236,7 +236,7 @@ const api = {
   licenseRules: () => request({ path: '/apply/license-rules', auth: false }),
 
   submitApply: (body) =>
-    request({ path: '/apply/submit', method: 'POST', auth: false, data: body }),
+    request({ path: '/apply/submit', method: 'POST', auth: true, data: body }),
 
   applyStatus: (phone, applyNo) =>
     request({

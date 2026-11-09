@@ -311,9 +311,9 @@ router.get('/apply/license-rules', (_req, res) => {
   )
 })
 
-router.post('/apply/submit', async (req, res, next) => {
+router.post('/apply/submit', authRequired, async (req, res, next) => {
   try {
-    res.json(ok(await applyService.submitApply(req.body)))
+    res.json(ok(await applyService.submitApply(req.body || {}, { auth: req.auth, source: 'mp' })))
   } catch (e) {
     next(e)
   }
