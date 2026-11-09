@@ -60,6 +60,9 @@ App({
 
     const stallId = scan.extractFromLaunch(opt || {})
     if (!stallId) return
+    const path = String((opt && opt.path) || '')
+    // 已指定点餐/下单等业务页时，禁止把启动参数 id 劫持成「到店收款」
+    if (/stall-menu|order-confirm|goods-detail|pages\/cross\//.test(path)) return
     const pending = scan.getPendingPay() || {}
     const same = String(pending.stallId || '') === String(stallId)
     scan.savePendingPay({
@@ -67,13 +70,17 @@ App({
       amount: same ? pending.amount : '',
       resume: true
     })
-    const path = String((opt && opt.path) || '')
     if (path.indexOf('scan-pay') < 0) {
       this._openScanPay = true
     }
   },
   onShow(opt) {
     captureInviteFromLaunch(opt)
+    const showPath = String((opt && opt.path) || '')
+    if (/stall-menu|order-confirm|goods-detail/.test(showPath)) {
+      this._openScanPay = false
+      return
+    }
     if (!this._openScanPay) return
     this._openScanPay = false
     const pending = scan.getPendingPay()

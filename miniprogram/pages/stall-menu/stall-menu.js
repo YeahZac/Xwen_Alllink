@@ -73,14 +73,18 @@ Page({
       wx.redirectTo({ url: scan.scanPayUrl(stallId) })
       return
     }
-    // 允许游客先看菜单；加购时再登录（soft），避免 reLaunch 丢掉门店 id
+    // 主动进点餐页时清掉挂起收款，避免登录回流抢跳到扫码支付页
+    try {
+      scan.clearPendingPay()
+    } catch (_) {}
+    // 允许游客先看菜单并本地加购；结算时再登录
     if (!store.ensureConsumerOrRedirect({ allowGuest: true, soft: true })) return
     if (!stallId) {
       wx.showToast({ title: '缺少门店', icon: 'none' })
       setTimeout(() => wx.navigateBack({ fail: () => wx.switchTab({ url: '/pages/index/index' }) }), 500)
       return
     }
-    this.setData({ stallId, fromScan: query.from === 'scan' })
+    this.setData({ stallId, fromScan: false })
     await this.loadMenu()
   },
   async loadMenu() {
@@ -135,11 +139,15 @@ Page({
     if (!store.ensureConsumerOrRedirect({ allowGuest: true, soft: true })) return
     this.refreshCart()
   },
-  requireLoginForOrder() {
+  /** 结算才强制登录；加购允许游客本地选菜，避免「点了加号没反应」 */
+  requireLoginForCheckout() {
     if (store.isLoggedIn() && store.getSession() && store.getSession().role === 'consumer') {
       return true
     }
-    wx.showToast({ title: '请先登录后再点餐', icon: 'none' })
+    try {
+      if (this.data.stallId) wx.setStorageSync('wy_pending_menu_stall', String(this.data.stallId))
+    } catch (_) {}
+    wx.showToast({ title: '请先登录后再结算', icon: 'none' })
     setTimeout(() => {
       wx.navigateTo({
         url: '/pages/login/login',
@@ -147,6 +155,13 @@ Page({
       })
     }, 400)
     return false
+  },
+  afterCartChange(msg) {
+    this.refreshCart()
+    if (msg) wx.showToast({ title: msg, icon: 'success', duration: 800 })
+    try {
+      wx.vibrateShort({ type: 'light' })
+    } catch (_) {}
   },
   refreshCart() {
     const cart = store.getCart()
@@ -235,7 +250,6 @@ Page({
     return true
   },
   confirmSheet() {
-    if (!this.requireLoginForOrder()) return
     if (!this.validateSheet()) return
     const g = this.data.sheetGoods
     const unit = this.data.sheetUnit
@@ -252,12 +266,10 @@ Page({
       this.data.sheetQty || 1
     )
     this.closeSheet()
-    this.refreshCart()
-    wx.showToast({ title: '已加入', icon: 'success' })
+    this.afterCartChange('已加入')
   },
   inc(e) {
     const id = e.currentTarget.dataset.id
-    if (!this.requireLoginForOrder()) return
     const g = this.findGoods(id)
     if (!g) {
       wx.showToast({ title: '菜品加载异常，请下拉刷新', icon: 'none' })
@@ -265,16 +277,18 @@ Page({
     }
     const groups = g.optionGroups || []
     // 仅当确有规格组时弹层；避免 hasOptions 脏数据导致「点了没反应」
-    if ((g.hasOptions && groups.length) || groups.length > 0) {
+    if (groups.length > 0) {
       this.openSheet(g)
       return
     }
+    if (!this.data.stallId) {
+      wx.showToast({ title: '缺少门店', icon: 'none' })
+      return
+    }
     store.addToCart(this.data.stallId, g, 1)
-    this.refreshCart()
-    wx.vibrateShort({ type: 'light' })
+    this.afterCartChange('已加入')
   },
   dec(e) {
-    if (!this.requireLoginForOrder()) return
     const id = e.currentTarget.dataset.id
     const cart = store.getCart()
     if (String(cart.stallId) !== String(this.data.stallId)) return
@@ -286,14 +300,14 @@ Page({
     } else {
       store.updateQty(lines[0].lineKey || lines[0].id, lines[0].qty - 1)
     }
-    this.refreshCart()
+    this.afterCartChange()
   },
   goConfirm() {
-    if (!this.requireLoginForOrder()) return
     if (!this.data.summary.totalQty) {
       wx.showToast({ title: '请先选择菜品', icon: 'none' })
       return
     }
+    if (!this.requireLoginForCheckout()) return
     wx.navigateTo({ url: '/pages/order-confirm/order-confirm' })
   }
 })

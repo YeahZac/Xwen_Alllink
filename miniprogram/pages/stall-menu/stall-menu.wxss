@@ -152,8 +152,8 @@
 }
 
 .qty__btn {
-  width: 56rpx;
-  height: 56rpx;
+  width: 64rpx;
+  height: 64rpx;
   border-radius: 50%;
   background: var(--color-surface-soft);
   color: var(--color-ink);
@@ -162,6 +162,13 @@
   justify-content: center;
   font-size: var(--font-subtitle);
   font-weight: 700;
+  /* 扩大可点区域，避免加号难点/看似无反应 */
+  position: relative;
+}
+.qty__btn::before {
+  content: '';
+  position: absolute;
+  inset: -12rpx;
 }
 
 .qty__btn--plus {

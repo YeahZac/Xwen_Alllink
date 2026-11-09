@@ -306,6 +306,28 @@ function resumePendingPay() {
   return true
 }
 
+function resumePendingMenu() {
+  let stallId = ''
+  try {
+    stallId = String(wx.getStorageSync('wy_pending_menu_stall') || '')
+  } catch (_) {
+    stallId = ''
+  }
+  if (!stallId) return false
+  try {
+    wx.removeStorageSync('wy_pending_menu_stall')
+  } catch (_) {}
+  const pages = getCurrentPages() || []
+  const prev = pages.length >= 2 ? pages[pages.length - 2] : null
+  const prevRoute = String((prev && prev.route) || '')
+  if (prevRoute.indexOf('pages/stall-menu/stall-menu') >= 0) {
+    wx.navigateBack()
+    return true
+  }
+  wx.reLaunch({ url: `/pages/stall-menu/stall-menu?id=${stallId}` })
+  return true
+}
+
 /** B 端左上角「回首页」：切到消费者身份再进 C 端，避免闪回工作台 */
 async function switchToConsumerHome() {
   const s = getSession()
@@ -376,6 +398,7 @@ function routeAfterLogin() {
     }
   } catch (e) {}
   if (resumePendingPay()) return
+  if (resumePendingMenu()) return
   const dr = displayRoleOf(s)
   if (dr === 'consumer' || s.role === 'consumer') {
     wx.switchTab({ url: ROLE_HOME.consumer })
