@@ -359,6 +359,26 @@ router.post(
   }
 )
 
+router.delete(
+  '/admin/apply/:id',
+  ...adminOnly,
+  requirePage('applies', { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await applyService.deleteApply(Number(req.params.id), {
+            reviewerId: req.auth.adminId || req.auth.userId,
+            reviewerName: req.auth.username || req.auth.name || ''
+          })
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
 router.get(
   '/admin/applies/:id/logs',
   ...adminOnly,

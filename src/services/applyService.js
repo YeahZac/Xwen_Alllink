@@ -122,20 +122,36 @@ async function submitApply(body) {
     }
     const pendingStall = await query(
       `SELECT id FROM merchant_applications
-       WHERE role='stall' AND status='pending'
+       WHERE role='stall' AND status='pending' AND deleted_at IS NULL
          AND (contact_phone=:phone ${applicantUserId ? 'OR applicant_user_id=:uid' : ''})
        LIMIT 1`,
       applicantUserId ? { phone, uid: applicantUserId } : { phone }
-    )
+    ).catch(async (e) => {
+      if (!/Unknown column.*deleted_at/i.test(String(e.message || ''))) throw e
+      return query(
+        `SELECT id FROM merchant_applications
+         WHERE role='stall' AND status='pending'
+           AND (contact_phone=:phone ${applicantUserId ? 'OR applicant_user_id=:uid' : ''})
+         LIMIT 1`,
+        applicantUserId ? { phone, uid: applicantUserId } : { phone }
+      )
+    })
     if (pendingStall.length) {
       throw new HttpError(400, '您已有审核中的地摊入驻申请，请勿重复提交')
     }
   } else {
     const pending = await query(
       `SELECT id FROM merchant_applications
-       WHERE contact_phone = :phone AND status = 'pending' LIMIT 1`,
+       WHERE contact_phone = :phone AND status = 'pending' AND deleted_at IS NULL LIMIT 1`,
       { phone }
-    )
+    ).catch(async (e) => {
+      if (!/Unknown column.*deleted_at/i.test(String(e.message || ''))) throw e
+      return query(
+        `SELECT id FROM merchant_applications
+         WHERE contact_phone = :phone AND status = 'pending' LIMIT 1`,
+        { phone }
+      )
+    })
     if (pending.length) {
       throw new HttpError(400, '该手机号已有审核中的申请，请勿重复提交')
     }
@@ -690,22 +706,42 @@ function mapApplyRow(r) {
 
 async function listApplies({ status, page, pageSize, limit } = {}) {
   const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
-  let where = ''
   const params = {}
+  const clauses = ['deleted_at IS NULL']
   if (status && ['pending', 'approved', 'rejected'].includes(status)) {
-    where = ` WHERE status = :status`
+    clauses.push('status = :status')
     params.status = status
   }
-  const countRows = await query(`SELECT COUNT(*) AS c FROM merchant_applications${where}`, params)
+  const where = ` WHERE ${clauses.join(' AND ')}`
+  let countRows
+  let rows
+  try {
+    countRows = await query(`SELECT COUNT(*) AS c FROM merchant_applications${where}`, params)
+    rows = await query(
+      `SELECT id, apply_no, role, shop_name, credit_code, legal_person, contact_name, contact_phone,
+              city, address, license_json, referrer_code, latitude, longitude,
+              status, reject_reason, merchant_id, created_at, reviewed_at
+       FROM merchant_applications${where}
+       ORDER BY id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
+  } catch (e) {
+    if (!/Unknown column.*deleted_at/i.test(String(e.message || ''))) throw e
+    const legacyWhere =
+      status && ['pending', 'approved', 'rejected'].includes(status)
+        ? ' WHERE status = :status'
+        : ''
+    countRows = await query(`SELECT COUNT(*) AS c FROM merchant_applications${legacyWhere}`, params)
+    rows = await query(
+      `SELECT id, apply_no, role, shop_name, credit_code, legal_person, contact_name, contact_phone,
+              city, address, license_json, referrer_code, latitude, longitude,
+              status, reject_reason, merchant_id, created_at, reviewed_at
+       FROM merchant_applications${legacyWhere}
+       ORDER BY id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
+  }
   const total = Number(countRows[0]?.c) || 0
-  const rows = await query(
-    `SELECT id, apply_no, role, shop_name, credit_code, legal_person, contact_name, contact_phone,
-            city, address, license_json, referrer_code, latitude, longitude,
-            status, reject_reason, merchant_id, created_at, reviewed_at
-     FROM merchant_applications${where}
-     ORDER BY id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
-    params
-  )
   const list = rows.map(mapApplyRow)
   try {
     const applyReviewLogService = require('./applyReviewLogService')
@@ -747,6 +783,70 @@ async function getApplyDetail(id) {
 async function listApplyReviewLogs(id) {
   const applyReviewLogService = require('./applyReviewLogService')
   return applyReviewLogService.listLogs('merchant', id)
+}
+
+/** 删除入驻申请：软删申请单；若已生成门店则一并软删，便于重新入驻 */
+async function deleteApply(applyId, { reviewerId, reviewerName } = {}) {
+  const id = Number(applyId)
+  let rows
+  try {
+    rows = await query(
+      `SELECT id, status, merchant_id AS merchantId, shop_name AS shopName, apply_no AS applyNo,
+              role, deleted_at AS deletedAt
+       FROM merchant_applications WHERE id=:id`,
+      { id }
+    )
+  } catch (e) {
+    if (!/Unknown column.*deleted_at/i.test(String(e.message || ''))) throw e
+    rows = await query(
+      `SELECT id, status, merchant_id AS merchantId, shop_name AS shopName, apply_no AS applyNo, role
+       FROM merchant_applications WHERE id=:id`,
+      { id }
+    )
+  }
+  if (!rows.length) throw new HttpError(404, '申请不存在')
+  const row = rows[0]
+  if (row.deletedAt) throw new HttpError(404, '申请已删除')
+  const mid = Number(row.merchantId) || 0
+  if (mid) {
+    try {
+      await require('./opsService').softDeleteMerchant(mid)
+    } catch (e) {
+      if (!(e && Number(e.status) === 404)) throw e
+    }
+  }
+  try {
+    await query(
+      `UPDATE merchant_applications
+       SET deleted_at=NOW(),
+           status='rejected',
+           reject_reason='已由平台删除，可重新提交入驻',
+           reviewer_id=:rid,
+           reviewed_at=NOW()
+       WHERE id=:id`,
+      { id, rid: reviewerId || null }
+    )
+  } catch (e) {
+    if (!/Unknown column.*deleted_at/i.test(String(e.message || ''))) throw e
+    await query(`DELETE FROM merchant_applications WHERE id=:id`, { id })
+  }
+  await appendApplyReviewLog({
+    applyType: 'merchant',
+    applyId: id,
+    fromStatus: row.status,
+    toStatus: 'deleted',
+    reason: '平台删除申请，可重新入驻',
+    reviewerId,
+    reviewerName
+  })
+  return {
+    id,
+    deleted: true,
+    applyNo: row.applyNo,
+    shopName: row.shopName,
+    merchantId: mid || null,
+    reapplyAllowed: true
+  }
 }
 
 async function rejectApply(applyId, { reason, reviewerId, reviewerName } = {}) {
@@ -848,5 +948,6 @@ module.exports = {
   getApplyDetail,
   listApplyReviewLogs,
   rejectApply,
+  deleteApply,
   listMerchants
 }

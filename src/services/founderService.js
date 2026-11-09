@@ -42,7 +42,9 @@ async function overview(auth) {
   let pendingApplies = 0
   try {
     const rows = await query(
-      `SELECT COUNT(*) AS c FROM merchant_applications WHERE status='pending'`
+      `SELECT COUNT(*) AS c FROM merchant_applications WHERE status='pending' AND deleted_at IS NULL`
+    ).catch(() =>
+      query(`SELECT COUNT(*) AS c FROM merchant_applications WHERE status='pending'`)
     )
     pendingApplies = Number(rows[0].c) || 0
   } catch (_) {}

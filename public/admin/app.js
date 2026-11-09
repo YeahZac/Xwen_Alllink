@@ -1660,13 +1660,20 @@ async function renderApplies() {
           <button class="btn sm ghost" data-expand="${r.id}">日志</button>
           <button class="btn sm" data-detail="${r.id}">详情</button>
           ${applyStatusActions(r, editable)}
+          ${
+            editable
+              ? `<button class="btn danger sm" data-del-apply="${r.id}" data-name="${esc(
+                  r.shopName || ''
+                )}">删除</button>`
+              : ''
+          }
         </td></tr>
         <tr class="apply-log-row hidden" id="apply-log-${r.id}">
           <td colspan="10">
             <div class="apply-log-panel">
               <h4>审核记录（通过 / 驳回日志）</h4>
               ${reviewLogsHtml(logs)}
-              <p class="muted">不支持删除申请；可在上方操作中改为「通过」或「驳回」，每次改审都会追加一条日志。</p>
+              <p class="muted">删除后列表不再展示；若已生成门店将一并软删，小程序可重新走入驻。</p>
             </div>
           </td>
         </tr>`
@@ -1718,6 +1725,21 @@ async function renderApplies() {
             method: 'POST',
             body: JSON.stringify({ reason })
           })
+          await load()
+          refreshNavBadges()
+        })
+    })
+    $('list').querySelectorAll('[data-del-apply]').forEach((b) => {
+      b.onclick = () =>
+        runAction(async () => {
+          const name = b.dataset.name || '该申请'
+          if (
+            !confirmDanger(
+              `确认删除入驻申请「${name}」？删除后列表不再显示；若已生成门店将一并删除，小程序可重新走入驻审核。`
+            )
+          )
+            return
+          await api(`/admin/apply/${b.dataset.delApply}`, { method: 'DELETE' })
           await load()
           refreshNavBadges()
         })
@@ -1793,18 +1815,20 @@ async function showApplyDetail(id, reload) {
      <h4>审核记录</h4>
      ${reviewLogsHtml(r.reviewLogs)}
      ${
-       canApprove || canReject
+       canEdit('applies')
          ? `<div class="toolbar" style="margin-top:12px">
               ${canApprove ? `<button class="btn ok" id="applyOk">${r.status === 'rejected' ? '改通过' : '通过'}</button>` : ''}
               ${canReject ? `<button class="btn danger" id="applyNo">${r.status === 'approved' ? '改驳回' : '驳回'}</button>` : ''}
+              <button class="btn danger" id="applyDel">删除</button>
             </div>`
-         : '<p class="muted">申请记录保留，不提供删除。</p>'
+         : '<p class="muted">当前账号无入驻审核编辑权限。</p>'
      }`,
     null,
     true
   )
   const okBtn = document.getElementById('applyOk')
   const noBtn = document.getElementById('applyNo')
+  const delBtn = document.getElementById('applyDel')
   if (okBtn) {
     okBtn.onclick = () =>
       runAction(async () => {
@@ -1832,6 +1856,21 @@ async function showApplyDetail(id, reload) {
         }
         if (!confirmDanger('确认改为驳回？不会删除申请。')) return
         await api(`/admin/apply/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) })
+        closeModal()
+        if (reload) reload()
+        refreshNavBadges()
+      })
+  }
+  if (delBtn) {
+    delBtn.onclick = () =>
+      runAction(async () => {
+        if (
+          !confirmDanger(
+            `确认删除入驻申请「${r.shopName || ''}」？删除后列表不再显示；若已生成门店将一并删除，小程序可重新走入驻审核。`
+          )
+        )
+          return
+        await api(`/admin/apply/${id}`, { method: 'DELETE' })
         closeModal()
         if (reload) reload()
         refreshNavBadges()

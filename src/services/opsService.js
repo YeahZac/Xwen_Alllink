@@ -881,18 +881,32 @@ async function softDeleteMerchant(id) {
   } catch (_) {
     /* 表或列缺失时忽略 */
   }
-  // 关联入驻单改为驳回，便于小程序重新走入驻；保留审计日志
+  // 关联入驻单改为驳回并软删，便于列表清理与小程序重新入驻
   try {
     await query(
       `UPDATE merchant_applications
        SET status='rejected',
            reject_reason=IFNULL(NULLIF(reject_reason,''), '门店已由平台删除，可重新提交入驻'),
-           reviewed_at=NOW()
-       WHERE merchant_id=:id AND status IN ('approved','pending')`,
+           reviewed_at=NOW(),
+           deleted_at=IFNULL(deleted_at, NOW())
+       WHERE merchant_id=:id AND (deleted_at IS NULL OR status IN ('approved','pending'))`,
       { id: mid }
     )
-  } catch (_) {
-    /* 忽略 */
+  } catch (e) {
+    if (/Unknown column.*deleted_at/i.test(String(e.message || ''))) {
+      try {
+        await query(
+          `UPDATE merchant_applications
+           SET status='rejected',
+               reject_reason=IFNULL(NULLIF(reject_reason,''), '门店已由平台删除，可重新提交入驻'),
+               reviewed_at=NOW()
+           WHERE merchant_id=:id AND status IN ('approved','pending')`,
+          { id: mid }
+        )
+      } catch (_) {
+        /* 忽略 */
+      }
+    }
   }
   return {
     id: mid,

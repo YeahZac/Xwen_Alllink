@@ -35,7 +35,9 @@ async function dashboard() {
     one('SELECT COUNT(*) c FROM merchants WHERE status=1 AND deleted_at IS NULL').catch(() =>
       one('SELECT COUNT(*) c FROM merchants WHERE status=1')
     ),
-    one(`SELECT COUNT(*) c FROM merchant_applications WHERE status='pending'`),
+    one(
+      `SELECT COUNT(*) c FROM merchant_applications WHERE status='pending' AND deleted_at IS NULL`
+    ).catch(() => one(`SELECT COUNT(*) c FROM merchant_applications WHERE status='pending'`)),
     one(`SELECT COUNT(*) c FROM partner_applications WHERE status='pending'`).catch(() => 0),
     one(`SELECT COUNT(*) c FROM partner_withdraw_requests WHERE status='pending'`).catch(() => 0),
     one(`SELECT COUNT(*) c FROM platform_role_applications WHERE status='pending'`).catch(() => 0),
