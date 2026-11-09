@@ -28,17 +28,67 @@ function readFileOptional(p) {
   return fs.readFileSync(full, 'utf8')
 }
 
+/** 云托管环境变量常把换行存成字面量 \\n；并去掉包裹引号 */
+function normalizePem(pem) {
+  let s = String(pem || '').trim()
+  if (!s) return ''
+  if (
+    (s.startsWith('"') && s.endsWith('"')) ||
+    (s.startsWith("'") && s.endsWith("'"))
+  ) {
+    s = s.slice(1, -1).trim()
+  }
+  if (s.includes('\\n')) s = s.replace(/\\n/g, '\n')
+  s = s.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
+  return s.endsWith('\n') ? s : `${s}\n`
+}
+
+function diagnosePem(pem) {
+  const s = String(pem || '')
+  if (!s.trim()) return 'empty'
+  if (/BEGIN\s+PRIVATE\s+KEY|BEGIN\s+RSA\s+PRIVATE\s+KEY/i.test(s)) return 'private_key'
+  if (/BEGIN\s+CERTIFICATE/i.test(s)) return 'certificate'
+  if (/BEGIN\s+PUBLIC\s+KEY/i.test(s)) return 'public_key'
+  return 'unknown'
+}
+
+/** 解析微信支付公钥（支持 PUBLIC KEY / CERTIFICATE；拒绝误配成私钥） */
+function resolveWechatPublicKey(pem) {
+  const normalized = normalizePem(pem)
+  if (!normalized) {
+    throw new HttpError(503, '未配置微信支付公钥，无法加密进件敏感字段')
+  }
+  const kind = diagnosePem(normalized)
+  if (kind === 'private_key') {
+    throw new HttpError(
+      503,
+      'WX_PAY_PUBLIC_KEY 误配成了商户私钥。请改为微信商户平台「API安全 → 微信支付公钥」下载的公钥 PEM，并配置 WX_PAY_PUBLIC_KEY_ID'
+    )
+  }
+  try {
+    return crypto.createPublicKey(normalized)
+  } catch (e) {
+    const msg = String((e && e.message) || e)
+    throw new HttpError(
+      503,
+      `微信支付公钥无法解析（${msg}）。请确认 PEM 含 -----BEGIN PUBLIC KEY----- 或证书，云托管环境变量换行用真实换行或 \\n，且公钥 ID 与文件配对`
+    )
+  }
+}
+
 function payConfig() {
   const mchId = env('WX_PAY_MCH_ID') || env('WX_SP_MCHID')
   const apiV3Key = env('WX_PAY_API_V3_KEY') || env('WX_PAY_APIV3_KEY')
   const serialNo = env('WX_PAY_SERIAL_NO') || env('WX_PAY_MCH_SERIAL_NO')
   const appId = env('WX_APPID') || env('WX_PAY_APPID')
-  const privateKey =
+  const privateKey = normalizePem(
     env('WX_PAY_PRIVATE_KEY') ||
-    readFileOptional(env('WX_PAY_PRIVATE_KEY_PATH', 'secrets/wxpay/apiclient_key.pem'))
-  const wechatPubKey =
+      readFileOptional(env('WX_PAY_PRIVATE_KEY_PATH', 'secrets/wxpay/apiclient_key.pem'))
+  )
+  const wechatPubKey = normalizePem(
     env('WX_PAY_PUBLIC_KEY') ||
-    readFileOptional(env('WX_PAY_PUBLIC_KEY_PATH', 'secrets/wxpay/pub_key.pem'))
+      readFileOptional(env('WX_PAY_PUBLIC_KEY_PATH', 'secrets/wxpay/pub_key.pem'))
+  )
   const wechatPubKeyId = env('WX_PAY_PUBLIC_KEY_ID') || env('WX_PAY_PUB_KEY_ID')
   const notifyUrl =
     env('WX_PAY_NOTIFY_URL') ||
@@ -364,20 +414,73 @@ function notifyUrlForDisplay() {
 /** 敏感字段：微信支付公钥 RSA-OAEP(SHA1) */
 function encryptSensitive(plain) {
   const c = payConfig()
-  if (!c.wechatPubKey) {
-    throw new HttpError(503, '未配置微信支付公钥，无法加密进件敏感字段')
+  let keyObj
+  try {
+    keyObj = resolveWechatPublicKey(c.wechatPubKey)
+  } catch (e) {
+    if (e instanceof HttpError) throw e
+    throw new HttpError(503, `微信支付公钥无效：${e.message || e}`)
+  }
+  if (!c.wechatPubKeyId) {
+    throw new HttpError(
+      503,
+      '缺少 WX_PAY_PUBLIC_KEY_ID（微信支付公钥 ID）。进件加密请求头 Wechatpay-Serial 必须与公钥配对'
+    )
   }
   const text = String(plain == null ? '' : plain)
-  return crypto
-    .publicEncrypt(
+  try {
+    return crypto
+      .publicEncrypt(
+        {
+          key: keyObj,
+          padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+          oaepHash: 'sha1'
+        },
+        Buffer.from(text, 'utf8')
+      )
+      .toString('base64')
+  } catch (e) {
+    const msg = String((e && e.message) || e)
+    if (/DECODER|unsupported|ERR_OSSL/i.test(msg)) {
+      throw new HttpError(
+        503,
+        `进件敏感字段加密失败（密钥格式不被支持）。请重新下载「微信支付公钥」写入 WX_PAY_PUBLIC_KEY，勿用商户 API 证书私钥；原始错误：${msg}`
+      )
+    }
+    throw new HttpError(503, `进件敏感字段加密失败：${msg}`)
+  }
+}
+
+function publicKeyHealth() {
+  const c = payConfig()
+  const out = {
+    hasPublicKey: Boolean(c.wechatPubKey),
+    publicKeyId: c.wechatPubKeyId || null,
+    pemKind: diagnosePem(c.wechatPubKey),
+    parseOk: false,
+    encryptOk: false,
+    error: null
+  }
+  if (!c.wechatPubKey) {
+    out.error = 'missing_public_key'
+    return out
+  }
+  try {
+    const keyObj = resolveWechatPublicKey(c.wechatPubKey)
+    out.parseOk = true
+    crypto.publicEncrypt(
       {
-        key: c.wechatPubKey,
+        key: keyObj,
         padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
         oaepHash: 'sha1'
       },
-      Buffer.from(text, 'utf8')
+      Buffer.from('ping', 'utf8')
     )
-    .toString('base64')
+    out.encryptOk = true
+  } catch (e) {
+    out.error = e.message || String(e)
+  }
+  return out
 }
 
 function sha256Hex(buf) {
@@ -521,6 +624,8 @@ module.exports = {
   notifyUrlForDisplay,
   yuanToFen,
   encryptSensitive,
+  publicKeyHealth,
+  normalizePem,
   uploadMerchantMedia,
   submitEcommerceApplyment,
   queryEcommerceApplymentById,

@@ -48,20 +48,45 @@ async function recordCommission(conn, { bizType, bizId, payerMerchantId, amountG
   return res.commission
 }
 
+/** 首页可见：已签约且具备二级商户号（可正常收款） */
+const HOME_PAY_READY_SQL = `NULLIF(TRIM(IFNULL(m.wx_sub_mch_id,'')), '') IS NOT NULL
+       AND (m.wx_apply_state IS NULL OR m.wx_apply_state='' OR m.wx_apply_state='FINISH')`
+
 async function listNearbyStalls(opts = {}) {
-  const rows = await query(
-    `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude,
-            m.cover_hue AS coverHue, m.cover_url AS coverImage, m.materials_json AS materialsJson,
-            m.status,
-            LEFT(m.name,1) AS initial,
-            CASE WHEN m.status=1 THEN 1 ELSE 0 END AS open,
-            IFNULL(NULLIF(m.biz_type,''), '餐饮') AS tag,
-            m.address AS \`desc\`,
-            IFNULL(NULLIF(m.biz_type,''), '餐饮') AS category
-     FROM merchants m
-     WHERE m.role='stall' AND m.status=1 AND m.deleted_at IS NULL
-     ORDER BY m.id DESC`
-  )
+  let rows
+  try {
+    rows = await query(
+      `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude,
+              m.cover_hue AS coverHue, m.cover_url AS coverImage, m.materials_json AS materialsJson,
+              m.status,
+              LEFT(m.name,1) AS initial,
+              CASE WHEN m.status=1 THEN 1 ELSE 0 END AS open,
+              IFNULL(NULLIF(m.biz_type,''), '餐饮') AS tag,
+              m.address AS \`desc\`,
+              IFNULL(NULLIF(m.biz_type,''), '餐饮') AS category
+       FROM merchants m
+       WHERE m.role='stall' AND m.status=1 AND m.deleted_at IS NULL
+         AND ${HOME_PAY_READY_SQL}
+       ORDER BY m.id DESC`
+    )
+  } catch (e) {
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || /Unknown column.*wx_sub_mch/i.test(String(e.message || ''))))) {
+      throw e
+    }
+    rows = await query(
+      `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude,
+              m.cover_hue AS coverHue, m.cover_url AS coverImage, m.materials_json AS materialsJson,
+              m.status,
+              LEFT(m.name,1) AS initial,
+              CASE WHEN m.status=1 THEN 1 ELSE 0 END AS open,
+              IFNULL(NULLIF(m.biz_type,''), '餐饮') AS tag,
+              m.address AS \`desc\`,
+              IFNULL(NULLIF(m.biz_type,''), '餐饮') AS category
+       FROM merchants m
+       WHERE m.role='stall' AND m.status=1 AND m.deleted_at IS NULL
+       ORDER BY m.id DESC`
+    )
+  }
   return applyGeo(rows.map((r) => enrichCoverRow(r)), opts)
 }
 
@@ -79,19 +104,40 @@ async function listCrossStores(opts = {}) {
     opts.includeStall === '1' ||
     opts.includeStall === 1
   const roleSql = includeStall ? `m.role IN ('cross', 'stall')` : `m.role='cross'`
-  const stores = await query(
-    `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude, m.role, m.status,
-            m.cover_hue AS coverHue, m.cover_url AS coverImage, m.materials_json AS materialsJson,
-            LEFT(m.name,1) AS initial,
-            CASE WHEN m.status=1 THEN 1 ELSE 0 END AS open,
-            IFNULL(
-              NULLIF(m.biz_type,''),
-              CASE WHEN m.role='stall' THEN '餐饮' ELSE '百货商店' END
-            ) AS category
-     FROM merchants m
-     WHERE ${roleSql} AND m.status=1 AND m.deleted_at IS NULL
-     ORDER BY m.id DESC`
-  )
+  let stores
+  try {
+    stores = await query(
+      `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude, m.role, m.status,
+              m.cover_hue AS coverHue, m.cover_url AS coverImage, m.materials_json AS materialsJson,
+              LEFT(m.name,1) AS initial,
+              CASE WHEN m.status=1 THEN 1 ELSE 0 END AS open,
+              IFNULL(
+                NULLIF(m.biz_type,''),
+                CASE WHEN m.role='stall' THEN '餐饮' ELSE '百货商店' END
+              ) AS category
+       FROM merchants m
+       WHERE ${roleSql} AND m.status=1 AND m.deleted_at IS NULL
+         AND ${HOME_PAY_READY_SQL}
+       ORDER BY m.id DESC`
+    )
+  } catch (e) {
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || /Unknown column.*wx_sub_mch/i.test(String(e.message || ''))))) {
+      throw e
+    }
+    stores = await query(
+      `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude, m.role, m.status,
+              m.cover_hue AS coverHue, m.cover_url AS coverImage, m.materials_json AS materialsJson,
+              LEFT(m.name,1) AS initial,
+              CASE WHEN m.status=1 THEN 1 ELSE 0 END AS open,
+              IFNULL(
+                NULLIF(m.biz_type,''),
+                CASE WHEN m.role='stall' THEN '餐饮' ELSE '百货商店' END
+              ) AS category
+       FROM merchants m
+       WHERE ${roleSql} AND m.status=1 AND m.deleted_at IS NULL
+       ORDER BY m.id DESC`
+    )
+  }
   const located = applyGeo(stores.map((r) => enrichCoverRow(r)), opts)
   const withItems =
     opts.withItems === true || opts.withItems === '1' || opts.withItems === 1

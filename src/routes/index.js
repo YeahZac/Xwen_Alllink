@@ -1910,6 +1910,7 @@ router.get('/wxpay/config-check', ...adminOnly, async (_req, res, next) => {
   try {
     const wxPayService = require('../services/wxPayService')
     const c = wxPayService.payConfig()
+    const pub = wxPayService.publicKeyHealth()
     res.json(
       ok({
         configured: wxPayService.wxPayConfigured(),
@@ -1919,6 +1920,10 @@ router.get('/wxpay/config-check', ...adminOnly, async (_req, res, next) => {
         hasPrivateKey: Boolean(c.privateKey),
         hasPublicKey: Boolean(c.wechatPubKey),
         publicKeyId: c.wechatPubKeyId || null,
+        publicKeyPemKind: pub.pemKind,
+        publicKeyParseOk: pub.parseOk,
+        publicKeyEncryptOk: pub.encryptOk,
+        publicKeyError: pub.error,
         mode: c.mode,
         allowDirect: c.allowDirect,
         platformSubMchId: c.platformSubMchId || null,

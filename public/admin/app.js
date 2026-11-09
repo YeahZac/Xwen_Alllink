@@ -3122,7 +3122,7 @@ async function renderWxSubMerchants() {
       ${editable ? '<button class="btn" id="btnSyncAll">批量同步状态</button>' : ''}
       <button class="btn" id="btnPayCfg">支付配置检查</button>
     </div>
-    <p class="muted">电商收付通二级商户进件：资料齐全后可一键提交微信，无需登录商户平台。签约链接需商户超管用微信打开完成（微信强制）。平台分账比例上限 30%。</p>
+    <p class="muted">电商收付通二级商户进件：资料齐全后可一键提交微信。签约链接需商户超管用微信打开完成（微信强制）。「比例」可调平台分账 0～30%。删店请到对应角色门店列表，本页不处理删除。</p>
     <div id="list"></div>`
   const load = async () => {
     const q = ($('fQ').value || '').trim()
@@ -3157,8 +3157,7 @@ async function renderWxSubMerchants() {
               ? `<button class="btn sm primary" data-submit="${m.id}">提交进件</button>
                  <button class="btn sm" data-sync="${m.id}">同步</button>
                  <button class="btn sm" data-rate="${m.id}" data-pct="${m.profitSharePercent ?? 10}">比例</button>
-                 <button class="btn sm" data-sub="${m.id}" data-val="${esc(m.wxSubMchId || '')}">商户号</button>
-                 <button class="btn danger sm" data-del-store="${m.id}" data-name="${esc(m.name || '')}">删除门店</button>`
+                 <button class="btn sm" data-sub="${m.id}" data-val="${esc(m.wxSubMchId || '')}">商户号</button>`
               : `<button class="btn sm" data-sync="${m.id}">同步</button>`
           }
         </td></tr>`
@@ -3258,20 +3257,6 @@ async function renderWxSubMerchants() {
         )
       }
     })
-    $('list').querySelectorAll('[data-del-store]').forEach((b) => {
-      b.onclick = () =>
-        runAction(async () => {
-          const name = b.dataset.name || '该门店'
-          if (
-            !confirmDanger(
-              `确认删除门店「${name}」？将软删除门店及进件记录展示；商品下架，小程序可重新走入驻审核。`
-            )
-          )
-            return
-          await api(`/admin/ops/stores/${b.dataset.delStore}`, { method: 'DELETE' })
-          load()
-        })
-    })
   }
   const resetWxLoad = () => {
     pageState.page = 1
@@ -3295,9 +3280,20 @@ async function renderWxSubMerchants() {
   }
   $('btnPayCfg').onclick = async () => {
     const c = await api('/wxpay/config-check')
+    const pubOk = c.publicKeyParseOk && c.publicKeyEncryptOk && c.publicKeyId
+    const pubStatus = pubOk
+      ? '可用'
+      : `不可用 — ${esc(
+          c.publicKeyError ||
+            (!c.publicKeyId ? '缺少 WX_PAY_PUBLIC_KEY_ID' : '请检查 WX_PAY_PUBLIC_KEY')
+        )}`
     openModal(
       '微信支付配置',
-      `<pre>${esc(JSON.stringify(c, null, 2))}</pre>`,
+      `<p><b>进件加密公钥</b>：${pubOk ? pubStatus : `<span style="color:#c00">${pubStatus}</span>`}</p>
+      <p class="muted">须配置微信商户平台「API安全 → 微信支付公钥」PEM + 公钥ID；不要把商户 API 私钥填进 WX_PAY_PUBLIC_KEY。pemKind=${esc(
+        c.publicKeyPemKind || ''
+      )}</p>
+      <pre>${esc(JSON.stringify(c, null, 2))}</pre>`,
       null,
       true
     )
