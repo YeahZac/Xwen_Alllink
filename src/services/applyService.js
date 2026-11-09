@@ -765,9 +765,20 @@ function mapApplyRow(r) {
     }
   }
   licenses = licenses && typeof licenses === 'object' ? licenses : {}
-  const licenseUrls = Object.values(licenses)
-    .map((v) => (typeof v === 'string' ? v : v?.url || ''))
-    .filter(Boolean)
+  // 仅收集真正的图片/文件 URL，避免把 bankName「交通银行」等文本当成附件链接
+  const { licenseUrl } = require('../utils/mediaPick')
+  const isMedia = (u) =>
+    /^(https?:\/\/|wxfile:\/\/|cloud:\/\/|\/uploads\/|\/static\/)/i.test(String(u || '').trim())
+  const licenseUrls = Object.entries(licenses)
+    .filter(
+      ([k]) =>
+        !['adminRemark', 'stallCommitment', 'stallCommitmentAt', 'stallPath', 'adminProxy', 'source'].includes(
+          k
+        )
+    )
+    .map(([, v]) => licenseUrl(v))
+    .filter((u) => u && isMedia(u))
+  const licensePreview = pickCoverFromLicenses(licenses) || licenseUrls[0] || ''
   return {
     id: r.id,
     applyNo: r.apply_no,
@@ -781,7 +792,7 @@ function mapApplyRow(r) {
     city: r.city,
     address: r.address,
     licenses,
-    licensePreview: licenseUrls[0] || '',
+    licensePreview,
     licenseCount: licenseUrls.length,
     status: r.status,
     statusText: statusMap[r.status] || r.status,

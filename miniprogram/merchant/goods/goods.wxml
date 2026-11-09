@@ -1,7 +1,7 @@
 <view class="page page--tabbed">
   <view class="m-page-head">
-    <text class="m-page-head__title">{{title || '物料'}}</text>
-    <text class="m-page-head__desc">菜品/商品上架、调价与规格</text>
+    <text class="m-page-head__title">{{title || '本店商品'}}</text>
+    <text class="m-page-head__desc">{{shopHint || '仅展示并维护当前登录门店的商品'}}</text>
   </view>
 
   <button class="btn-primary add-btn" bindtap="onAdd">添加商品</button>

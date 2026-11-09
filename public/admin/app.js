@@ -60,13 +60,13 @@ const NAV_GROUPS = [
     name: '内容与运营',
     icon: 'grid',
     items: [
-      { id: 'goods_sku', label: '商品SKU' },
-      { id: 'goods', label: '商品目录' },
-      { id: 'goods_categories', label: '商品类目' },
+      { id: 'goods_sku', label: '全量SKU（按店）' },
+      { id: 'goods', label: '门店商品维护' },
+      { id: 'goods_categories', label: '商品类目（按角色）' },
       { id: 'banners', label: 'Banner 运营' },
       { id: 'needs', label: '供应需求' },
-      { id: 'complaints', label: '投诉工单' },
-      { id: 'configs', label: '平台配置' }
+      { id: 'complaints', label: '投诉工单' }
+      // 平台配置暂时隐藏：需要时取消注释 { id: 'configs', label: '平台配置' }
     ]
   },
   {
@@ -442,13 +442,21 @@ function selectOnOff(name, value, { onLabel = '启用', offLabel = '停用', onV
 
 function isImgUrl(url) {
   if (!url || typeof url !== 'string') return false
-  if (url === '(已上传)' || url.startsWith('wxfile://') || url.startsWith('http://tmp')) return false
-  return /\.(png|jpe?g|webp|gif|bmp)(\?|$)/i.test(url) || /tcb\.qcloud\.la|myqcloud\.com|cos\.|qcloud\.com/i.test(url)
+  const s = url.trim()
+  if (!s || s === '(已上传)' || s.startsWith('wxfile://') || s.startsWith('http://tmp')) return false
+  // 纯中文/卡号等文本绝不当链接（曾把「交通银行」渲成附件）
+  if (!/^(https?:\/\/|cloud:\/\/|\/uploads\/|\/static\/)/i.test(s)) return false
+  if (/[\u4e00-\u9fff]/.test(s) && !/^https?:\/\//i.test(s) && !/^cloud:\/\//i.test(s)) return false
+  return (
+    /\.(png|jpe?g|webp|gif|bmp)(\?|$)/i.test(s) ||
+    /tcb\.qcloud\.la|myqcloud\.com|cos\.|qcloud\.com|\/uploads\/|\/static\//i.test(s) ||
+    /^https?:\/\//i.test(s)
+  )
 }
 
 function thumb(url, cls = 'thumb') {
   if (!url) return '<span class="muted">-</span>'
-  if (!isImgUrl(url)) return `<a href="${esc(url)}" target="_blank" rel="noopener">附件</a>`
+  if (!isImgUrl(url)) return '<span class="muted">无图</span>'
   return `<img class="${esc(cls)}" src="${esc(url)}" alt="" loading="lazy" data-preview="${esc(url)}" />`
 }
 
@@ -511,10 +519,22 @@ function badge(status) {
 
 function fmtTime(v) {
   if (!v) return '-'
+  // MySQL DATETIME 无时区：按库内墙钟展示，避免被当成 UTC 再 +8 小时
+  const s = String(v).trim()
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/)
+  if (m) {
+    const sec = m[6] != null ? `:${m[6]}` : ''
+    return `${m[1]}/${m[2]}/${m[3]} ${m[4]}:${m[5]}${sec}`
+  }
   try {
-    return new Date(v).toLocaleString('zh-CN', { hour12: false })
+    const d = new Date(s)
+    if (Number.isNaN(d.getTime())) return s
+    const pad = (n) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(
+      d.getMinutes()
+    )}:${pad(d.getSeconds())}`
   } catch {
-    return String(v)
+    return s
   }
 }
 
@@ -1671,7 +1691,7 @@ async function renderApplies() {
         <td>${thumb(r.licensePreview)}</td>
         <td>${esc(r.applyNo)}</td><td>${esc(r.roleLabel)}</td>
         <td>${esc(r.shopName)}</td><td>${esc(r.contactName)} ${esc(r.contactPhone)}</td>
-        <td>${esc(r.city)}</td><td>${badge(r.status)}</td>
+        <td>${esc(r.city)}</td><td>${badge(r.statusText || r.status)}</td>
         <td>${summary}</td>
         <td>${fmtTime(r.createdAt)}</td>
         <td class="actions">
@@ -2252,6 +2272,31 @@ async function renderUsers() {
   await load()
 }
 
+async function loadStoreOptions(role) {
+  try {
+    const data = unwrapList(
+      await api(`/admin/ops/identities?role=${encodeURIComponent(role)}&pageSize=200`)
+    )
+    return (data.list || []).filter((s) => s.merchantId || (s.identity !== 'consumer' && s.id))
+  } catch (_) {
+    return []
+  }
+}
+
+function storeOptionHtml(shops, selectedId) {
+  return (
+    `<option value="">请选择门店</option>` +
+    shops
+      .map((s) => {
+        const mid = s.merchantId || s.id
+        const label = `${s.name || '-'}（ID ${mid}）`
+        const sel = String(selectedId || '') === String(mid) ? 'selected' : ''
+        return `<option value="${mid}" ${sel}>${esc(label)}</option>`
+      })
+      .join('')
+  )
+}
+
 async function renderGoods() {
   const editable = canEdit('goods')
   const pageState = { page: 1, pageSize: 20 }
@@ -2262,33 +2307,43 @@ async function renderGoods() {
         <option value="cross">异业兑换</option>
         <option value="supply">供应链货品</option>
       </select>
-      <input id="gMerchantId" placeholder="门店ID（必填筛选更清晰）" style="width:140px" />
-      <input id="gShop" placeholder="店名关键词" style="min-width:120px" />
+      <select id="gShop"><option value="">全部门店</option></select>
       <button class="btn" id="btnReload">刷新</button>
-      ${editable ? '<button class="btn primary" id="btnAdd">新建</button>' : ''}
+      ${editable ? '<button class="btn primary" id="btnAdd">为所选门店新建</button>' : ''}
     </div>
-    <p class="muted">商品必须挂在已入驻审核通过的门店下；建议按门店ID筛选维护。</p>
+    <p class="muted">关系：门店（入驻通过）→ 本页维护该店商品 → 「全量SKU」可跨店检索；「商品类目」只按角色（地摊/异业/供应链）配置下拉项，不直接绑某一家店。</p>
     <div id="list"></div>`
+
+  const refreshShops = async () => {
+    const type = $('gType').value
+    const prev = $('gShop').value
+    const shops = await loadStoreOptions(type)
+    $('gShop').innerHTML =
+      `<option value="">全部门店</option>` +
+      shops
+        .map((s) => {
+          const mid = s.merchantId || s.id
+          return `<option value="${mid}">${esc(s.name || '-')}（ID ${mid}）</option>`
+        })
+        .join('')
+    if (prev && [...$('gShop').options].some((o) => o.value === prev)) $('gShop').value = prev
+  }
+
   const load = async () => {
     const type = $('gType').value
-    const mid = ($('gMerchantId').value || '').trim()
-    const shop = ($('gShop').value || '').trim()
+    const mid = ($('gShop').value || '').trim()
     const qs = new URLSearchParams({
       page: String(pageState.page),
       pageSize: String(pageState.pageSize)
     })
     if (mid) qs.set('merchantId', mid)
     const data = unwrapList(await api(`/admin/goods/${type}?${qs}`))
-    // 店名关键词前端再滤一层（接口仅有 merchantId）
-    if (shop) {
-      data.list = (data.list || []).filter((g) =>
-        String(g.shopName || g.vendor || '')
-          .toLowerCase()
-          .includes(shop.toLowerCase())
-      )
-    }
     pageState.page = data.page
     const rows = data.list
+    const shopCell = (g) => {
+      const name = g.shopName || g.vendor || '-'
+      return `${esc(name)}<div class="muted">门店ID ${g.merchantId || '-'}</div>`
+    }
     const delBtn = (g) =>
       editable
         ? `<button class="btn danger sm" data-del="${type}:${g.id}">删除</button>`
@@ -2302,15 +2357,21 @@ async function renderGoods() {
         disabled: !editable,
         attrs: `data-goods-switch="${type}:${g.id}"`
       })
-    if (type === 'stall') {
-      $('list').innerHTML =
-        table(
-          ['预览', 'ID', '店名', '品名', '价', '积分', '分类', '库存', '上架', '操作'],
-          rows
-            .map(
-              (g) => `<tr class="${saleOn(g) ? '' : 'is-off'}">
+    const headers =
+      type === 'stall'
+        ? ['预览', '商品ID', '所属门店', '品名', '价', '积分', '类目', '库存', '上架', '操作']
+        : type === 'cross'
+          ? ['预览', '商品ID', '所属门店', '品名', '类目', '积分', '现金价', '库存', '上架', '操作']
+          : ['预览', '商品ID', '所属门店', '品名', '类目', '价', '库存', '积分', '状态', '操作']
+    $('list').innerHTML =
+      table(
+        headers,
+        rows
+          .map((g) => {
+            if (type === 'stall') {
+              return `<tr class="${saleOn(g) ? '' : 'is-off'}">
           <td>${thumb(g.imageUrl)}</td>
-          <td>${g.id}</td><td>${esc(g.shopName)}</td><td>${esc(g.name)}</td>
+          <td>${g.id}</td><td>${shopCell(g)}</td><td>${esc(g.name)}</td>
           <td>${g.price}</td><td>${g.pointsGrant}</td><td>${esc(g.category)}</td><td>${g.stock}</td>
           <td>${saleCell(g)}</td>
           <td class="actions">
@@ -2318,46 +2379,30 @@ async function renderGoods() {
             <button class="btn sm" data-opts="${g.id}" data-name="${esc(g.name)}">规格</button>` : '-'}
             ${delBtn(g)}
           </td></tr>`
-            )
-            .join('')
-        ) + pagerHtml(data)
-    } else if (type === 'cross') {
-      $('list').innerHTML =
-        table(
-          ['预览', 'ID', '店名', '品名', '类目', '积分', '现金价', '库存', '上架', '操作'],
-          rows
-            .map(
-              (g) => `<tr class="${saleOn(g) ? '' : 'is-off'}">
+            }
+            if (type === 'cross') {
+              return `<tr class="${saleOn(g) ? '' : 'is-off'}">
           <td>${thumb(g.imageUrl)}</td>
-          <td>${g.id}</td><td>${esc(g.shopName)}</td><td>${esc(g.name)}</td>
+          <td>${g.id}</td><td>${shopCell(g)}</td><td>${esc(g.name)}</td>
           <td>${esc(g.category || '')}</td>
           <td>${g.pointsNeed}</td><td>${g.cashPrice}</td><td>${g.stock ?? '-'}</td><td>${saleCell(g)}</td>
           <td class="actions">
             ${editable ? `<button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button>` : '-'}
             ${delBtn(g)}
           </td></tr>`
-            )
-            .join('')
-        ) + pagerHtml(data)
-    } else {
-      $('list').innerHTML =
-        table(
-          ['预览', 'ID', '供应方', '品名', '类目', '价', '库存', '积分', '状态', '操作'],
-          rows
-            .map(
-              (g) => `<tr class="${saleOn(g) ? '' : 'is-off'}">
+            }
+            return `<tr class="${saleOn(g) ? '' : 'is-off'}">
           <td>${thumb(g.imageUrl)}</td>
-          <td>${g.id}</td><td>${esc(g.vendor)}</td><td>${esc(g.name)}</td>
+          <td>${g.id}</td><td>${shopCell(g)}</td><td>${esc(g.name)}</td>
           <td>${esc(g.category || '')}</td>
           <td>${g.price}</td><td>${g.stock}</td><td>${g.pointsGrant}</td><td>${saleCell(g)}</td>
           <td class="actions">
             ${editable ? `<button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button>` : '-'}
             ${delBtn(g)}
           </td></tr>`
-            )
-            .join('')
-        ) + pagerHtml(data)
-    }
+          })
+          .join('')
+      ) + pagerHtml(data)
     bindPager($('listPager'), pageState, () => runAction(load))
     bindThumbs($('list'))
     $('list').querySelectorAll('[data-edit]').forEach((b) => {
@@ -2382,15 +2427,32 @@ async function renderGoods() {
     })
   }
   const btnAdd = $('btnAdd')
-  if (btnAdd) btnAdd.onclick = () => editGoods($('gType').value, null, load)
+  if (btnAdd) {
+    btnAdd.onclick = () => {
+      const mid = $('gShop').value
+      if (!mid) {
+        alert('请先在上方选择一家门店，再新建该店商品')
+        return
+      }
+      editGoods($('gType').value, { merchantId: Number(mid) }, load)
+    }
+  }
   $('btnReload').onclick = () => {
     pageState.page = 1
-    load()
+    runAction(load)
   }
   $('gType').onchange = () => {
     pageState.page = 1
-    load()
+    runAction(async () => {
+      await refreshShops()
+      await load()
+    })
   }
+  $('gShop').onchange = () => {
+    pageState.page = 1
+    runAction(load)
+  }
+  await refreshShops()
   await load()
 }
 
@@ -2401,14 +2463,14 @@ async function renderGoodsCategories() {
     <div class="toolbar">
       <select id="catRole">
         <option value="">全部角色</option>
-        <option value="stall">地摊</option>
+        <option value="stall">地摊（角色级类目）</option>
         <option value="cross">异业门店</option>
         <option value="supply">供应链</option>
       </select>
       <button class="btn" id="btnReload">刷新</button>
       ${editable ? '<button class="btn primary" id="btnAdd">新建类目</button>' : ''}
     </div>
-    <div class="muted" style="margin:8px 0 12px">类目必须绑定地摊 / 异业门店 / 供应链之一，商品编辑时按角色下拉选择。</div>
+    <div class="muted" style="margin:8px 0 12px">类目按<strong>角色</strong>配置（地摊/异业/供应链），不是某家店私有；门店商品编辑时按角色拉取对应类目下拉。</div>
     <div id="list"></div>`
   const load = async () => {
     const role = $('catRole').value
@@ -2509,8 +2571,9 @@ function openCategoryModal(row, reload) {
 }
 
 async function editGoods(type, g, reload) {
-  const isNew = !g
+  const isNew = !g || !g.id
   g = g || { merchantId: '', name: '', onSale: 1, status: 1, imageUrl: '', category: '' }
+  const shops = await loadStoreOptions(type)
   const cats = await api(`/admin/goods-categories?role=${encodeURIComponent(type)}`).catch(() => [])
   const enabled = (cats || []).filter((c) => Number(c.status) === 1)
   const catOptions =
@@ -2522,9 +2585,14 @@ async function editGoods(type, g, reload) {
           )
           .join('')
       : `<option value="${esc(g.category || '')}">${esc(g.category || '（请先在商品类目中添加）')}</option>`
-  const catField = `<label>类目（关联${type === 'stall' ? '地摊' : type === 'cross' ? '异业门店' : '供应链'}）<select id="f_category">${catOptions}</select></label>`
+  const roleLabel = type === 'stall' ? '地摊' : type === 'cross' ? '异业门店' : '供应链'
+  const catField = `<label>类目（${roleLabel}角色通用，非某家店专属）<select id="f_category">${catOptions}</select></label>`
+  const storeField = `<label>所属门店（必选）<select id="f_merchantId">${storeOptionHtml(
+    shops,
+    g.merchantId
+  )}</select></label>`
 
-  let fields = field('merchantId', '商户 ID', g.merchantId, 'number') + field('name', '品名', g.name) + catField
+  let fields = storeField + field('name', '品名', g.name) + catField
   if (type === 'stall') {
     fields +=
       field('price', '价格', g.price || '', 'number') +
@@ -2550,9 +2618,14 @@ async function editGoods(type, g, reload) {
       mediaField('imageUrl', '商品图片', g.imageUrl || '', 'goods')
   }
   openModal(isNew ? '新建商品' : '编辑商品', fields, async () => {
+    const merchantId = Number(($('f_merchantId') && $('f_merchantId').value) || 0)
+    if (!merchantId) {
+      alert('请选择所属门店')
+      throw new Error('请选择所属门店')
+    }
     const body = {
       id: g.id,
-      merchantId: Number(formVal('merchantId')),
+      merchantId,
       name: formVal('name'),
       price: Number(formVal('price') || 0),
       pointsGrant: Number(formVal('pointsGrant') || 0),

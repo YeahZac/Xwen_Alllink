@@ -5,19 +5,25 @@ Page({
   data: {
     role: '',
     title: '',
+    shopName: '',
+    shopHint: '',
     list: [],
     loading: true
   },
   async onShow() {
     if (!store.ensureMerchantOrRedirect()) return
     const s = store.getSession()
-    this.setData({ loading: true })
+    const shopName = s.shopName || s.merchantName || ''
+    this.setData({ loading: true, shopName })
     try {
       const rows = await api.merchantGoods()
       let list = []
-      let title = '商品管理'
+      let title = '本店商品'
+      let shopHint = shopName
+        ? `当前门店：${shopName}（ID ${s.merchantId || '-'}）· 仅管理本店商品`
+        : `当前门店 ID ${s.merchantId || '-'} · 仅管理本店商品`
       if (s.role === 'stall') {
-        title = '销售商品管理'
+        title = '本店点餐商品'
         list = (rows || []).map((g) => ({
           ...g,
           coverImage: g.imageUrl || '',
@@ -25,7 +31,7 @@ Page({
           status: g.onSale ? '在售' : '下架'
         }))
       } else if (s.role === 'cross') {
-        title = '门店商品 / 积分价'
+        title = '本店兑换商品'
         list = (rows || []).map((g) => ({
           ...g,
           coverImage: g.imageUrl || '',
@@ -33,7 +39,7 @@ Page({
           status: g.onSale ? '在售' : '下架'
         }))
       } else {
-        title = '供货商品管理'
+        title = '本店供货商品'
         list = (rows || []).map((g) => ({
           ...g,
           coverImage: g.imageUrl || '',
@@ -41,7 +47,7 @@ Page({
           status: `库存 ${g.stock}`
         }))
       }
-      this.setData({ role: s.role, title, list, loading: false })
+      this.setData({ role: s.role, title, shopHint, list, loading: false })
       wx.setNavigationBarTitle({ title })
     } catch (e) {
       this.setData({ loading: false })
