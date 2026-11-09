@@ -310,8 +310,20 @@ function renderNav() {
       const map = loadNavCollapse()
       map[key] = next
       saveNavCollapse(map)
+      if (!next) {
+        // 展开后滚到分组底部，避免末项被侧栏裁切却看不见滚动条
+        requestAnimationFrame(() => {
+          box.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+        })
+      }
     }
   })
+  const active = nav.querySelector('button.nav-item.on')
+  if (active) {
+    requestAnimationFrame(() => {
+      active.scrollIntoView({ block: 'nearest' })
+    })
+  }
 }
 
 async function refreshNavBadges() {
