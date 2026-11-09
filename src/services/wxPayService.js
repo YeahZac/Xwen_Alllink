@@ -1,7 +1,9 @@
 /**
- * 微信支付 APIv3（服务商 / 电商收付通）
+ * 微信支付 APIv3（服务商 / 平台收付通）
  * - 二级商户未进件时：WX_PAY_MODE=direct，用平台商户号直收做联调
- * - 有 sub_mchid 时：WX_PAY_MODE=ecommerce（或 auto）走收付通二级商户收款
+ * - 有 sub_mchid 时：WX_PAY_MODE=ecommerce|partner|auto → 走服务商 JSAPI
+ *   POST /v3/pay/partner/transactions/jsapi（旧路径 /v3/ecommerce/transactions/jsapi 已 404）
+ * - 进件 / 分账仍用 /v3/ecommerce/* 系列接口
  */
 const fs = require('fs')
 const path = require('path')
@@ -299,12 +301,21 @@ function requestWxPay(method, apiPath, bodyObj) {
             resolve({ status: res.statusCode, data: json, headers: res.headers })
             return
           }
-          const msg =
+          let msg =
             (json && (json.message || json.detail || json.code)) ||
             `微信支付错误 HTTP ${res.statusCode}`
+          // nginx HTML 404：接口路径不存在（常见于误用已下线的 /v3/ecommerce/transactions/*）
+          if (
+            res.statusCode === 404 &&
+            typeof text === 'string' &&
+            /<!DOCTYPE|<html/i.test(text)
+          ) {
+            msg = `微信支付接口不存在(404)：${method} ${apiPath}。收付通下单请使用 /v3/pay/partner/transactions/jsapi`
+          }
           const err = new HttpError(502, String(msg))
           err.wx = json
           err.statusCode = res.statusCode
+          err.apiPath = apiPath
           reject(err)
         })
       }
@@ -386,8 +397,9 @@ async function createJsapiPrepay({
 
   let apiPath
   let body
-  if (resolved.mode === 'ecommerce') {
-    apiPath = '/v3/ecommerce/transactions/jsapi'
+  if (resolved.mode === 'ecommerce' || resolved.mode === 'partner') {
+    // 平台收付通 / 普通服务商：统一服务商 JSAPI（电商旧 transactions 路径已下线返回 nginx 404）
+    apiPath = '/v3/pay/partner/transactions/jsapi'
     body = {
       sp_appid: c.appId,
       sp_mchid: c.mchId,
@@ -401,19 +413,6 @@ async function createJsapiPrepay({
     }
     if (c.profitSharing) {
       body.settle_info = { profit_sharing: true }
-    }
-  } else if (resolved.mode === 'partner') {
-    apiPath = '/v3/pay/partner/transactions/jsapi'
-    body = {
-      sp_appid: c.appId,
-      sp_mchid: c.mchId,
-      sub_mchid: resolved.subMchId,
-      description: desc,
-      out_trade_no: outTradeNo,
-      notify_url: notifyUrl,
-      amount: { total: totalFen, currency: 'CNY' },
-      payer: { sp_openid: oid },
-      attach: String(attach || outTradeNo).slice(0, 128)
     }
   } else {
     // 平台直收联调（二级商户到位前）
@@ -508,11 +507,7 @@ async function queryOrderByOutTradeNo(outTradeNo, { subMchId } = {}) {
   const ono = encodeURIComponent(String(outTradeNo || ''))
   const resolved = resolvePayMode(subMchId)
   let apiPath
-  if (resolved.mode === 'ecommerce') {
-    apiPath = `/v3/ecommerce/transactions/out-trade-no/${ono}?sp_mchid=${encodeURIComponent(
-      c.mchId
-    )}&sub_mchid=${encodeURIComponent(resolved.subMchId)}`
-  } else if (resolved.mode === 'partner') {
+  if (resolved.mode === 'ecommerce' || resolved.mode === 'partner') {
     apiPath = `/v3/pay/partner/transactions/out-trade-no/${ono}?sp_mchid=${encodeURIComponent(
       c.mchId
     )}&sub_mchid=${encodeURIComponent(resolved.subMchId)}`
