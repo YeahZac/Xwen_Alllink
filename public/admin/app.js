@@ -3301,18 +3301,23 @@ async function renderWxSubMerchants() {
   $('btnPayCfg').onclick = async () => {
     const c = await api('/wxpay/config-check')
     const pubOk = c.publicKeyParseOk && c.publicKeyEncryptOk && c.publicKeyId
+    const privOk = c.privateKeyParseOk && c.privateKeySignOk
     const pubStatus = pubOk
       ? '可用'
       : `不可用 — ${esc(
           c.publicKeyError ||
             (!c.publicKeyId ? '缺少 WX_PAY_PUBLIC_KEY_ID' : '请检查 WX_PAY_PUBLIC_KEY')
         )}`
+    const privStatus = privOk
+      ? '可用'
+      : `不可用 — ${esc(c.privateKeyError || '请检查 WX_PAY_PRIVATE_KEY（apiclient_key.pem）')}`
     openModal(
       '微信支付配置',
-      `<p><b>进件加密公钥</b>：${pubOk ? pubStatus : `<span style="color:#c00">${pubStatus}</span>`}</p>
-      <p class="muted">须配置微信商户平台「API安全 → 微信支付公钥」PEM + 公钥ID；不要把商户 API 私钥填进 WX_PAY_PUBLIC_KEY。pemKind=${esc(
-        c.publicKeyPemKind || ''
-      )}</p>
+      `<p><b>商户 API 私钥（签名/上传证照）</b>：${
+        privOk ? privStatus : `<span style="color:#c00">${privStatus}</span>`
+      }</p>
+      <p><b>进件加密公钥</b>：${pubOk ? pubStatus : `<span style="color:#c00">${pubStatus}</span>`}</p>
+      <p class="muted">私钥 = apiclient_key.pem；公钥 = 微信「API安全 → 微信支付公钥」+ PUBLIC_KEY_ID。二者不能填反。云托管 PEM 换行用真实换行或 \\n。</p>
       <pre>${esc(JSON.stringify(c, null, 2))}</pre>`,
       null,
       true

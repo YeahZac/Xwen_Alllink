@@ -125,11 +125,53 @@ function nonceStr(len = 32) {
   return crypto.randomBytes(Math.ceil(len / 2)).toString('hex').slice(0, len)
 }
 
+/** 商户 API 私钥（apiclient_key.pem）；OpenSSL3 下用 KeyObject 避免 DECODER unsupported */
+function resolveMerchantPrivateKey(pem) {
+  const normalized = normalizePem(pem)
+  if (!normalized) {
+    throw new HttpError(503, '未配置商户 API 私钥 WX_PAY_PRIVATE_KEY / WX_PAY_PRIVATE_KEY_PATH')
+  }
+  const kind = diagnosePem(normalized)
+  if (kind === 'public_key' || kind === 'certificate') {
+    throw new HttpError(
+      503,
+      'WX_PAY_PRIVATE_KEY 误配成了公钥/证书。请填写商户平台下载的 apiclient_key.pem（BEGIN PRIVATE KEY）'
+    )
+  }
+  try {
+    return crypto.createPrivateKey(normalized)
+  } catch (e) {
+    const msg = String((e && e.message) || e)
+    throw new HttpError(
+      503,
+      `商户 API 私钥无法解析（${msg}）。请重新粘贴 apiclient_key.pem 全文；云托管换行用真实换行或 \\n；勿加密口令保护的私钥`
+    )
+  }
+}
+
 function signMessage(message, privateKeyPem) {
-  const signer = crypto.createSign('RSA-SHA256')
-  signer.update(message)
-  signer.end()
-  return signer.sign(privateKeyPem, 'base64')
+  let keyObj
+  try {
+    keyObj = resolveMerchantPrivateKey(privateKeyPem)
+  } catch (e) {
+    if (e instanceof HttpError) throw e
+    throw new HttpError(503, `商户私钥无效：${e.message || e}`)
+  }
+  try {
+    const signer = crypto.createSign('RSA-SHA256')
+    signer.update(message)
+    signer.end()
+    return signer.sign(keyObj, 'base64')
+  } catch (e) {
+    const msg = String((e && e.message) || e)
+    if (/DECODER|unsupported|ERR_OSSL/i.test(msg)) {
+      throw new HttpError(
+        503,
+        `微信支付请求签名失败（私钥格式不被支持）。请检查云托管 WX_PAY_PRIVATE_KEY 是否为未加密的 apiclient_key.pem；原始错误：${msg}`
+      )
+    }
+    throw new HttpError(503, `微信支付请求签名失败：${msg}`)
+  }
 }
 
 function authorizationHeader(method, urlPathWithQuery, body = '') {
@@ -143,6 +185,33 @@ function authorizationHeader(method, urlPathWithQuery, body = '') {
   const message = `${method}\n${urlPathWithQuery}\n${timestamp}\n${nonce}\n${payload}\n`
   const signature = signMessage(message, c.privateKey)
   return `WECHATPAY2-SHA256-RSA2048 mchid="${c.mchId}",nonce_str="${nonce}",signature="${signature}",timestamp="${timestamp}",serial_no="${c.serialNo}"`
+}
+
+function privateKeyHealth() {
+  const c = payConfig()
+  const out = {
+    hasPrivateKey: Boolean(c.privateKey),
+    pemKind: diagnosePem(c.privateKey),
+    parseOk: false,
+    signOk: false,
+    error: null
+  }
+  if (!c.privateKey) {
+    out.error = 'missing_private_key'
+    return out
+  }
+  try {
+    const keyObj = resolveMerchantPrivateKey(c.privateKey)
+    out.parseOk = true
+    const signer = crypto.createSign('RSA-SHA256')
+    signer.update('ping')
+    signer.end()
+    signer.sign(keyObj, 'base64')
+    out.signOk = true
+  } catch (e) {
+    out.error = e.message || String(e)
+  }
+  return out
 }
 
 function requestWxPay(method, apiPath, bodyObj) {
@@ -625,6 +694,7 @@ module.exports = {
   yuanToFen,
   encryptSensitive,
   publicKeyHealth,
+  privateKeyHealth,
   normalizePem,
   uploadMerchantMedia,
   submitEcommerceApplyment,
