@@ -1,6 +1,6 @@
 {
   "navigationBarTitleText": "申请成为商家",
-  "usingComponents": {
-    "ad-banner": "/components/ad-banner/ad-banner"
-  }
+  "navigationBarBackgroundColor": "#ffffff",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#ededed"
 }

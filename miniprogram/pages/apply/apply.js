@@ -211,6 +211,18 @@ Page({
     this.setData({ selected: id })
     this.syncRoleFields(id)
   },
+  onRoleChange(e) {
+    const id = e.detail.value
+    if (!id) return
+    this.setData({ selected: id })
+    this.syncRoleFields(id)
+  },
+  onAgreeChange(e) {
+    this.setData({ 'form.agreed': (e.detail.value || []).includes('1') })
+  },
+  onStallCommitChange(e) {
+    this.setData({ 'form.stallCommitment': (e.detail.value || []).includes('1') })
+  },
   onField(e) {
     const key = e.currentTarget.dataset.key
     this.setData({ [`form.${key}`]: e.detail.value })

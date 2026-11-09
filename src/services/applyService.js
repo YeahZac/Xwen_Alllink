@@ -161,26 +161,27 @@ async function submitApply(body) {
     )
   }
 
-  const pending = await query(
-    `SELECT id FROM merchant_applications
-     WHERE role=:role AND status='pending' AND deleted_at IS NULL
-       AND (contact_phone=:phone ${applicantUserId ? 'OR applicant_user_id=:uid' : ''})
-     LIMIT 1`,
-    applicantUserId
-      ? { role: body.role, phone, uid: applicantUserId }
-      : { role: body.role, phone }
-  ).catch(async (e) => {
-    if (!/Unknown column.*deleted_at/i.test(String(e.message || ''))) throw e
-    return query(
+  // 仅按手机号+角色查重，避免云库未跑 sql/22 时 applicant_user_id 缺列直接报错
+  let pending = []
+  try {
+    pending = await query(
       `SELECT id FROM merchant_applications
-       WHERE role=:role AND status='pending'
-         AND (contact_phone=:phone ${applicantUserId ? 'OR applicant_user_id=:uid' : ''})
+       WHERE role=:role AND status='pending' AND deleted_at IS NULL AND contact_phone=:phone
        LIMIT 1`,
-      applicantUserId
-        ? { role: body.role, phone, uid: applicantUserId }
-        : { role: body.role, phone }
+      { role: body.role, phone }
     )
-  })
+  } catch (e) {
+    if (/Unknown column.*deleted_at/i.test(String(e.message || ''))) {
+      pending = await query(
+        `SELECT id FROM merchant_applications
+         WHERE role=:role AND status='pending' AND contact_phone=:phone
+         LIMIT 1`,
+        { role: body.role, phone }
+      )
+    } else {
+      throw e
+    }
+  }
   if (pending.length) {
     throw new HttpError(400, '您已有审核中的入驻申请，请勿重复提交')
   }
