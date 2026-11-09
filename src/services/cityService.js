@@ -138,7 +138,7 @@ async function closeCity(id) {
   let pausedMerchants = 0
   if (activeMerchants > 0) {
     const r = await query(
-      `UPDATE merchants SET status = 0
+      `UPDATE merchants SET status = 2
        WHERE city = :name AND status = 1 AND deleted_at IS NULL`,
       { name: cityName }
     )

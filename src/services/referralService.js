@@ -225,9 +225,11 @@ async function bindReferrer({ userId, inviteCode }) {
 }
 
 async function hasPriorConsumerOrder(conn, userId, currentOrderNo) {
+  // 与支付成功即触发推荐奖对齐：已付未取消的点餐单即算「有过成交」
   const [stall] = await conn.execute(
     `SELECT COUNT(*) AS n FROM consumer_orders
-     WHERE user_id=? AND pay_status='paid' AND order_status='completed' AND order_no<>?`,
+     WHERE user_id=? AND pay_status='paid' AND IFNULL(order_status,'')<>'cancelled'
+       AND order_no<>?`,
     [userId, currentOrderNo]
   )
   const [cross] = await conn.execute(
@@ -238,7 +240,7 @@ async function hasPriorConsumerOrder(conn, userId, currentOrderNo) {
   return Number(stall[0].n) + Number(cross[0].n) > 0
 }
 
-/** 点餐完成或异业核销后调用：首单 / 复购 / 首次异业 */
+/** 点餐支付成功 / 出餐完成 / 异业核销后调用：首单 / 复购 / 首次异业 */
 async function onConsumerOrderDone(conn, { inviteeUserId, orderNo, kind }) {
   if (!inviteeUserId) return null
   const prior = await hasPriorConsumerOrder(conn, inviteeUserId, orderNo)
@@ -249,6 +251,14 @@ async function onConsumerOrderDone(conn, { inviteeUserId, orderNo, kind }) {
       inviteeUserId,
       bizId: orderNo
     })
+    // first_order 非可叠加且已发过时，本单不应再冒充首单；若仍无 prior 但奖已占用，改走复购
+    if (!out.firstOrder) {
+      out.repurchase = await award(conn, {
+        triggerKey: 'repurchase',
+        inviteeUserId,
+        bizId: orderNo
+      })
+    }
   } else {
     out.repurchase = await award(conn, {
       triggerKey: 'repurchase',

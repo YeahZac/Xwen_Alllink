@@ -465,17 +465,7 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
     })
   }
 
-  // 服务商商户号不能走直收；无二级商户时：模拟入账或明确报错，避免脏 unpaid 单
-  if (!String(subMchId || '').trim()) {
-    if (config.allowPaySimulate) {
-      return finalizeAsSimulated('门店未进件二级商户，已按模拟微信支付入账')
-    }
-    throw new HttpError(
-      400,
-      '门店尚未完成微信收款进件（缺少二级商户号），暂无法在线支付。请联系运营完成进件，或在联调环境开启 ALLOW_PAY_SIMULATE=1'
-    )
-  }
-
+  // 无二级商户时交给 resolvePayMode：WX_PAY_ALLOW_DIRECT=1 走平台直收；否则再模拟/报错
   const created = await withTransaction(async (conn) => {
     const orderId = await insertConsumerOrder(conn, { payChannel: 'wxpay' })
     await insertStallOrderItems(conn, orderId, lines)
@@ -503,7 +493,7 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
     })
   } catch (e) {
     const msg = String((e && e.message) || '')
-    const needSub = /sub_mch|二级商户|受理机构/i.test(msg)
+    const needSub = /sub_mch|二级商户|受理机构|WX_PAY_ALLOW_DIRECT|未开启平台直收/i.test(msg)
     await withTransaction(async (conn) => {
       const [rows] = await conn.execute(
         `SELECT * FROM consumer_orders WHERE order_no=? AND pay_status='unpaid' FOR UPDATE`,
@@ -527,7 +517,17 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
     }).catch((err) => console.warn('[order] rollback prepay fail', err.message))
 
     if (needSub && config.allowPaySimulate) {
-      return finalizeAsSimulated('微信支付需二级商户号，已按模拟支付入账')
+      return finalizeAsSimulated(
+        String(subMchId || '').trim()
+          ? '微信支付需二级商户号，已按模拟支付入账'
+          : '门店未进件二级商户且直收不可用，已按模拟微信支付入账'
+      )
+    }
+    if (needSub && !String(subMchId || '').trim()) {
+      throw new HttpError(
+        400,
+        '门店尚未完成微信收款进件（缺少二级商户号）。请完成进件，或联调开启 WX_PAY_ALLOW_DIRECT=1 / ALLOW_PAY_SIMULATE=1'
+      )
     }
     throw e
   }
@@ -758,10 +758,11 @@ async function createScanPayOrder({ userId, merchantId, amount }) {
       if (grows.length) return Number(grows[0].id)
     }
     try {
+      // 与入驻占位一致：默认 on_sale=0，进件 FINISH 后由 activateStallPlaceholderOnFinish 上架
       const [ins] = await conn.execute(
         `INSERT INTO stall_goods
           (merchant_id, name, sku_code, price, points_grant, category, unit, desc_text, stock, on_sale)
-         VALUES (?, '到店消费', ?, 0.01, 0, '收款', '次', '收款码占位', 9999, 1)`,
+         VALUES (?, '到店消费', ?, 0.01, 0, '收款', '次', '收款码占位', 9999, 0)`,
         [mid, `SCAN${mid}`]
       )
       return Number(ins.insertId) || 0
@@ -1696,11 +1697,12 @@ async function createPurchaseOrder({ buyerMerchantId, goodsId, qty = 1, fulfillT
     const ono = orderNo('P')
     const type = fulfillType === 'offline' ? 'offline' : 'online'
     const status = type === 'offline' ? 'confirmed' : 'pending'
+    const settledAt = status === 'confirmed' ? new Date() : null
     const [ins] = await conn.execute(
       `INSERT INTO purchase_orders
         (order_no, buyer_merchant_id, seller_merchant_id, fulfill_type, total_amount, points_grant,
          status, paid_at, confirmed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         ono,
         buyerMerchantId,
@@ -1709,7 +1711,8 @@ async function createPurchaseOrder({ buyerMerchantId, goodsId, qty = 1, fulfillT
         total,
         pointsGrant,
         status,
-        status === 'confirmed' ? new Date() : null
+        settledAt,
+        settledAt
       ]
     )
     await conn.execute(
@@ -1820,7 +1823,9 @@ async function confirmPurchaseOrder({ buyerMerchantId, orderId }) {
       [orderId]
     )
     await conn.execute(
-      `UPDATE purchase_orders SET status='confirmed', confirmed_at=NOW() WHERE id=?`,
+      `UPDATE purchase_orders
+       SET status='confirmed', confirmed_at=NOW(), paid_at=IFNULL(paid_at, NOW())
+       WHERE id=?`,
       [orderId]
     )
     const poolBalance = await settlePurchase(conn, {

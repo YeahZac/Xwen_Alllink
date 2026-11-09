@@ -55,7 +55,8 @@ async function dashboard(merchantId, role) {
     todayPointsAllocated = Number(t.p) || 0
     monthPointsAllocated = Number(m.p) || 0
     const [g] = await query(
-      `SELECT COUNT(*) c FROM stall_goods WHERE merchant_id=:id AND deleted_at IS NULL`,
+      `SELECT COUNT(*) c FROM stall_goods
+       WHERE merchant_id=:id AND IFNULL(on_sale,0)=1 AND deleted_at IS NULL`,
       { id: mid }
     )
     goodsCount = Number(g.c)
@@ -66,13 +67,14 @@ async function dashboard(merchantId, role) {
               SUM(CASE WHEN pay_mode='points' THEN 1 ELSE 0 END) pts,
               SUM(CASE WHEN pay_mode='cash' THEN 1 ELSE 0 END) cash
        FROM cross_orders
-       WHERE merchant_id=:id AND DATE(created_at)=CURDATE()`,
+       WHERE merchant_id=:id AND status='completed' AND DATE(created_at)=CURDATE()`,
       { id: mid }
     )
     const [m] = await query(
       `SELECT COUNT(*) c, IFNULL(SUM(cash_amount),0) a
        FROM cross_orders
-       WHERE merchant_id=:id AND created_at>=DATE_FORMAT(NOW(),'%Y-%m-01')`,
+       WHERE merchant_id=:id AND status='completed'
+         AND created_at>=DATE_FORMAT(NOW(),'%Y-%m-01')`,
       { id: mid }
     )
     todayOrders = Number(t.c)
@@ -82,19 +84,22 @@ async function dashboard(merchantId, role) {
     todayPointsOrders = Number(t.pts) || 0
     todayCashOrders = Number(t.cash) || 0
     const [g] = await query(
-      `SELECT COUNT(*) c FROM cross_goods WHERE merchant_id=:id AND deleted_at IS NULL`,
+      `SELECT COUNT(*) c FROM cross_goods
+       WHERE merchant_id=:id AND IFNULL(on_sale,0)=1 AND deleted_at IS NULL`,
       { id: mid }
     )
     goodsCount = Number(g.c)
   } else {
     const [t] = await query(
       `SELECT COUNT(*) c, IFNULL(SUM(total_amount),0) a FROM purchase_orders
-       WHERE seller_merchant_id=:id AND DATE(created_at)=CURDATE()`,
+       WHERE seller_merchant_id=:id AND status IN ('confirmed','shipped','completed')
+         AND DATE(created_at)=CURDATE()`,
       { id: mid }
     )
     const [m] = await query(
       `SELECT COUNT(*) c, IFNULL(SUM(total_amount),0) a FROM purchase_orders
-       WHERE seller_merchant_id=:id AND created_at>=DATE_FORMAT(NOW(),'%Y-%m-01')`,
+       WHERE seller_merchant_id=:id AND status IN ('confirmed','shipped','completed')
+         AND created_at>=DATE_FORMAT(NOW(),'%Y-%m-01')`,
       { id: mid }
     )
     todayOrders = Number(t.c)
@@ -102,7 +107,8 @@ async function dashboard(merchantId, role) {
     monthOrders = Number(m.c)
     monthAmount = Number(m.a)
     const [g] = await query(
-      `SELECT COUNT(*) c FROM supply_goods WHERE merchant_id=:id AND deleted_at IS NULL`,
+      `SELECT COUNT(*) c FROM supply_goods
+       WHERE merchant_id=:id AND IFNULL(status,0)=1 AND deleted_at IS NULL`,
       { id: mid }
     )
     goodsCount = Number(g.c)
@@ -236,13 +242,14 @@ async function completeStallOrder(merchantId, orderId) {
 }
 
 async function setMerchantOpen(merchantId, open) {
-  const status = open ? 1 : 0
+  // schema: 0待审 1营业 2停业 — 歇业必须写 2，避免与待审混淆
+  const status = open ? 1 : 2
   const result = await query('UPDATE merchants SET status=:s WHERE id=:id AND deleted_at IS NULL', {
     s: status,
     id: Number(merchantId)
   })
   if (!result.affectedRows) throw new HttpError(404, '商户不存在')
-  return { merchantId: Number(merchantId), status, open: !!status }
+  return { merchantId: Number(merchantId), status, open: status === 1 }
 }
 
 async function getMerchantGoodsOptions(merchantId, goodsId) {
@@ -434,32 +441,50 @@ async function listFlow(merchantId, { limit = 50 } = {}) {
 
 async function listSupplyMerchants(opts = {}) {
   const { enrichCoverRow } = require('../utils/mediaPick')
-  const rows = await query(
-    `SELECT m.id, m.name, m.city, m.cover_url AS coverImage, m.cover_hue AS coverHue,
-            m.materials_json AS materialsJson,
-            m.address, m.latitude, m.longitude, LEFT(m.name,1) AS initial,
-            IFNULL(NULLIF(m.biz_type,''), '百货商店') AS category,
-            IFNULL(NULLIF(m.biz_type,''), '百货商店') AS tag,
-            (SELECT COUNT(*) FROM supply_goods g WHERE g.merchant_id=m.id AND g.status=1 AND g.deleted_at IS NULL) AS goodsCount,
-            (SELECT IFNULL(SUM(g.sales_count),0) FROM supply_goods g WHERE g.merchant_id=m.id) AS monthSales
-     FROM merchants m
-     WHERE m.role='supply' AND m.status=1 AND m.deleted_at IS NULL
-     ORDER BY m.id DESC`
-  )
+  const { HOME_VISIBLE_SQL } = require('./merchantReady')
+  let rows
+  try {
+    rows = await query(
+      `SELECT m.id, m.name, m.city, m.cover_url AS coverImage, m.cover_hue AS coverHue,
+              m.materials_json AS materialsJson,
+              m.address, m.latitude, m.longitude, LEFT(m.name,1) AS initial,
+              IFNULL(NULLIF(m.biz_type,''), '百货商店') AS category,
+              IFNULL(NULLIF(m.biz_type,''), '百货商店') AS tag,
+              (SELECT COUNT(*) FROM supply_goods g WHERE g.merchant_id=m.id AND g.status=1 AND g.deleted_at IS NULL) AS goodsCount,
+              (SELECT IFNULL(SUM(g.sales_count),0) FROM supply_goods g WHERE g.merchant_id=m.id) AS monthSales
+       FROM merchants m
+       WHERE m.role='supply' AND m.status=1 AND m.deleted_at IS NULL
+         AND ${HOME_VISIBLE_SQL}
+       ORDER BY m.id DESC`
+    )
+  } catch (e) {
+    // 缺 wx_sub / operating_cities 列时 fail-closed，避免未进件供应链误上架
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || e.code === 'ER_NO_SUCH_TABLE'))) throw e
+    rows = []
+  }
   return applyGeo(rows.map((r) => enrichCoverRow(r)), opts)
 }
 
 async function getCrossStoreDetail(id) {
   const { enrichCoverRow } = require('../utils/mediaPick')
-  const stores = await query(
-    `SELECT id, name, city, address, latitude, longitude, cover_url AS coverImage,
-            materials_json AS materialsJson,
-            cover_hue AS coverHue, LEFT(name,1) AS initial,
-            IFNULL(NULLIF(biz_type,''), '百货商店') AS category
-     FROM merchants WHERE id=:id AND role='cross' AND status=1 AND deleted_at IS NULL`,
-    { id }
-  )
-  if (!stores.length) throw new HttpError(404, '异业门店不存在')
+  const { HOME_VISIBLE_SQL } = require('./merchantReady')
+  let stores
+  try {
+    stores = await query(
+      `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude, m.cover_url AS coverImage,
+              m.materials_json AS materialsJson,
+              m.cover_hue AS coverHue, LEFT(m.name,1) AS initial,
+              IFNULL(NULLIF(m.biz_type,''), '百货商店') AS category
+       FROM merchants m
+       WHERE m.id=:id AND m.role='cross' AND m.status=1 AND m.deleted_at IS NULL
+         AND ${HOME_VISIBLE_SQL}`,
+      { id }
+    )
+  } catch (e) {
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || e.code === 'ER_NO_SUCH_TABLE'))) throw e
+    stores = []
+  }
+  if (!stores.length) throw new HttpError(404, '异业门店不存在或尚未对外开放')
   const s = enrichCoverRow(stores[0])
   try {
     s.items = await query(

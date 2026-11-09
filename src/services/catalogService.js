@@ -77,15 +77,22 @@ async function listBanners(role, page) {
 }
 
 async function listSupplyGoods() {
-  return query(
-    `SELECT g.id, g.name, g.price, g.stock, g.points_grant AS pointsGrant,
-            g.points_ratio_text AS pointsRatio, g.image_url AS imageUrl, g.image_url AS coverImage,
-            g.sku_code AS sku, m.name AS vendor, m.id AS vendorId, m.cover_url AS vendorCover
-     FROM supply_goods g
-     JOIN merchants m ON m.id = g.merchant_id
-     WHERE g.status = 1 AND m.status = 1 AND g.deleted_at IS NULL AND m.deleted_at IS NULL
-     ORDER BY g.id`
-  )
+  const { HOME_VISIBLE_SQL } = require('./merchantReady')
+  try {
+    return await query(
+      `SELECT g.id, g.name, g.price, g.stock, g.points_grant AS pointsGrant,
+              g.points_ratio_text AS pointsRatio, g.image_url AS imageUrl, g.image_url AS coverImage,
+              g.sku_code AS sku, m.name AS vendor, m.id AS vendorId, m.cover_url AS vendorCover
+       FROM supply_goods g
+       JOIN merchants m ON m.id = g.merchant_id
+       WHERE g.status = 1 AND m.status = 1 AND g.deleted_at IS NULL AND m.deleted_at IS NULL
+         AND ${HOME_VISIBLE_SQL}
+       ORDER BY g.id`
+    )
+  } catch (e) {
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || e.code === 'ER_NO_SUCH_TABLE'))) throw e
+    return []
+  }
 }
 
 async function getPool(merchantId) {
