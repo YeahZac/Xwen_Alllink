@@ -130,10 +130,33 @@ function downloadBuffer(urlOrPath) {
   })
 }
 
+async function toWxJpegBuffer(buf) {
+  let sharp
+  try {
+    sharp = require('sharp')
+  } catch (_) {
+    return buf
+  }
+  try {
+    const out = await sharp(buf, { failOn: 'none' })
+      .rotate()
+      .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 80, mozjpeg: true })
+      .toBuffer()
+    return out && out.length ? out : buf
+  } catch (_) {
+    return buf
+  }
+}
+
 async function uploadMediaFromUrl(url, filename) {
-  const buf = await downloadBuffer(url)
+  let buf = await downloadBuffer(url)
   if (!buf || buf.length < 100) throw new HttpError(400, `图片过小或损坏：${filename}`)
-  return wxPayService.uploadMerchantMedia(buf, filename)
+  // 微信媒体接口按 jpeg 更稳；webp/过大图先转一版
+  if (buf.length > 900 * 1024 || /\.webp(\?|$)/i.test(String(url)) || buf.slice(0, 4).toString() === 'RIFF') {
+    buf = await toWxJpegBuffer(buf)
+  }
+  return wxPayService.uploadMerchantMedia(buf, filename.replace(/\.webp$/i, '.jpg'))
 }
 
 async function loadMerchant(id) {
@@ -436,14 +459,15 @@ async function prepareMediaIds(materials, merchant) {
   const license = licenseUrl(materials.businessLicense)
   if (!front || !back) throw new HttpError(400, '请先上传身份证人像面与国徽面')
   if (!store) throw new HttpError(400, '请先上传摊位/门店经营场景照')
-  const media = {
-    idCardFront: await uploadMediaFromUrl(front, 'id_front.jpg'),
-    idCardBack: await uploadMediaFromUrl(back, 'id_back.jpg'),
-    storeScene: await uploadMediaFromUrl(store, 'store.jpg')
-  }
-  if (license) {
-    media.businessLicense = await uploadMediaFromUrl(license, 'license.jpg')
-  }
+  const jobs = [
+    uploadMediaFromUrl(front, 'id_front.jpg'),
+    uploadMediaFromUrl(back, 'id_back.jpg'),
+    uploadMediaFromUrl(store, 'store.jpg')
+  ]
+  if (license) jobs.push(uploadMediaFromUrl(license, 'license.jpg'))
+  const [idCardFront, idCardBack, storeScene, businessLicense] = await Promise.all(jobs)
+  const media = { idCardFront, idCardBack, storeScene }
+  if (license) media.businessLicense = businessLicense
   return media
 }
 

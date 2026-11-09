@@ -102,9 +102,12 @@ async function uploadLocalFile(filePath, bizType = 'license') {
   const lower = String(filePath || '').toLowerCase()
   const isPdf = lower.endsWith('.pdf')
   let path = filePath
+  // 证照压到约 400KB，减少分片轮次，上传更快
+  const licenseBiz = /^(license|idcard|id_card|apply|stall_license)$/i.test(String(bizType || ''))
+  const maxBytes = licenseBiz ? 400 * 1024 : image.DEFAULT_MAX
 
   if (!isPdf) {
-    const packed = await image.compressUnderLimit(filePath, image.DEFAULT_MAX)
+    const packed = await image.compressUnderLimit(filePath, maxBytes)
     path = packed.filePath
   }
 

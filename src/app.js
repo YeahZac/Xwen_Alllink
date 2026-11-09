@@ -149,7 +149,7 @@ if (require.main === module) {
       '[xwen-alllink-api] WARNING: DB host is localhost. On WeChat Cloud Hosting set MYSQL_ADDRESS / MYSQL_USERNAME / MYSQL_PASSWORD (or DB_HOST) in service env, then republish.'
     )
   }
-  app.listen(config.port, () => {
+  const server = app.listen(config.port, () => {
     console.log(`[xwen-alllink-api] listening on :${config.port}`)
     const adminUrl = config.adminHost
       ? `https://${config.adminHost}/`
@@ -157,6 +157,15 @@ if (require.main === module) {
     console.log(`[xwen-alllink-api] admin UI: ${adminUrl}`)
     ensureSchema().catch((e) => console.warn('[schema]', e.message))
   })
+
+  // 云托管滚动发版会发 SIGTERM；优雅退出避免把正常重启打成 npm error 噪音
+  const shutdown = (sig) => {
+    console.log(`[xwen-alllink-api] ${sig} received, shutting down`)
+    server.close(() => process.exit(0))
+    setTimeout(() => process.exit(0), 8000).unref()
+  }
+  process.on('SIGTERM', () => shutdown('SIGTERM'))
+  process.on('SIGINT', () => shutdown('SIGINT'))
 }
 
 module.exports = app

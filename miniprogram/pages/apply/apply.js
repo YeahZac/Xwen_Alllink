@@ -348,7 +348,7 @@ Page({
         }
         this.setData({ [`files.${key}`]: path })
         try {
-          wx.showLoading({ title: '压缩上传中', mask: true })
+          wx.showLoading({ title: '上传中…', mask: true })
           const up = await api.uploadFile(path, 'license')
           wx.hideLoading()
           this.setData({ [`fileUrls.${key}`]: up.fileUrl || up.url || up })
@@ -356,7 +356,14 @@ Page({
         } catch (err) {
           wx.hideLoading()
           this.setData({ [`files.${key}`]: '', [`fileUrls.${key}`]: '' })
-          wx.showToast({ title: err.message || '上传失败', icon: 'none' })
+          const msg = String((err && err.message) || '')
+          wx.showToast({
+            title: /timeout|超时|SIGTERM|重启/i.test(msg)
+              ? '服务繁忙或正在发版，请稍后再传'
+              : err.message || '上传失败',
+            icon: 'none',
+            duration: 2500
+          })
         }
       },
       fail: (err) => {

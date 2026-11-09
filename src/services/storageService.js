@@ -126,12 +126,16 @@ async function encodeMetaFileId(cloudPath) {
 }
 
 /**
- * 智能压缩：先高画质编码，仅在超 3MB 时逐步降质/轻缩放，避免无谓糊化
+ * 智能压缩。
+ * - default：webp，兼顾清晰度
+ * - license：jpeg + 更少轮次，证照上传要快，且微信进件媒体更稳
  */
-async function optimizeImageBuffer(input, originalMime = '') {
+async function optimizeImageBuffer(input, originalMime = '', opts = {}) {
+  const profile = opts.profile === 'license' ? 'license' : 'default'
+  const limit = profile === 'license' ? 900 * 1024 : MAX_BYTES
   if (!sharp) {
-    if (input.length > MAX_BYTES) {
-      throw new HttpError(400, '图片超过 3MB 且服务器未启用压缩组件，请先压缩后上传')
+    if (input.length > limit) {
+      throw new HttpError(400, '图片过大且服务器未启用压缩组件，请先压缩后上传')
     }
     return {
       buffer: input,
@@ -142,81 +146,64 @@ async function optimizeImageBuffer(input, originalMime = '') {
     }
   }
 
-  const img = sharp(input, { failOn: 'none' }).rotate()
-  const meta = await img.metadata()
-  let width = meta.width || 0
-  let height = meta.height || 0
-  let pipeline = sharp(input, { failOn: 'none' }).rotate()
-
+  const meta = await sharp(input, { failOn: 'none' }).rotate().metadata()
+  const width = meta.width || 0
+  const height = meta.height || 0
   const maxSide = Math.max(width, height)
-  if (maxSide > MAX_EDGE) {
-    pipeline = pipeline.resize({
-      width: width >= height ? MAX_EDGE : null,
-      height: height > width ? MAX_EDGE : null,
-      fit: 'inside',
-      withoutEnlargement: true,
-      kernel: sharp.kernel.lanczos3
-    })
-  }
+  const useJpeg = profile === 'license'
+  const defaultEdge = profile === 'license' ? 1600 : MAX_EDGE
+  const qualities = profile === 'license' ? [78, 68, 58] : [86, 80, 74, 68, 62]
+  const edges = profile === 'license' ? [1600, 1280] : [null, 2200, 1920, 1600]
 
-  // 小程序/Web 均支持 webp，同等清晰度体积更小
   const tryEncode = async (quality, edge) => {
     let p = sharp(input, { failOn: 'none' }).rotate()
-    if (edge && Math.max(width, height) > edge) {
+    const target = edge || (maxSide > defaultEdge ? defaultEdge : null)
+    if (target && maxSide > target) {
       p = p.resize({
-        width: width >= height ? edge : null,
-        height: height > width ? edge : null,
-        fit: 'inside',
-        withoutEnlargement: true,
-        kernel: sharp.kernel.lanczos3
-      })
-    } else if (maxSide > MAX_EDGE) {
-      p = p.resize({
-        width: width >= height ? MAX_EDGE : null,
-        height: height > width ? MAX_EDGE : null,
+        width: width >= height ? target : null,
+        height: height > width ? target : null,
         fit: 'inside',
         withoutEnlargement: true,
         kernel: sharp.kernel.lanczos3
       })
     }
-    const buffer = await p
-      .webp({ quality, effort: 4, smartSubsample: true })
-      .toBuffer({ resolveWithObject: true })
-    return buffer
+    if (useJpeg) {
+      return p.jpeg({ quality, mozjpeg: true, chromaSubsampling: '4:2:0' }).toBuffer({
+        resolveWithObject: true
+      })
+    }
+    return p.webp({ quality, effort: 2, smartSubsample: true }).toBuffer({ resolveWithObject: true })
   }
 
-  // 质量从高到低；仍超限再缩小边长
-  const qualities = [86, 80, 74, 68, 62]
-  const edges = [null, 2200, 1920, 1600]
   let best = null
   for (const edge of edges) {
     for (const q of qualities) {
       const out = await tryEncode(q, edge)
       best = out
-      if (out.data.length <= MAX_BYTES) {
+      if (out.data.length <= limit) {
         return {
           buffer: out.data,
-          mime: 'image/webp',
-          ext: 'webp',
+          mime: useJpeg ? 'image/jpeg' : 'image/webp',
+          ext: useJpeg ? 'jpg' : 'webp',
           width: out.info.width,
           height: out.info.height,
           quality: q,
-          edge: edge || MAX_EDGE
+          edge: edge || defaultEdge
         }
       }
     }
   }
 
-  if (best && best.data.length <= MAX_BYTES) {
+  if (best && best.data.length <= limit) {
     return {
       buffer: best.data,
-      mime: 'image/webp',
-      ext: 'webp',
+      mime: useJpeg ? 'image/jpeg' : 'image/webp',
+      ext: useJpeg ? 'jpg' : 'webp',
       width: best.info.width,
       height: best.info.height
     }
   }
-  throw new HttpError(400, '图片无法压缩到 3MB 以内，请更换更小尺寸原图')
+  throw new HttpError(400, '图片无法压缩到限制以内，请更换更小尺寸原图')
 }
 
 function guessExt(mime, fallback = 'bin') {
@@ -271,8 +258,11 @@ async function uploadBuffer({
   let height = null
   let optimized = false
 
+  const licenseBiz = /^(license|idcard|id_card|apply|stall_license)$/i.test(String(bizType || ''))
   if (isImageMime(outMime) && !skipOptimize) {
-    const opt = await optimizeImageBuffer(buffer, outMime)
+    const opt = await optimizeImageBuffer(buffer, outMime, {
+      profile: licenseBiz ? 'license' : 'default'
+    })
     outBuf = opt.buffer
     outMime = opt.mime
     ext = opt.ext
