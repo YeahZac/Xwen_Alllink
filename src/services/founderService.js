@@ -264,6 +264,17 @@ async function setUserFlag(auth, userId, { flag, value } = {}) {
   const col =
     flag === 'founder' ? 'is_founder' : flag === 'partner' ? 'is_partner' : flag === 'lead' ? 'is_lead' : ''
   if (!col) throw new HttpError(400, '无效权限标记')
+  // 创始人标记仅 admin / 非 lead 的创始人可授；lead 不得提权创始人
+  if (flag === 'founder') {
+    const isAdmin = auth.role === 'admin'
+    const isLead = !!Number(auth.isLead)
+    if (!isAdmin && isLead) {
+      throw new HttpError(403, '负责人无权授予创始人身份')
+    }
+    if (!isAdmin && Number(auth.userId) === id && value) {
+      throw new HttpError(403, '不能给自己授予创始人身份')
+    }
+  }
   const v = value ? 1 : 0
   try {
     await query(`UPDATE users SET ${col}=:v WHERE id=:id`, { v, id })

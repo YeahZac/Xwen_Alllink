@@ -10,8 +10,16 @@ const feeService = require('./feeService')
 
 const { getCashRate, pointsToCash } = require('./configService')
 const wxService = require('./wxService')
+const config = require('../config')
 const { applyGeo } = require('../utils/geo')
 const { enrichCoverRow } = require('../utils/mediaPick')
+
+function assertPaySimulateAllowed(cashAmount) {
+  if (!(Number(cashAmount) > 0)) return
+  if (wxService.wxPayConfigured()) return
+  if (config.allowPaySimulate) return
+  throw new HttpError(503, '微信支付未配置，无法收款。联调请设置 ALLOW_PAY_SIMULATE=1')
+}
 
 function round2(n) {
   return Math.round(Number(n || 0) * 100) / 100
@@ -279,6 +287,7 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
 
   const { totalAmount, pointsWant, pointsSpend, offset, cashPaid, lines } = preview
   const ono = orderNo('O')
+  assertPaySimulateAllowed(cashPaid)
   const realPay = wxService.wxPayConfigured() && cashPaid > 0
 
   async function insertConsumerOrder(conn, extra = {}) {
@@ -372,6 +381,15 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
   const created = await withTransaction(async (conn) => {
     const orderId = await insertConsumerOrder(conn, { payChannel: 'wxpay' })
     await insertStallOrderItems(conn, orderId, lines)
+    // 真实支付前预扣抵现积分，防止并发超扣；取消时退回
+    if (pointsSpend > 0) {
+      await pointsService.spendConsumerPoints(conn, {
+        userId,
+        points: pointsSpend,
+        title: '点餐积分抵现（预扣）',
+        bizId: ono
+      })
+    }
     return { orderId }
   })
 
@@ -390,9 +408,27 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
       attach: `menu:${merchantId}`
     })
   } catch (e) {
-    await query(`UPDATE consumer_orders SET order_status='cancelled' WHERE order_no=:ono AND pay_status='unpaid'`, {
-      ono
-    }).catch(() => {})
+    await withTransaction(async (conn) => {
+      const [rows] = await conn.execute(
+        `SELECT * FROM consumer_orders WHERE order_no=? AND pay_status='unpaid' FOR UPDATE`,
+        [ono]
+      )
+      if (!rows.length) return
+      const o = rows[0]
+      await conn.execute(
+        `UPDATE consumer_orders SET order_status='cancelled' WHERE id=? AND pay_status='unpaid'`,
+        [o.id]
+      )
+      const pts = Number(o.points_spend) || 0
+      if (pts > 0) {
+        await pointsService.refundConsumerPoints(conn, {
+          userId: o.user_id,
+          points: pts,
+          title: '点餐取消退回积分',
+          bizId: `${ono}:cancel`
+        })
+      }
+    }).catch((err) => console.warn('[order] rollback prepay fail', err.message))
     throw e
   }
 
@@ -447,6 +483,16 @@ async function finalizePaidConsumerOrder(conn, orderRow, { transactionId } = {})
   if (o.pay_status === 'paid') {
     return { alreadyPaid: true, orderId: o.id, orderNo: o.order_no }
   }
+  // 用户已取消：微信若仍成功，不入账结算，交由退款/人工处理
+  if (String(o.order_status) === 'cancelled') {
+    return {
+      alreadyPaid: false,
+      cancelled: true,
+      needRefund: true,
+      orderId: o.id,
+      orderNo: o.order_no
+    }
+  }
   const mid = Number(o.merchant_id)
   const uid = Number(o.user_id)
   const cash = round2(o.cash_paid != null ? o.cash_paid : o.total_amount)
@@ -461,14 +507,24 @@ async function finalizePaidConsumerOrder(conn, orderRow, { transactionId } = {})
         ? 'preparing'
         : 'preparing'
 
-  // 先落支付成功，再处理积分；积分失败不得回滚已确认的微信入账
+  // 先扣积分（幂等），不足则整单失败，避免「已标已付却未扣积分」
+  const pointsSpend = Number(o.points_spend) || 0
+  if (pointsSpend > 0) {
+    await pointsService.spendConsumerPoints(conn, {
+      userId: uid,
+      points: pointsSpend,
+      title: '点餐积分抵现',
+      bizId: o.order_no
+    })
+  }
+
   try {
     await conn.execute(
       `UPDATE consumer_orders
        SET pay_status='paid', order_status=?, paid_at=NOW(),
            wx_transaction_id=IFNULL(?, wx_transaction_id),
            pay_channel=IFNULL(pay_channel, 'wxpay')
-       WHERE id=? AND pay_status='unpaid'`,
+       WHERE id=? AND pay_status='unpaid' AND order_status<>'cancelled'`,
       [orderStatus === 'completed' ? 'completed' : orderStatus, transactionId || null, o.id]
     )
   } catch (e) {
@@ -477,7 +533,7 @@ async function finalizePaidConsumerOrder(conn, orderRow, { transactionId } = {})
         `UPDATE consumer_orders
          SET pay_status='paid', order_status=?, paid_at=NOW(),
              wx_transaction_id=IFNULL(?, wx_transaction_id)
-         WHERE id=? AND pay_status='unpaid'`,
+         WHERE id=? AND pay_status='unpaid' AND order_status<>'cancelled'`,
         [orderStatus === 'completed' ? 'completed' : 'pending', transactionId || null, o.id]
       )
       if (orderStatus === 'completed') {
@@ -494,20 +550,6 @@ async function finalizePaidConsumerOrder(conn, orderRow, { transactionId } = {})
       )
     } else {
       throw e
-    }
-  }
-
-  const pointsSpend = Number(o.points_spend) || 0
-  if (pointsSpend > 0) {
-    try {
-      await pointsService.spendConsumerPoints(conn, {
-        userId: uid,
-        points: pointsSpend,
-        title: '点餐积分抵现',
-        bizId: o.order_no
-      })
-    } catch (e) {
-      console.warn('[order] finalize points spend', o.order_no, e.message)
     }
   }
 
@@ -542,13 +584,15 @@ async function finalizePaidConsumerOrder(conn, orderRow, { transactionId } = {})
     }
   }
 
+  // 仅按实收现金结算，禁止用积分抵现部分虚增可提现余额
+  const settleBase = cash
   const commission = await recordCommission(conn, {
     bizType: 'stall',
     bizId: o.order_no,
     payerMerchantId: mid,
-    amountGross: Number(o.total_amount) || cash
+    amountGross: settleBase
   })
-  const net = Math.round(((Number(o.total_amount) || cash) - commission) * 100) / 100
+  const net = Math.round((settleBase - commission) * 100) / 100
   await accountService.creditAccount(conn, {
     merchantId: mid,
     accountType: 'cash_settlement',
@@ -627,7 +671,8 @@ async function createScanPayOrder({ userId, merchantId, amount }) {
     }
   }
 
-  const realPay = wxService.wxPayConfigured()
+  assertPaySimulateAllowed(cash)
+  const realPay = wxService.wxPayConfigured() && cash > 0
   const rate = await getCashRate()
   const pointsWant = cashToPoints(cash, rate)
   const ono = orderNo('S')
@@ -812,19 +857,37 @@ async function handleWxPayNotify(headers, rawBody) {
   }
   const ono = parsed.outTradeNo
   if (!ono) throw new HttpError(400, '回调缺少商户订单号')
+
+  // 异业现金/组合单
+  if (String(ono).startsWith('C')) {
+    return withTransaction(async (conn) => {
+      const [rows] = await conn.execute('SELECT * FROM cross_orders WHERE order_no=? FOR UPDATE', [ono])
+      if (!rows.length) return { ignored: true, reason: 'cross_order_not_found', orderNo: ono }
+      const fin = await finalizeCrossPaidOrder(conn, rows[0], {
+        transactionId: parsed.transactionId
+      })
+      return { ok: true, ...fin, transactionId: parsed.transactionId }
+    })
+  }
+
   const result = await withTransaction(async (conn) => {
     const [rows] = await conn.execute('SELECT * FROM consumer_orders WHERE order_no=? FOR UPDATE', [ono])
     if (!rows.length) {
-      // 可能是异业/采购单，暂只处理 C 端地摊单
       return { ignored: true, reason: 'order_not_found', orderNo: ono }
     }
     const fin = await finalizePaidConsumerOrder(conn, rows[0], {
       transactionId: parsed.transactionId
     })
+    if (fin.cancelled || fin.needRefund) {
+      console.warn('[wxpay/notify] paid after cancel, need refund', ono)
+      return { ok: true, ...fin, transactionId: parsed.transactionId }
+    }
     return { ok: true, ...fin, transactionId: parsed.transactionId, _order: rows[0] }
   })
-  if (result && result.ok) {
+  if (result && result.ok && result._order && !result.needRefund) {
     scheduleProfitShare(result._order, parsed.transactionId, result)
+    delete result._order
+  } else if (result && result._order) {
     delete result._order
   }
   return result
@@ -834,21 +897,35 @@ async function handleWxPayNotify(headers, rawBody) {
 async function cancelUnpaidConsumerOrder(orderNo, userId) {
   const ono = String(orderNo || '').trim()
   if (!ono) throw new HttpError(400, '缺少订单号')
-  const rows = await query('SELECT * FROM consumer_orders WHERE order_no=:ono LIMIT 1', { ono })
-  if (!rows.length) throw new HttpError(404, '订单不存在')
-  const o = rows[0]
-  if (Number(o.user_id) !== Number(userId)) throw new HttpError(403, '无权操作该订单')
-  if (o.pay_status === 'paid') throw new HttpError(400, '订单已支付，无法取消')
-  if (o.order_status === 'cancelled') {
-    return { orderNo: ono, status: 'cancelled', payStatus: o.pay_status, alreadyCancelled: true }
-  }
-  if (o.pay_status !== 'unpaid') throw new HttpError(400, '当前状态不可取消')
-  await query(
-    `UPDATE consumer_orders SET order_status='cancelled'
-     WHERE order_no=:ono AND pay_status='unpaid' AND order_status<>'cancelled'`,
-    { ono }
-  )
-  return { orderNo: ono, status: 'cancelled', payStatus: 'unpaid' }
+  return withTransaction(async (conn) => {
+    const [rows] = await conn.execute(
+      'SELECT * FROM consumer_orders WHERE order_no=? FOR UPDATE',
+      [ono]
+    )
+    if (!rows.length) throw new HttpError(404, '订单不存在')
+    const o = rows[0]
+    if (Number(o.user_id) !== Number(userId)) throw new HttpError(403, '无权操作该订单')
+    if (o.pay_status === 'paid') throw new HttpError(400, '订单已支付，无法取消')
+    if (o.order_status === 'cancelled') {
+      return { orderNo: ono, status: 'cancelled', payStatus: o.pay_status, alreadyCancelled: true }
+    }
+    if (o.pay_status !== 'unpaid') throw new HttpError(400, '当前状态不可取消')
+    await conn.execute(
+      `UPDATE consumer_orders SET order_status='cancelled'
+       WHERE id=? AND pay_status='unpaid' AND order_status<>'cancelled'`,
+      [o.id]
+    )
+    const pts = Number(o.points_spend) || 0
+    if (pts > 0) {
+      await pointsService.refundConsumerPoints(conn, {
+        userId: o.user_id,
+        points: pts,
+        title: '点餐取消退回积分',
+        bizId: `${ono}:cancel`
+      })
+    }
+    return { orderNo: ono, status: 'cancelled', payStatus: 'unpaid' }
+  })
 }
 
 /** 未支付订单重新拉起微信支付参数 */
@@ -996,26 +1073,8 @@ async function getConsumerOrderDetail(orderNo, userId) {
   }
 }
 
-/** 小程序支付成功后主动对账入账（防回调延迟） */
-async function syncConsumerPay(orderNo, userId) {
-  const ono = String(orderNo || '').trim()
-  if (!ono) throw new HttpError(400, '缺少订单号')
-  const rows = await query('SELECT * FROM consumer_orders WHERE order_no=:ono LIMIT 1', { ono })
-  if (!rows.length) throw new HttpError(404, '订单不存在')
-  const o = rows[0]
-  if (userId && Number(o.user_id) !== Number(userId)) throw new HttpError(403, '无权操作该订单')
-  if (o.pay_status === 'paid') {
-    const [urows] = await query('SELECT points_balance FROM users WHERE id=:id', { id: o.user_id })
-    return {
-      orderNo: ono,
-      status: o.order_status,
-      payStatus: 'paid',
-      pointsAllocated: Number(o.points_allocated) || 0,
-      pointsBalance: urows.length ? Number(urows[0].points_balance) : 0,
-      alreadyPaid: true
-    }
-  }
-  const subMchId = await getMerchantSubMchId(o.merchant_id)
+async function assertWxTradeSuccess(ono, merchantId) {
+  const subMchId = await getMerchantSubMchId(merchantId)
   let wxOrder = null
   try {
     wxOrder = await wxService.queryWxOrder(ono, { subMchId })
@@ -1027,14 +1086,59 @@ async function syncConsumerPay(orderNo, userId) {
   if (tradeState && tradeState !== 'SUCCESS') {
     throw new HttpError(400, `微信支付未完成（${tradeState}）`)
   }
-  // 查单失败时：若小程序已成功拉起支付，仍允许仅在有 transaction 时入账；否则提示等回调
   if (!tradeState && !transactionId) {
-    // 宽松：仍尝试入账标记需人工核对——改为拒绝，避免未付入账
     throw new HttpError(400, '暂未查到支付成功，请稍后再试或等待支付回调')
   }
+  return transactionId
+}
+
+/** 小程序支付成功后主动对账入账（防回调延迟） */
+async function syncConsumerPay(orderNo, userId) {
+  const ono = String(orderNo || '').trim()
+  if (!ono) throw new HttpError(400, '缺少订单号')
+
+  if (ono.startsWith('C')) {
+    const rows = await query('SELECT * FROM cross_orders WHERE order_no=:ono LIMIT 1', { ono })
+    if (!rows.length) throw new HttpError(404, '订单不存在')
+    const o = rows[0]
+    if (userId && Number(o.user_id) !== Number(userId)) throw new HttpError(403, '无权操作该订单')
+    if (o.status === 'completed') {
+      return { orderNo: ono, status: 'completed', payStatus: 'paid', alreadyPaid: true }
+    }
+    if (o.status === 'cancelled') throw new HttpError(400, '订单已取消')
+    const transactionId = await assertWxTradeSuccess(ono, o.merchant_id)
+    return withTransaction(async (conn) => {
+      const [locked] = await conn.execute('SELECT * FROM cross_orders WHERE order_no=? FOR UPDATE', [ono])
+      const fin = await finalizeCrossPaidOrder(conn, locked[0], { transactionId })
+      return { orderNo: ono, status: fin.status || 'completed', payStatus: 'paid', ...fin }
+    })
+  }
+
+  const rows = await query('SELECT * FROM consumer_orders WHERE order_no=:ono LIMIT 1', { ono })
+  if (!rows.length) throw new HttpError(404, '订单不存在')
+  const o = rows[0]
+  if (userId && Number(o.user_id) !== Number(userId)) throw new HttpError(403, '无权操作该订单')
+  if (o.order_status === 'cancelled') {
+    throw new HttpError(409, '订单已取消，如已扣款请联系客服退款')
+  }
+  if (o.pay_status === 'paid') {
+    const [urows] = await query('SELECT points_balance FROM users WHERE id=:id', { id: o.user_id })
+    return {
+      orderNo: ono,
+      status: o.order_status,
+      payStatus: 'paid',
+      pointsAllocated: Number(o.points_allocated) || 0,
+      pointsBalance: urows.length ? Number(urows[0].points_balance) : 0,
+      alreadyPaid: true
+    }
+  }
+  const transactionId = await assertWxTradeSuccess(ono, o.merchant_id)
   const paid = await withTransaction(async (conn) => {
     const [locked] = await conn.execute('SELECT * FROM consumer_orders WHERE order_no=? FOR UPDATE', [ono])
     const fin = await finalizePaidConsumerOrder(conn, locked[0], { transactionId })
+    if (fin.cancelled || fin.needRefund) {
+      throw new HttpError(409, '订单已取消，如已扣款请联系客服退款')
+    }
     return {
       orderNo: ono,
       status: fin.status,
@@ -1231,9 +1335,16 @@ async function redeemCross({ userId, merchantId, goodsId, payMode, pointsUse = 0
       }
     }
 
-    if (mode === 'mix') {
-      const spend = Number(g._mixSpend) || 0
-      const cashDue = round2(g._mixCash)
+    // 现金 / 组合：未支付前不得完成、扣库存、结算
+    const spend = mode === 'mix' ? Number(g._mixSpend) || 0 : 0
+    const cashDue = mode === 'mix' ? round2(g._mixCash) : cashPrice
+    assertPaySimulateAllowed(cashDue)
+
+    const payModeDb = mode === 'mix' ? 'mix' : 'cash'
+    const realPay = wxService.wxPayConfigured() && cashDue > 0
+
+    if (!realPay) {
+      // 模拟支付：仅 allowPaySimulate / 零元时走完成态
       if (spend > 0) {
         await pointsService.spendConsumerPoints(conn, {
           userId,
@@ -1242,13 +1353,12 @@ async function redeemCross({ userId, merchantId, goodsId, payMode, pointsUse = 0
           bizId: ono
         })
       }
-      const payMeta = wxService.buildPayResult({ orderNo: ono, cashAmount: cashDue })
       try {
         await conn.execute(
           `INSERT INTO cross_orders
             (order_no, user_id, merchant_id, goods_id, goods_name, pay_mode, points_spend, cash_amount, status)
-           VALUES (?, ?, ?, ?, ?, 'mix', ?, ?, 'completed')`,
-          [ono, userId, merchantId, g.id, g.name, spend, cashDue]
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed')`,
+          [ono, userId, merchantId, g.id, g.name, payModeDb, spend, cashDue]
         )
       } catch (e) {
         await conn.execute(
@@ -1258,89 +1368,192 @@ async function redeemCross({ userId, merchantId, goodsId, payMode, pointsUse = 0
           [ono, userId, merchantId, g.id, g.name, spend, cashDue]
         )
       }
-      await conn.execute(`UPDATE cross_goods SET sales_count = IFNULL(sales_count,0) + 1 WHERE id=?`, [g.id])
-      try {
-        await conn.execute(
-          `UPDATE cross_goods SET stock = GREATEST(IFNULL(stock,1)-1,0) WHERE id=?`,
-          [g.id]
-        )
-      } catch (_) {}
-      const amountGross = cashPrice
-      const commission = await recordCommission(conn, {
-        bizType: 'cross',
-        bizId: ono,
-        payerMerchantId: merchantId,
-        amountGross
-      })
-      const net = Math.round((amountGross - commission) * 100) / 100
-      await accountService.creditAccount(conn, {
-        merchantId,
-        accountType: 'cash_settlement',
-        amount: net,
-        bizType: 'cross_mix_settle',
-        bizId: ono,
-        title: `组合支付结算 · ${ono}`
-      })
-      await referralService.onConsumerOrderDone(conn, {
-        inviteeUserId: userId,
+      const fin = await settleCompletedCrossOrder(conn, {
         orderNo: ono,
-        kind: 'cross'
+        userId,
+        merchantId,
+        goodsId: g.id,
+        goodsName: g.name,
+        payMode: payModeDb,
+        pointsSpend: spend,
+        cashAmount: cashDue,
+        cashPrice
       })
       return {
         orderNo: ono,
-        payMode: 'mix',
+        payMode: payModeDb,
         pointsSpend: spend,
         cashAmount: cashDue,
-        commission,
-        merchantNet: net,
-        ...payMeta
+        cashPaid: cashDue,
+        autoFallback: payMode === 'points',
+        payStatus: 'paid',
+        status: 'completed',
+        ...fin,
+        ...wxService.buildPayResult({ orderNo: ono, cashAmount: cashDue, simulated: true })
       }
     }
 
-    await conn.execute(
-      `INSERT INTO cross_orders
-        (order_no, user_id, merchant_id, goods_id, goods_name, pay_mode, points_spend, cash_amount, status)
-       VALUES (?, ?, ?, ?, ?, 'cash', 0, ?, 'completed')`,
-      [ono, userId, merchantId, g.id, g.name, g.cash_price]
-    )
-    await conn.execute(`UPDATE cross_goods SET sales_count = IFNULL(sales_count,0) + 1 WHERE id=?`, [g.id])
+    // 真实微信支付：先挂 pending，积分预扣；支付成功后再结算
+    if (spend > 0) {
+      await pointsService.spendConsumerPoints(conn, {
+        userId,
+        points: spend,
+        title: `${g.name} · 组合支付预扣积分`,
+        bizId: ono
+      })
+    }
     try {
       await conn.execute(
-        `UPDATE cross_goods SET stock = GREATEST(IFNULL(stock,1)-1,0) WHERE id=?`,
-        [g.id]
+        `INSERT INTO cross_orders
+          (order_no, user_id, merchant_id, goods_id, goods_name, pay_mode, points_spend, cash_amount, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+        [ono, userId, merchantId, g.id, g.name, payModeDb, spend, cashDue]
       )
-    } catch (_) {}
-    const cashAmount = Number(g.cash_price)
-    const commission = await recordCommission(conn, {
-      bizType: 'cross',
-      bizId: ono,
-      payerMerchantId: merchantId,
-      amountGross: cashAmount
-    })
-    const net = Math.round((cashAmount - commission) * 100) / 100
-    await accountService.creditAccount(conn, {
-      merchantId,
-      accountType: 'cash_settlement',
-      amount: net,
-      bizType: 'cross_cash_settle',
-      bizId: ono,
-      title: `全现金兑换结算 · ${ono}`
-    })
-    await referralService.onConsumerOrderDone(conn, {
-      inviteeUserId: userId,
-      orderNo: ono,
-      kind: 'cross'
-    })
-    return {
-      orderNo: ono,
-      payMode: 'cash',
-      cashAmount,
-      autoFallback: payMode === 'points',
-      commission,
-      merchantNet: net,
-      ...wxService.buildPayResult({ orderNo: ono, cashAmount })
+    } catch (e) {
+      await conn.execute(
+        `INSERT INTO cross_orders
+          (order_no, user_id, merchant_id, goods_id, goods_name, pay_mode, points_spend, cash_amount, status)
+         VALUES (?, ?, ?, ?, ?, 'cash', ?, ?, 'pending')`,
+        [ono, userId, merchantId, g.id, g.name, spend, cashDue]
+      )
     }
+    return {
+      _needPrepay: true,
+      orderNo: ono,
+      payMode: payModeDb,
+      pointsSpend: spend,
+      cashAmount: cashDue,
+      cashPaid: cashDue,
+      merchantId,
+      goodsName: g.name,
+      autoFallback: payMode === 'points',
+      payStatus: 'unpaid',
+      status: 'pending',
+      needConfirm: true
+    }
+  }).then(async (result) => {
+    if (!result || !result._needPrepay) return result
+    const shopRows = await query('SELECT name FROM merchants WHERE id=:id', { id: result.merchantId })
+    const shopName = shopRows[0] ? shopRows[0].name : '异业兑换'
+    const openid = await getUserOpenid(userId)
+    const subMchId = await getMerchantSubMchId(result.merchantId)
+    let prepay
+    try {
+      prepay = await wxService.createJsapiPayForOrder({
+        orderNo: result.orderNo,
+        description: `${shopName}·${result.goodsName || '兑换'}`,
+        amountYuan: result.cashPaid,
+        openid,
+        subMchId,
+        attach: `cross:${result.merchantId}`
+      })
+    } catch (e) {
+      await withTransaction(async (conn) => {
+        const [rows] = await conn.execute(
+          `SELECT * FROM cross_orders WHERE order_no=? AND status='pending' FOR UPDATE`,
+          [result.orderNo]
+        )
+        if (!rows.length) return
+        await conn.execute(`UPDATE cross_orders SET status='cancelled' WHERE id=?`, [rows[0].id])
+        const pts = Number(rows[0].points_spend) || 0
+        if (pts > 0) {
+          await pointsService.refundConsumerPoints(conn, {
+            userId: rows[0].user_id,
+            points: pts,
+            title: '异业兑换取消退回积分',
+            bizId: `${result.orderNo}:cancel`
+          })
+        }
+      }).catch((err) => console.warn('[cross] prepay rollback', err.message))
+      throw e
+    }
+    const payMeta = wxService.buildPayResult({
+      orderNo: result.orderNo,
+      cashAmount: result.cashPaid,
+      simulated: false,
+      payParams: prepay.payParams,
+      payChannel: 'wxpay',
+      message: '请完成微信支付'
+    })
+    delete result._needPrepay
+    delete result.merchantId
+    delete result.goodsName
+    return { ...result, payMode: result.payMode, ...payMeta }
   })
+}
+
+/** 异业已完成单：库存 + 结算 + 推荐（幂等） */
+async function settleCompletedCrossOrder(
+  conn,
+  { orderNo: ono, userId, merchantId, goodsId, payMode, pointsSpend, cashAmount, cashPrice }
+) {
+  await conn.execute(`UPDATE cross_goods SET sales_count = IFNULL(sales_count,0) + 1 WHERE id=?`, [
+    goodsId
+  ])
+  try {
+    await conn.execute(
+      `UPDATE cross_goods SET stock = GREATEST(IFNULL(stock,1)-1,0) WHERE id=?`,
+      [goodsId]
+    )
+  } catch (_) {}
+
+  // 实收现金结算；积分部分按折现另计（与纯积分兑换一致）
+  const cashPart = round2(cashAmount)
+  const pointsPart = pointsSpend > 0 ? pointsToCash(pointsSpend, await getCashRate()) : 0
+  const amountGross = round2(cashPart + pointsPart) || round2(cashPrice) || cashPart
+  const commission = await recordCommission(conn, {
+    bizType: 'cross',
+    bizId: ono,
+    payerMerchantId: merchantId,
+    amountGross
+  })
+  const net = Math.round((amountGross - commission) * 100) / 100
+  await accountService.creditAccount(conn, {
+    merchantId,
+    accountType: 'cash_settlement',
+    amount: net,
+    bizType: payMode === 'mix' ? 'cross_mix_settle' : 'cross_cash_settle',
+    bizId: ono,
+    title: `${payMode === 'mix' ? '组合支付' : '全现金兑换'}结算 · ${ono}`
+  })
+  await referralService.onConsumerOrderDone(conn, {
+    inviteeUserId: userId,
+    orderNo: ono,
+    kind: 'cross'
+  })
+  return { commission, merchantNet: net }
+}
+
+/** 异业微信支付成功入账 */
+async function finalizeCrossPaidOrder(conn, orderRow, { transactionId } = {}) {
+  const o = orderRow
+  if (o.status === 'completed') {
+    return { alreadyPaid: true, orderNo: o.order_no, status: 'completed' }
+  }
+  if (o.status === 'cancelled') {
+    return { cancelled: true, needRefund: true, orderNo: o.order_no }
+  }
+  await conn.execute(`UPDATE cross_orders SET status='completed' WHERE id=? AND status='pending'`, [
+    o.id
+  ])
+  const fin = await settleCompletedCrossOrder(conn, {
+    orderNo: o.order_no,
+    userId: o.user_id,
+    merchantId: o.merchant_id,
+    goodsId: o.goods_id,
+    payMode: o.pay_mode,
+    pointsSpend: Number(o.points_spend) || 0,
+    cashAmount: Number(o.cash_amount) || 0,
+    cashPrice: Number(o.cash_amount) || 0
+  })
+  return {
+    alreadyPaid: false,
+    orderNo: o.order_no,
+    status: 'completed',
+    payStatus: 'paid',
+    transactionId: transactionId || null,
+    ...fin
+  }
 }
 
 /**

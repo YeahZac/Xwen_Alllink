@@ -1,8 +1,9 @@
-const { query } = require('../utils/db')
+const { query, withTransaction } = require('../utils/db')
 const { HttpError } = require('../utils/response')
 const { orderNo } = require('../utils/id')
 const { getCashRate, pointsToCash } = require('./configService')
 const referralService = require('./referralService')
+const pointsService = require('./pointsService')
 
 async function submitPartnerApply(body, auth) {
   const userId = Number(auth.userId) || 0
@@ -117,34 +118,40 @@ async function submitWithdraw(auth, body) {
   if (!userId) throw new HttpError(401, '请先登录')
   const amountPoints = Math.floor(Number(body.amountPoints) || 0)
   if (amountPoints < 1) throw new HttpError(400, '请填写提现积分数量')
-  const users = await query(
-    `SELECT points_balance, IFNULL(is_partner,0) AS is_partner FROM users WHERE id=:id LIMIT 1`,
-    { id: userId }
-  )
-  if (!users.length || !Number(users[0].is_partner)) {
-    throw new HttpError(403, '仅合伙人可申请提现')
-  }
-  if (Number(users[0].points_balance) < amountPoints) {
-    throw new HttpError(400, '可用积分不足')
-  }
   const rate = await getCashRate()
   const amountCash = pointsToCash(amountPoints, rate)
+  const bankName = String(body.bankName || '').trim()
+  const bankAccount = String(body.bankAccount || '').trim()
+  const accountName = String(body.accountName || '').trim()
   try {
-    await query(
-      `INSERT INTO partner_withdraw_requests
-        (user_id, amount_points, amount_cash, bank_name, bank_account, account_name, status)
-       VALUES
-        (:uid, :pts, :cash, :bn, :ba, :an, 'pending')`,
-      {
-        uid: userId,
-        pts: amountPoints,
-        cash: amountCash,
-        bn: String(body.bankName || '').trim(),
-        ba: String(body.bankAccount || '').trim(),
-        an: String(body.accountName || '').trim()
+    await withTransaction(async (conn) => {
+      const [users] = await conn.execute(
+        `SELECT points_balance, IFNULL(is_partner,0) AS is_partner FROM users WHERE id=? FOR UPDATE`,
+        [userId]
+      )
+      if (!users.length || !Number(users[0].is_partner)) {
+        throw new HttpError(403, '仅合伙人可申请提现')
       }
-    )
+      if (Number(users[0].points_balance) < amountPoints) {
+        throw new HttpError(400, '可用积分不足')
+      }
+      const [ins] = await conn.execute(
+        `INSERT INTO partner_withdraw_requests
+          (user_id, amount_points, amount_cash, bank_name, bank_account, account_name, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
+        [userId, amountPoints, amountCash, bankName, bankAccount, accountName]
+      )
+      const reqId = ins.insertId
+      // 提交即冻结扣减，防止多笔 pending 超兑
+      await pointsService.spendConsumerPoints(conn, {
+        userId,
+        points: amountPoints,
+        title: '合伙人提现冻结',
+        bizId: `PWD${reqId}`
+      })
+    })
   } catch (e) {
+    if (e instanceof HttpError) throw e
     if (/partner_withdraw|doesn't exist/i.test(String(e.message || ''))) {
       throw new HttpError(503, '提现表未初始化，请先执行 sql/26_user_identities.sql')
     }
@@ -315,40 +322,45 @@ async function listPartnerWithdraws({ status, page, pageSize, limit } = {}) {
 }
 
 async function reviewPartnerWithdraw(id, { action, reason, reviewerId } = {}) {
-  const rows = await query(
-    `SELECT id, user_id AS userId, amount_points AS amountPoints, status
-     FROM partner_withdraw_requests WHERE id=:id LIMIT 1`,
-    { id: Number(id) }
-  )
-  if (!rows.length) throw new HttpError(404, '提现单不存在')
-  if (rows[0].status !== 'pending') throw new HttpError(400, '提现单已处理')
-  if (action === 'reject') {
-    await query(
-      `UPDATE partner_withdraw_requests
-       SET status='rejected', reject_reason=:r, reviewed_by=:rid, reviewed_at=NOW()
-       WHERE id=:id`,
-      { id: Number(id), r: String(reason || '驳回'), rid: reviewerId || null }
+  const wid = Number(id)
+  return withTransaction(async (conn) => {
+    const [rows] = await conn.execute(
+      `SELECT id, user_id AS userId, amount_points AS amountPoints, status
+       FROM partner_withdraw_requests WHERE id=? FOR UPDATE`,
+      [wid]
     )
-    return { ok: true, status: 'rejected' }
-  }
-  // approve: 扣减积分
-  const pts = Number(rows[0].amountPoints) || 0
-  const uid = Number(rows[0].userId)
-  const bal = await query(`SELECT points_balance FROM users WHERE id=:id LIMIT 1`, { id: uid })
-  if (!bal.length || Number(bal[0].points_balance) < pts) {
-    throw new HttpError(400, '用户积分不足，无法通过')
-  }
-  await query(`UPDATE users SET points_balance = points_balance - :pts WHERE id=:id`, {
-    pts,
-    id: uid
+    if (!rows.length) throw new HttpError(404, '提现单不存在')
+    if (rows[0].status !== 'pending') throw new HttpError(400, '提现单已处理')
+    const pts = Number(rows[0].amountPoints) || 0
+    const uid = Number(rows[0].userId)
+    if (action === 'reject') {
+      const [upd] = await conn.execute(
+        `UPDATE partner_withdraw_requests
+         SET status='rejected', reject_reason=?, reviewed_by=?, reviewed_at=NOW()
+         WHERE id=? AND status='pending'`,
+        [String(reason || '驳回'), reviewerId || null, wid]
+      )
+      if (!upd.affectedRows) throw new HttpError(400, '提现单已处理')
+      if (pts > 0) {
+        await pointsService.refundConsumerPoints(conn, {
+          userId: uid,
+          points: pts,
+          title: '合伙人提现驳回退回',
+          bizId: `PWD${wid}:reject`
+        })
+      }
+      return { ok: true, status: 'rejected' }
+    }
+    // approve：积分已在提交时冻结扣减，此处仅改状态
+    const [upd] = await conn.execute(
+      `UPDATE partner_withdraw_requests
+       SET status='approved', reviewed_by=?, reviewed_at=NOW()
+       WHERE id=? AND status='pending'`,
+      [reviewerId || null, wid]
+    )
+    if (!upd.affectedRows) throw new HttpError(400, '提现单已处理')
+    return { ok: true, status: 'approved' }
   })
-  await query(
-    `UPDATE partner_withdraw_requests
-     SET status='approved', reviewed_by=:rid, reviewed_at=NOW()
-     WHERE id=:id`,
-    { id: Number(id), rid: reviewerId || null }
-  )
-  return { ok: true, status: 'approved' }
 }
 
 const PURCHASE_STATUS_TEXT = {

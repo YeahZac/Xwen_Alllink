@@ -77,9 +77,18 @@ const adminHost = String(process.env.ADMIN_HOST || hostFromUrl(publicBaseUrl) ||
   .split('/')[0]
   .split(':')[0]
 
+const nodeEnv = process.env.NODE_ENV || 'production'
+const isDev = nodeEnv === 'development'
+
 module.exports = {
   port: Number(process.env.PORT || 80),
-  env: process.env.NODE_ENV || 'production',
+  env: nodeEnv,
+  /** 未配置微信支付时是否允许模拟入账（生产默认关闭，需显式 ALLOW_PAY_SIMULATE=1） */
+  allowPaySimulate: process.env.ALLOW_PAY_SIMULATE === '1' || isDev,
+  /** 邀请码/演示码登录（生产默认关闭） */
+  allowInviteLogin: process.env.ALLOW_INVITE_LOGIN === '1' || isDev,
+  /** 允许请求体直接传 openid（仅本地联调；生产禁止） */
+  allowBodyOpenid: process.env.ALLOW_BODY_OPENID === '1',
   /** 浏览器 / 运营台对外域名，用于健康检查提示与绝对链接 */
   publicBaseUrl: publicBaseUrl || (adminHost ? `https://${adminHost}` : ''),
   adminHost,

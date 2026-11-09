@@ -5,15 +5,20 @@ const { shortCode } = require('../utils/id')
 const { getCashRate, pointsToCash } = require('./configService')
 const rbacService = require('./rbacService')
 const wxService = require('./wxService')
+const config = require('../config')
 
 /** 演示邀请码登录（与小程序演示码对齐） */
 async function loginByInviteCode(code) {
   const invite = String(code || '').trim()
   if (!invite) throw new HttpError(400, '请输入邀请码/账号')
 
-  // 运营邀请码 / 兼容 A001 → 超级管理员
+  // 运营邀请码 / 兼容 A001 → 超级管理员（后台入口，始终允许）
   const adminSession = await rbacService.loginByAdminInviteCode(invite)
   if (adminSession) return adminSession
+
+  if (!config.allowInviteLogin) {
+    throw new HttpError(403, '邀请码登录已关闭，请使用微信登录')
+  }
 
   // 商户邀请码
   const merchants = await query(
@@ -169,9 +174,22 @@ async function loginAsConsumer({ nickname } = {}) {
   return consumerSession(pickUserRow(rows[0]))
 }
 
-async function loginWithWeChat({ jsCode, nickname, avatarUrl, openid, unionid } = {}) {
+async function loginWithWeChat({
+  jsCode,
+  nickname,
+  avatarUrl,
+  openid,
+  unionid,
+  bodyOpenid,
+  bodyUnionid
+} = {}) {
   let oid = String(openid || '').trim()
   let uid = String(unionid || '').trim()
+  // 仅开发显式开关才接受 body 伪造 openid，防止任意账号接管
+  if (!oid && config.allowBodyOpenid) {
+    oid = String(bodyOpenid || '').trim()
+    uid = uid || String(bodyUnionid || '').trim()
+  }
   if (!oid && jsCode) {
     const sess = await wxService.code2Session(jsCode)
     oid = sess.openid || ''
@@ -613,12 +631,14 @@ async function findOwnedMerchants(userId, phone, { includeDeleted = false } = {}
     { uid: userId }
   )
   if (byOwner.length) return byOwner
+  // 仅允许认领「尚未绑定 owner」的门店，禁止用手机号接管他人店铺
   const p = String(phone || '').trim()
   if (!/^1\d{10}$/.test(p)) return []
   return query(
     `SELECT id, role, name, status, invite_code, contact_phone, cover_url, deleted_at
      FROM merchants
-     WHERE contact_phone = :phone${delClause}
+     WHERE contact_phone = :phone
+       AND (owner_user_id IS NULL OR owner_user_id = 0)${delClause}
      ORDER BY id ASC`,
     { phone: p }
   )

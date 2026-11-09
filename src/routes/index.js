@@ -30,8 +30,23 @@ const founderOnly = [authRequired, requireRoles('founder', 'admin')]
 const partnerOnly = [authRequired, requireRoles('partner')]
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 }
+  limits: { fileSize: 12 * 1024 * 1024 },
+  fileFilter(_req, file, cb) {
+    const mime = String((file && file.mimetype) || '').toLowerCase()
+    const ok =
+      mime.startsWith('image/') ||
+      mime === 'application/pdf' ||
+      mime === 'application/octet-stream'
+    if (!ok) return cb(new HttpError(400, '仅支持图片或 PDF 上传'))
+    cb(null, true)
+  }
 })
+
+function assertUploadMime(mime) {
+  const m = String(mime || '').toLowerCase()
+  if (m.startsWith('image/') || m === 'application/pdf' || m === 'application/octet-stream') return
+  throw new HttpError(400, '仅支持图片或 PDF 上传')
+}
 
 /** 页面级 RBAC：GET 需浏览权，写操作需编辑权 */
 function requirePage(pageKey, { edit } = {}) {
@@ -201,12 +216,17 @@ router.post('/auth/admin-login', async (req, res, next) => {
 
 router.post('/auth/wx-login', async (req, res, next) => {
   try {
+    // 仅信任云托管注入头 / code2session；禁止客户端伪造 body.openid
+    const headerOpenid = req.headers['x-wx-openid'] || req.headers['x-wx-from-openid']
+    const headerUnionid = req.headers['x-wx-unionid']
     const data = await authService.loginWithWeChat({
       jsCode: req.body.jsCode || req.body.code,
       nickname: req.body.nickname,
       avatarUrl: req.body.avatarUrl,
-      openid: req.headers['x-wx-openid'] || req.headers['x-wx-from-openid'] || req.body.openid,
-      unionid: req.headers['x-wx-unionid'] || req.body.unionid
+      openid: headerOpenid || undefined,
+      unionid: headerUnionid || undefined,
+      bodyOpenid: req.body.openid,
+      bodyUnionid: req.body.unionid
     })
     res.json(ok(data))
   } catch (e) {
@@ -1632,10 +1652,11 @@ router.get('/supply/goods', async (_req, res, next) => {
   }
 })
 
-/** 小程序/入驻申请上传（公开，可带 token） */
+/** 小程序/入驻申请上传（公开，可带 token；类型与大小已收紧） */
 router.post('/media/upload', upload.single('file'), async (req, res, next) => {
   try {
     if (!req.file) throw new HttpError(400, '请选择文件')
+    assertUploadMime(req.file.mimetype)
     const data = await storageService.uploadBuffer({
       buffer: req.file.buffer,
       originalName: req.file.originalname,
@@ -1654,6 +1675,7 @@ router.post('/media/upload-base64', async (req, res, next) => {
   try {
     const { content, fileName, mime, bizType } = req.body || {}
     if (!content) throw new HttpError(400, '缺少文件内容')
+    assertUploadMime(mime || 'application/octet-stream')
     const raw = String(content).replace(/^data:[^;]+;base64,/, '')
     const buffer = Buffer.from(raw, 'base64')
     if (!buffer.length) throw new HttpError(400, '文件内容无效')

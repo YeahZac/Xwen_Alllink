@@ -94,25 +94,73 @@ async function allocateToConsumer(conn, { merchantId, userId, wantPoints, shopNa
 }
 
 async function spendConsumerPoints(conn, { userId, points, title, bizId }) {
+  const pts = Math.max(0, Math.floor(Number(points) || 0))
+  if (!pts) return null
+  if (bizId) {
+    const [dup] = await conn.execute(
+      `SELECT id FROM user_points_ledger
+       WHERE user_id=? AND biz_type='spend' AND biz_id=? LIMIT 1`,
+      [userId, String(bizId)]
+    )
+    if (dup.length) {
+      const [u] = await conn.execute('SELECT points_balance FROM users WHERE id=?', [userId])
+      return u.length ? Number(u[0].points_balance) : null
+    }
+  }
   const [rows] = await conn.execute(
     'SELECT points_balance FROM users WHERE id = ? FOR UPDATE',
     [userId]
   )
   if (!rows.length) throw new HttpError(404, '用户不存在')
-  if (rows[0].points_balance < points) {
+  if (rows[0].points_balance < pts) {
     throw new HttpError(400, '积分不足')
   }
   await conn.execute(
     'UPDATE users SET points_balance = points_balance - ? WHERE id = ?',
-    [points, userId]
+    [pts, userId]
   )
-  const left = rows[0].points_balance - points
+  const left = Number(rows[0].points_balance) - pts
   const rate = await getCashRate()
   await conn.execute(
     `INSERT INTO user_points_ledger
       (user_id, change_amount, balance_after, biz_type, biz_id, title, cash_value)
      VALUES (?, ?, ?, 'spend', ?, ?, ?)`,
-    [userId, -points, left, bizId || null, title, pointsToCash(points, rate)]
+    [userId, -pts, left, bizId || null, title, pointsToCash(pts, rate)]
+  )
+  return left
+}
+
+/** 退回已扣积分（取消未支付单 / 提现驳回） */
+async function refundConsumerPoints(conn, { userId, points, title, bizId }) {
+  const pts = Math.max(0, Math.floor(Number(points) || 0))
+  if (!pts) return null
+  if (bizId) {
+    const [dup] = await conn.execute(
+      `SELECT id FROM user_points_ledger
+       WHERE user_id=? AND biz_type='refund' AND biz_id=? LIMIT 1`,
+      [userId, String(bizId)]
+    )
+    if (dup.length) {
+      const [u] = await conn.execute('SELECT points_balance FROM users WHERE id=?', [userId])
+      return u.length ? Number(u[0].points_balance) : null
+    }
+  }
+  const [rows] = await conn.execute(
+    'SELECT points_balance FROM users WHERE id = ? FOR UPDATE',
+    [userId]
+  )
+  if (!rows.length) throw new HttpError(404, '用户不存在')
+  await conn.execute(
+    'UPDATE users SET points_balance = points_balance + ? WHERE id = ?',
+    [pts, userId]
+  )
+  const left = Number(rows[0].points_balance) + pts
+  const rate = await getCashRate()
+  await conn.execute(
+    `INSERT INTO user_points_ledger
+      (user_id, change_amount, balance_after, biz_type, biz_id, title, cash_value)
+     VALUES (?, ?, ?, 'refund', ?, ?, ?)`,
+    [userId, pts, left, bizId || null, title, pointsToCash(pts, rate)]
   )
   return left
 }
@@ -122,5 +170,6 @@ module.exports = {
   getPoolBalance,
   grantPool,
   allocateToConsumer,
-  spendConsumerPoints
+  spendConsumerPoints,
+  refundConsumerPoints
 }

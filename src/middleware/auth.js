@@ -18,6 +18,19 @@ function authRequired(req, _res, next) {
   }
 }
 
+/** 有 token 则校验；无 token 继续（用于公开上传等） */
+function authOptional(req, _res, next) {
+  const header = req.headers.authorization || ''
+  const token = header.startsWith('Bearer ') ? header.slice(7) : ''
+  if (!token) return next()
+  try {
+    req.auth = jwt.verify(token, config.jwt.secret)
+    next()
+  } catch (e) {
+    next(new HttpError(401, '登录已失效'))
+  }
+}
+
 function requireRoles(...roles) {
   return (req, _res, next) => {
     if (!req.auth || !roles.includes(req.auth.role)) {
@@ -27,4 +40,4 @@ function requireRoles(...roles) {
   }
 }
 
-module.exports = { signToken, authRequired, requireRoles }
+module.exports = { signToken, authRequired, authOptional, requireRoles }

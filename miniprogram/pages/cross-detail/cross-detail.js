@@ -1,6 +1,6 @@
 const store = require('../../utils/store')
 const api = require('../../utils/api')
-const { requestWxPay } = require('../../utils/pay')
+const { requestWxPay, isCancelError } = require('../../utils/pay')
 const coverPack = require('../../utils/cover-pack')
 
 Page({
@@ -85,6 +85,15 @@ Page({
     })
     this.setData({ items })
   },
+  async refreshPoints() {
+    const p = await api.myPoints().catch(() => ({ points: this.data.points }))
+    store.setConsumerPoints(p.points)
+    this.setData({
+      points: p.points,
+      busy: false,
+      items: (this.data.items || []).map((it) => this.withMix(it, p.points))
+    })
+  },
   async checkout(item, payMode, pointsUse) {
     if (this.data.busy) return
     this.setData({ busy: true })
@@ -95,29 +104,47 @@ Page({
         payMode,
         pointsUse
       })
-      await requestWxPay(result)
-      const p = await api.myPoints().catch(() => ({ points: this.data.points }))
-      store.setConsumerPoints(p.points)
-      this.setData({
-        points: p.points,
-        busy: false,
-        items: (this.data.items || []).map((it) => this.withMix(it, p.points))
-      })
+      const cash =
+        result.cashPaid != null
+          ? Number(result.cashPaid)
+          : result.cashAmount != null
+            ? Number(result.cashAmount)
+            : 0
+      // 现金单必须有模拟标记或真实预下单参数，禁止「服务端已完成、客户端当成功」
+      if (cash > 0 && !result.simulated && result.needConfirm && !(result.payParams && result.payParams.paySign)) {
+        throw new Error('缺少微信支付参数，请稍后重试')
+      }
+      const paid = await requestWxPay(result)
+      await this.refreshPoints()
+      const mode = (paid && paid.payMode) || result.payMode || payMode
       if (result && result.autoFallback) {
         this.showOrderSuccess(`积分不足，已按微信价 ¥${result.cashAmount} 成交`)
-      } else if (payMode === 'mix') {
-        const sim = result.simulated ? '（模拟微信支付）' : ''
+      } else if (mode === 'mix') {
+        const sim = (paid && paid.simulated) || result.simulated ? '（模拟微信支付）' : ''
         this.showOrderSuccess(
           `组合支付：积分 ${result.pointsSpend || 0} + 微信 ¥${result.cashAmount}${sim}`
         )
-      } else if (payMode === 'cash') {
-        const sim = result.simulated ? '（模拟微信支付）' : ''
+      } else if (mode === 'cash') {
+        const sim = (paid && paid.simulated) || result.simulated ? '（模拟微信支付）' : ''
         this.showOrderSuccess(`微信支付 ¥${result.cashAmount || item.cashPrice}${sim}`)
       } else {
         this.showOrderSuccess(`已扣 ${result.pointsSpend || item.pointsNeed} 积分`)
       }
     } catch (err) {
       this.setData({ busy: false })
+      if (err && err.code === 'SYNC_PENDING') {
+        wx.showModal({
+          title: '支付结果确认中',
+          content: '请稍后在订单中查看，勿重复支付。',
+          showCancel: false,
+          success: () => wx.navigateTo({ url: '/pages/orders/orders' })
+        })
+        return
+      }
+      if (isCancelError(err) || (err && err.code === 'USER_CANCEL')) {
+        wx.showToast({ title: '已取消支付', icon: 'none' })
+        return
+      }
       wx.showToast({ title: err.message || '支付失败', icon: 'none' })
     }
   },

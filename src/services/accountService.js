@@ -43,6 +43,18 @@ async function writeLedger(conn, { merchantId, accountType, changeAmount, balanc
 async function creditAccount(conn, { merchantId, accountType, amount, bizType, bizId, title }) {
   const amt = Math.round(Number(amount) * 100) / 100
   if (!amt || amt <= 0) return null
+  if (bizId) {
+    try {
+      const [dup] = await conn.execute(
+        `SELECT id FROM merchant_account_ledger
+         WHERE merchant_id=? AND account_type=? AND biz_type=? AND biz_id=? LIMIT 1`,
+        [merchantId, accountType, bizType, String(bizId)]
+      )
+      if (dup.length) return null
+    } catch (_) {
+      /* 旧库无 ledger 表时跳过幂等检查 */
+    }
+  }
   const acc = await getAccount(conn, merchantId, accountType)
   const next = Math.round((Number(acc.balance) + amt) * 100) / 100
   await conn.execute(
