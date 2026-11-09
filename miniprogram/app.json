@@ -13,6 +13,7 @@
     "pages/service/service",
     "pages/points/points",
     "pages/cross/cross",
+    "pages/category-merchants/category-merchants",
     "pages/cross-detail/cross-detail",
     "pages/recommend/recommend",
     "pages/apply/apply",

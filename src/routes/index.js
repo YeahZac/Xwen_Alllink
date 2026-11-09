@@ -667,10 +667,19 @@ router.delete('/admin/goods/:type/:id', ...adminOnly, requirePage('goods'), asyn
   }
 })
 
-/** C 端：启用中的商品类目（分类页入口） */
+/** C 端：启用中的商品类目（分类页入口，默认全部角色） */
 router.get('/goods-categories', async (req, res, next) => {
   try {
-    res.json(ok(await categoryService.listPublicCategories(req.query.role || 'cross')))
+    res.json(ok(await categoryService.listPublicCategories(req.query.role || 'all')))
+  } catch (e) {
+    next(e)
+  }
+})
+
+/** C 端：类目下关联商家（二级列表） */
+router.get('/goods-categories/:id/merchants', async (req, res, next) => {
+  try {
+    res.json(ok(await categoryService.listMerchantsByCategory(Number(req.params.id), req.query)))
   } catch (e) {
     next(e)
   }

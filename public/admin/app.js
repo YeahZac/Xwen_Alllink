@@ -2504,7 +2504,7 @@ async function renderGoodsCategories() {
       <button class="btn" id="btnReload">刷新</button>
       ${editable ? '<button class="btn primary" id="btnAdd">新建类目</button>' : ''}
     </div>
-    <div class="muted" style="margin:8px 0 12px">类目按<strong>角色</strong>配置（地摊/异业/供应链），每个角色最多启用 <strong>2</strong> 个类目名称。小程序「分类兑换」按此类目展示封面图后再进门店列表；封面在编辑里上传。</div>
+    <div class="muted" style="margin:8px 0 12px">类目按<strong>角色</strong>配置（地摊/异业/供应链）。小程序「分类」页展示<strong>全部启用类目</strong>（含封面），点击后再进入该类目下的关联商家列表；封面在编辑里上传。</div>
     <div id="list"></div>`
   const load = async () => {
     const role = $('catRole').value
@@ -2590,7 +2590,7 @@ function openCategoryModal(row, reload) {
       mediaField('imageUrl', '小程序类目封面图', r.imageUrl || '', 'category') +
       field('sortOrder', '排序（越小越靠前）', r.sortOrder ?? 10, 'number') +
       selectOnOff('status', r.status ?? 1, { onLabel: '启用', offLabel: '停用' }) +
-      `<p class="muted">每个角色最多启用 2 个类目；分类页按排序展示封面，点进后再出门店列表。</p>`,
+      `<p class="muted">启用中的类目都会出现在小程序分类首页；点击类目进入关联商家二级列表。</p>`,
     async () => {
       await api('/admin/goods-categories', {
         method: 'POST',

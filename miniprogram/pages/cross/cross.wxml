@@ -9,68 +9,36 @@
   <view class="cross-body">
     <ad-banner role="consumer" page-key="cross" height="240" force="{{true}}" />
 
-    <text class="cross-tip">先选商品类目，再看对应门店 · 积分够就兑，不够可现金补差</text>
+    <text class="cross-tip">选择商品类目，进入后查看关联商家</text>
 
     <view wx:if="{{loading}}" class="empty-state">
       <text class="empty-state__title">正在加载类目</text>
       <text class="empty-state__desc">请稍候</text>
     </view>
 
-    <!-- 一级：商品类目 -->
-    <block wx:elif="{{view === 'categories'}}">
-      <view wx:if="{{!categories.length}}" class="empty-state surface">
-        <text class="empty-state__title">暂无商品类目</text>
-        <text class="empty-state__desc">请运营在后台「商品类目」配置后刷新</text>
-      </view>
-      <view wx:else class="cat-grid">
-        <view
-          wx:for="{{categories}}"
-          wx:key="id"
-          class="cat-tile"
-          bindtap="openCategory"
-          data-name="{{item.name}}"
-        >
-          <view class="cat-tile__cover">
-            <image wx:if="{{item.imageUrl}}" class="cover-img" src="{{item.imageUrl}}" mode="aspectFill" />
-            <view wx:else class="cover-fallback">{{item.name[0] || '类'}}</view>
-          </view>
-          <view class="cat-tile__body">
-            <text class="cat-tile__name">{{item.name}}</text>
-            <text class="cat-tile__meta">{{item.storeCount}} 家门店</text>
-          </view>
-        </view>
-      </view>
-    </block>
+    <view wx:elif="{{!categories.length}}" class="empty-state surface">
+      <text class="empty-state__title">暂无商品类目</text>
+      <text class="empty-state__desc">请运营在后台「商品类目」启用类目并配置封面</text>
+    </view>
 
-    <!-- 二级：该类目下的门店 -->
-    <block wx:else>
-      <view class="cat-back" bindtap="backToCategories">
-        <text class="cat-back__text">← 返回类目 · {{selectedCategory}}</text>
-      </view>
-      <view wx:if="{{!stores.length}}" class="empty-state surface">
-        <text class="empty-state__title">该类目暂无门店</text>
-        <text class="empty-state__desc">门店经营类目需与「{{selectedCategory}}」一致，且已完成收款签约</text>
-      </view>
-      <view wx:else class="store-grid">
-        <view
-          wx:for="{{stores}}"
-          wx:key="id"
-          class="store-tile"
-          bindtap="openStore"
-          data-id="{{item.id}}"
-          data-role="{{item.role}}"
-        >
-          <view class="store-tile__cover">
-            <image wx:if="{{item.coverImage}}" class="cover-img" src="{{item.coverImage}}" mode="aspectFill" />
-            <view wx:else class="cover-fallback">{{item.initial}}</view>
-          </view>
-          <view class="store-tile__body">
-            <text class="store-tile__name ellipsis-1">{{item.name}}</text>
-            <text class="store-tile__meta ellipsis-1">{{item.metaText || '附近门店'}}</text>
-            <text class="store-tile__addr ellipsis-1">{{item.address || item.city || '附近'}}</text>
-          </view>
+    <view wx:else class="cat-grid">
+      <view
+        wx:for="{{categories}}"
+        wx:key="id"
+        class="cat-tile"
+        bindtap="openCategory"
+        data-id="{{item.id}}"
+        data-name="{{item.name}}"
+      >
+        <view class="cat-tile__cover">
+          <image wx:if="{{item.imageUrl}}" class="cover-img" src="{{item.imageUrl}}" mode="aspectFill" />
+          <view wx:else class="cover-fallback">{{item.name[0] || '类'}}</view>
+        </view>
+        <view class="cat-tile__body">
+          <text class="cat-tile__name">{{item.name}}</text>
+          <text class="cat-tile__meta">{{item.roleLabel}}</text>
         </view>
       </view>
-    </block>
+    </view>
   </view>
 </view>
