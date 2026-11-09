@@ -35,10 +35,19 @@ App({
   },
   onLaunch(opt) {
     ensureCloud()
-    this.globalData.preferGuest = true
+    // 仅在无登录态时默认游客；已有 token 不强制 guest，避免 401 后以为仍登录
+    let hasToken = false
     try {
-      wx.setStorageSync('wy_guest_browse', 1)
+      hasToken = !!wx.getStorageSync('wy_token')
     } catch (_) {}
+    if (!hasToken) {
+      this.globalData.preferGuest = true
+      try {
+        wx.setStorageSync('wy_guest_browse', 1)
+      } catch (_) {}
+    } else {
+      this.globalData.preferGuest = false
+    }
 
     captureInviteFromLaunch(opt)
 
@@ -58,11 +67,15 @@ App({
 
     this.globalData.bootPromise = store.bootstrapSession().catch(() => ({ ok: false }))
 
+    const path = String((opt && opt.path) || '').replace(/^\//, '')
+    // 仅首页冷启 / 明确收款页才把 query.id 当作摊位收款；异业详情·类目等共用 id 参数，禁止劫持
+    const allowPayHijack =
+      !path ||
+      path === 'pages/index/index' ||
+      path.indexOf('pages/scan-pay/scan-pay') === 0
+    if (!allowPayHijack) return
     const stallId = scan.extractFromLaunch(opt || {})
     if (!stallId) return
-    const path = String((opt && opt.path) || '')
-    // 已指定点餐/下单等业务页时，禁止把启动参数 id 劫持成「到店收款」
-    if (/stall-menu|order-confirm|goods-detail|pages\/cross\//.test(path)) return
     const pending = scan.getPendingPay() || {}
     const same = String(pending.stallId || '') === String(stallId)
     scan.savePendingPay({
@@ -76,8 +89,12 @@ App({
   },
   onShow(opt) {
     captureInviteFromLaunch(opt)
-    const showPath = String((opt && opt.path) || '')
-    if (/stall-menu|order-confirm|goods-detail/.test(showPath)) {
+    const showPath = String((opt && opt.path) || '').replace(/^\//, '')
+    const allowPayHijack =
+      !showPath ||
+      showPath === 'pages/index/index' ||
+      showPath.indexOf('pages/scan-pay/scan-pay') === 0
+    if (!allowPayHijack) {
       this._openScanPay = false
       return
     }

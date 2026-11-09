@@ -115,11 +115,16 @@ Page({
           wx.showLoading({ title: '压缩上传中' })
           const up = await api.uploadFile(path, 'goods')
           wx.hideLoading()
-          this.setData({ 'form.imageUrl': up.fileUrl || path })
+          const url = up && up.fileUrl
+          if (!url || !/^https?:\/\//.test(url)) {
+            wx.showToast({ title: '上传未返回可用地址，请重试', icon: 'none' })
+            return
+          }
+          this.setData({ 'form.imageUrl': url })
         } catch (err) {
           wx.hideLoading()
-          this.setData({ 'form.imageUrl': path })
-          wx.showToast({ title: err.message || '已选图，稍后可再传', icon: 'none' })
+          // 禁止写入本地临时路径：保存时会被清空，导致主图丢失
+          wx.showToast({ title: err.message || '图片上传失败，请重试', icon: 'none' })
         }
       }
     })
@@ -129,6 +134,10 @@ Page({
     const f = this.data.form
     if (!String(f.name || '').trim()) {
       wx.showToast({ title: '请填写商品名称', icon: 'none' })
+      return
+    }
+    if (f.imageUrl && !/^https?:\/\//.test(f.imageUrl)) {
+      wx.showToast({ title: '主图未上传成功，请重新选择图片', icon: 'none' })
       return
     }
     const role = this.data.role

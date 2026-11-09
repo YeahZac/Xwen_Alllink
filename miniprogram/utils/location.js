@@ -377,12 +377,11 @@ function decorateList(rows, loc) {
   const hasOrigin = Number.isFinite(lat) && Number.isFinite(lng)
   let list = Array.isArray(rows) ? rows.slice() : []
   if (city) {
+    // 当前城市无门店时展示空列表，避免把外地店标成「附近」
     if (city.indexOf('深圳') === 0) {
-      const filtered = list.filter((r) => String(r.city || '').indexOf('深圳') === 0)
-      if (filtered.length) list = filtered
+      list = list.filter((r) => String(r.city || '').indexOf('深圳') === 0)
     } else {
-      const filtered = list.filter((r) => String(r.city || '') === city)
-      if (filtered.length) list = filtered
+      list = list.filter((r) => String(r.city || '') === city)
     }
   }
   list = list.map((r) => {

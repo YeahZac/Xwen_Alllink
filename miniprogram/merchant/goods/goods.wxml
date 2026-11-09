@@ -22,7 +22,7 @@
       <view class="role-card__main">
         <view class="goods-title">
           <text class="role-card__title">{{item.name}}</text>
-          <text class="chip {{role === 'supply' || item.status === '在售' || item.status === '上架' ? 'chip--soft' : 'chip--off'}}">{{item.status}}</text>
+          <text class="chip {{item.onSale ? 'chip--soft' : 'chip--off'}}">{{item.statusLabel}}</text>
         </view>
         <text class="role-card__sub">{{item.line}}</text>
       </view>

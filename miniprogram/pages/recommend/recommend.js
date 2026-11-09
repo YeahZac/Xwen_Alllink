@@ -18,7 +18,7 @@ Page({
     stats: { invited: 0, rewardedPoints: 0 }
   },
   async onShow() {
-    if (!store.ensureLoggedIn()) return
+    if (!store.ensureConsumerOrRedirect()) return
     this.setData({ qrLoading: true })
     try {
       const home = await api.referralHome()

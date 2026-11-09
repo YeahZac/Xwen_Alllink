@@ -33,13 +33,17 @@ function mapOrder(o, role) {
     (role === 'stall' || role === 'cross') &&
     o.type === 'purchase_buy' &&
     status === 'shipped'
+  const payStatus = o.payStatus || ''
+  const paid = payStatus === 'paid' || status === 'paid' || status === 'preparing' || status === 'ready'
+  // 仅已支付且制作中的点餐单可「完成出餐」；未支付 pending 禁止露出按钮
   const canComplete =
     role === 'stall' &&
     o.type === 'stall' &&
-    (status === 'preparing' || status === 'ready' || status === 'pending')
+    paid &&
+    (status === 'preparing' || status === 'ready')
   const canCancel =
     (o.type === 'purchase_buy' || o.type === 'purchase_sell') &&
-    (status === 'pending' || status === 'shipped' || status === 'confirmed')
+    (status === 'pending' || status === 'shipped')
   return {
     ...o,
     title: o.orderNo || o.goodsName || `#${o.id}`,

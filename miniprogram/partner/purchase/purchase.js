@@ -10,6 +10,7 @@ Page({
       this.setData({ list: rows || [], loading: false })
     } catch (e) {
       this.setData({ loading: false, list: [] })
+      wx.showToast({ title: e.message || '加载失败', icon: 'none' })
     }
   },
   onField(e) {

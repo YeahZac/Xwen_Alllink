@@ -109,7 +109,7 @@ Page({
   },
   syncAuth() {
     const s = store.getSession() || {}
-    const loggedIn = !!(s.role && store.getToken())
+    const loggedIn = !!(store.isLoggedIn && store.isLoggedIn())
     const isConsumer = loggedIn && s.role === 'consumer'
     let authWarn = ''
     if (loggedIn && !isConsumer) {

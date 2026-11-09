@@ -12,7 +12,7 @@ Page({
     qtyMap: {},
     fulfillType: 'online'
   },
-  async onLoad(q) {
+  async onLoad() {
     if (!store.ensureMerchantOrRedirect()) return
     const s = store.getSession()
     const role = s.role
@@ -24,23 +24,35 @@ Page({
         ? '采购成交后，积分额度进入本店额度池，供 C 端消费划拨'
         : '买方采购成交后获得积分额度'
     })
+    await this.loadGoods()
+  },
+  async onShow() {
+    if (!store.ensureMerchantOrRedirect()) return
+    if (this.data.loading && !(this.data.goods || []).length) return
+    await this.loadGoods({ silent: true })
+  },
+  async loadGoods({ silent } = {}) {
+    if (!silent) this.setData({ loading: true })
     try {
       const goods = await api.supplyGoods()
-      const qtyMap = {}
+      const qtyMap = { ...(this.data.qtyMap || {}) }
       ;(goods || []).forEach((g) => {
-        qtyMap[g.id] = 1
+        const stock = Math.max(0, Number(g.stock) || 0)
+        const prev = Number(qtyMap[g.id] || 0)
+        qtyMap[g.id] = stock <= 0 ? 0 : Math.min(stock, Math.max(1, prev || 1))
       })
       this.setData({
         loading: false,
         qtyMap,
         goods: (goods || []).map((g) => ({
           ...g,
-          coverImage: g.coverImage || g.imageUrl || ''
+          coverImage: g.coverImage || g.imageUrl || '',
+          outOfStock: !(Number(g.stock) > 0)
         }))
       })
     } catch (e) {
       this.setData({ loading: false })
-      wx.showToast({ title: e.message || '加载失败', icon: 'none' })
+      if (!silent) wx.showToast({ title: e.message || '加载失败', icon: 'none' })
     }
   },
   changeQty(e) {
@@ -48,8 +60,12 @@ Page({
     const delta = Number(e.currentTarget.dataset.delta) || 0
     const goods = this.data.goods.find((item) => String(item.id) === String(id))
     if (!goods) return
+    const stock = Math.max(0, Number(goods.stock) || 0)
+    if (stock <= 0) {
+      wx.showToast({ title: '暂无库存', icon: 'none' })
+      return
+    }
     const current = Number(this.data.qtyMap[id] || 1)
-    const stock = Math.max(1, Number(goods.stock || 9999))
     const next = Math.min(stock, Math.max(1, current + delta))
     this.setData({ [`qtyMap.${id}`]: next })
   },
@@ -68,9 +84,14 @@ Page({
       wx.navigateTo({ url: '/merchant/goods/goods?role=supply' })
       return
     }
+    const stock = Math.max(0, Number(g.stock) || 0)
+    if (stock <= 0) {
+      wx.showToast({ title: '该商品暂无库存', icon: 'none' })
+      return
+    }
     this.setData({ busy: true })
     try {
-      const qty = Number(this.data.qtyMap[id] || 1)
+      const qty = Math.min(stock, Math.max(1, Number(this.data.qtyMap[id] || 1)))
       const fulfillType = this.data.fulfillType
       const res = await api.merchantPurchase({ goodsId: Number(g.id), qty, fulfillType })
       this.setData({ busy: false })

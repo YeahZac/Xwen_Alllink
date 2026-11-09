@@ -6,21 +6,27 @@ const partnerService = require('./partnerService')
 async function assertFounder(auth) {
   if (!auth) throw new HttpError(401, '未登录')
   if (auth.role === 'admin') return
-  if (auth.role !== 'founder') throw new HttpError(403, '仅创始人可操作')
+  // JWT role=founder 同时覆盖「创始人」与「负责人(lead)」会话
+  if (auth.role !== 'founder') throw new HttpError(403, '仅创始人/负责人可操作')
   const uid = Number(auth.userId) || 0
-  if (!uid) throw new HttpError(403, '仅创始人可操作')
+  if (!uid) throw new HttpError(403, '仅创始人/负责人可操作')
+  // lead 会话已带 isLead；纯 lead 账号 is_founder=0 也应能进总控只读/审核流
+  if (Number(auth.isLead)) return
   try {
     const rows = await query(
-      `SELECT IFNULL(is_founder,0) AS is_founder FROM users WHERE id=:id AND status=1 LIMIT 1`,
+      `SELECT IFNULL(is_founder,0) AS is_founder, IFNULL(is_lead,0) AS is_lead
+       FROM users WHERE id=:id AND status=1 LIMIT 1`,
       { id: uid }
     )
-    if (!rows.length || !Number(rows[0].is_founder)) {
-      throw new HttpError(403, '当前账号未授权创始人身份')
+    if (!rows.length || !(Number(rows[0].is_founder) || Number(rows[0].is_lead))) {
+      throw new HttpError(403, '当前账号未授权创始人/负责人身份')
     }
   } catch (e) {
     if (e instanceof HttpError) throw e
     // 列未迁移时：若 JWT 已是 founder 则放行（便于联调）
-    if (!/Unknown column.*is_founder/i.test(String(e.message || ''))) throw e
+    if (!/Unknown column.*is_founder|Unknown column.*is_lead/i.test(String(e.message || ''))) {
+      throw e
+    }
   }
 }
 

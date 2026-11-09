@@ -44,19 +44,19 @@
           <text class="m-row__title">{{item.name}}</text>
           <text class="price"><text class="price__yen">¥</text>{{item.price}}</text>
         </view>
-        <text class="m-row__sub">{{item.vendor}} · 库存 {{item.stock}}</text>
+        <text class="m-row__sub">{{item.vendor}} · 库存 {{item.stock}}{{item.outOfStock ? ' · 缺货' : ''}}</text>
         <view class="purchase-qty" wx:if="{{role !== 'supply'}}">
           <text class="purchase-qty__label">采购数量</text>
           <view class="purchase-qty__stepper">
             <view class="purchase-qty__btn" data-id="{{item.id}}" data-delta="-1" bindtap="changeQty">−</view>
-            <text class="purchase-qty__value">{{qtyMap[item.id] || 1}}</text>
+            <text class="purchase-qty__value">{{qtyMap[item.id] || 0}}</text>
             <view class="purchase-qty__btn purchase-qty__btn--plus" data-id="{{item.id}}" data-delta="1" bindtap="changeQty">+</view>
           </view>
         </view>
         <view class="buy-foot">
-          <text class="chip chip--accent">额度 +{{item.pointsGrant * (qtyMap[item.id] || 1)}}</text>
-          <button class="btn-primary" bindtap="onAction" data-id="{{item.id}}" loading="{{busy}}" disabled="{{busy}}">
-            {{role === 'supply' ? '查看' : '确认采购'}}
+          <text class="chip chip--accent">额度 +{{item.outOfStock ? 0 : item.pointsGrant * (qtyMap[item.id] || 1)}}</text>
+          <button class="btn-primary" bindtap="onAction" data-id="{{item.id}}" loading="{{busy}}" disabled="{{busy || item.outOfStock}}">
+            {{role === 'supply' ? '查看' : item.outOfStock ? '暂无库存' : '确认采购'}}
           </button>
         </view>
       </view>

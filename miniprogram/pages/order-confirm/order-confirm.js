@@ -205,8 +205,14 @@ Page({
       })
       if (result.orderNo) this.setData({ pendingOrderNo: result.orderNo })
 
-      // 模拟/已支付：直接成功
-      if (result.simulated || result.payStatus === 'paid' || !(Number(result.cashPaid) > 0)) {
+      // 模拟/已支付/0 元：直接成功；现金额兼容 cashPaid / cashAmount
+      const cashDue =
+        result.cashPaid != null
+          ? Number(result.cashPaid)
+          : result.cashAmount != null
+            ? Number(result.cashAmount)
+            : 0
+      if (result.simulated || result.payStatus === 'paid' || !(cashDue > 0)) {
         const paid = await requestWxPay(result)
         store.clearCart()
         await store.refreshProfile().catch(() => {})

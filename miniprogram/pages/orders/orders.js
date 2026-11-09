@@ -27,7 +27,12 @@ Page({
       this.setData({
         loading: false,
         orders: (orders || []).map((o) => {
-          const unpaid = !!o.unpaid || (o.payStatus === 'unpaid' && o.status !== 'cancelled')
+          const unpaid =
+            !!o.unpaid ||
+            (o.payStatus === 'unpaid' && o.status !== 'cancelled') ||
+            (o.type === 'cross' &&
+              o.payStatus === 'unpaid' &&
+              o.status === 'pending')
           const statusKey = unpaid ? 'unpaid' : o.status || o.payStatus
           return {
             ...o,
@@ -36,9 +41,11 @@ Page({
             timeText: o.time ? String(o.time).replace('T', ' ').slice(0, 19) : '',
             payModeText:
               o.type === 'cross'
-                ? o.payMode === 'points' || Number(o.pointsSpend) > 0
-                  ? '积分兑'
-                  : '全现金'
+                ? unpaid
+                  ? '待付款'
+                  : o.payMode === 'points' || Number(o.pointsSpend) > 0
+                    ? '积分兑'
+                    : '全现金'
                 : unpaid
                   ? '待付款'
                   : o.status === 'preparing' || o.status === 'ready'
@@ -59,10 +66,24 @@ Page({
   goDetail(e) {
     const id = e.currentTarget.dataset.id
     if (!id) return
-    // 异业单暂无统一详情，仅地摊单进详情页
     const order = this.data.orders.find((o) => String(o.id) === String(id))
+    // 异业单暂走本地摘要（后端 detail 目前仅覆盖地摊 consumer_orders）
     if (order && order.type === 'cross') {
-      wx.showToast({ title: '异业兑换单暂无详情页', icon: 'none' })
+      wx.showModal({
+        title: order.orderNo || order.id || '异业兑换单',
+        content: [
+          `状态：${order.statusText || '-'}`,
+          order.payModeText ? `支付：${order.payModeText}` : '',
+          order.pointsSpend ? `积分：${order.pointsSpend}` : '',
+          order.cashPaid != null || order.cashAmount != null
+            ? `现金：¥${Number(order.cashPaid != null ? order.cashPaid : order.cashAmount).toFixed(2)}`
+            : '',
+          order.timeText ? `时间：${order.timeText}` : ''
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        showCancel: false
+      })
       return
     }
     wx.navigateTo({ url: `/pages/order-detail/order-detail?id=${encodeURIComponent(id)}` })
@@ -137,8 +158,8 @@ Page({
         try {
           await api.complaint({
             targetType: 'order',
-            targetId: order && order.merchantId,
-            content: `${order ? order.id : ''} ${r.content}`
+            targetId: order && (order.orderNo || order.id),
+            content: r.content
           })
           wx.showToast({ title: '已提交', icon: 'success' })
         } catch (err) {

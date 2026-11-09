@@ -12,7 +12,8 @@ Page({
     busy: false
   },
   async onLoad(q) {
-    if (!store.ensureConsumerOrRedirect()) return
+    // 允许游客浏览门店；兑换/支付前再强制登录
+    if (!store.ensureConsumerOrRedirect({ allowGuest: true, soft: true })) return
     const scene = require('../../utils/scene')
     const id = scene.merchantIdFromQuery(q)
     if (!id) {
@@ -40,7 +41,14 @@ Page({
     }
   },
   async onShow() {
-    if (!store.ensureConsumerOrRedirect()) return
+    if (!store.ensureConsumerOrRedirect({ allowGuest: true, soft: true })) return
+    if (!store.isLoggedIn || !store.isLoggedIn()) {
+      this.setData({
+        points: store.getConsumerPoints(),
+        cashRateText: `抵现参考：1 积分 = ¥${store.getCashRate()}`
+      })
+      return
+    }
     try {
       const p = await api.myPoints()
       store.setConsumerPoints(p.points)
@@ -96,6 +104,7 @@ Page({
   },
   async checkout(item, payMode, pointsUse) {
     if (this.data.busy) return
+    if (!store.ensureConsumerOrRedirect()) return
     this.setData({ busy: true })
     try {
       const result = await api.redeemCross({
@@ -115,7 +124,6 @@ Page({
         throw new Error('缺少微信支付参数，请稍后重试')
       }
       const paid = await requestWxPay(result)
-      await this.refreshPoints()
       const mode = (paid && paid.payMode) || result.payMode || payMode
       if (result && result.autoFallback) {
         this.showOrderSuccess(`积分不足，已按微信价 ¥${result.cashAmount} 成交`)
@@ -130,8 +138,8 @@ Page({
       } else {
         this.showOrderSuccess(`已扣 ${result.pointsSpend || item.pointsNeed} 积分`)
       }
+      await this.refreshPoints().catch(() => {})
     } catch (err) {
-      this.setData({ busy: false })
       if (err && err.code === 'SYNC_PENDING') {
         wx.showModal({
           title: '支付结果确认中',
@@ -146,6 +154,8 @@ Page({
         return
       }
       wx.showToast({ title: err.message || '支付失败', icon: 'none' })
+    } finally {
+      this.setData({ busy: false })
     }
   },
   async redeem(e) {

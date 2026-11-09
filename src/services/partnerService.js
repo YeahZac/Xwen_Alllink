@@ -105,10 +105,10 @@ async function getDashboard(auth) {
     },
     records: records.slice(0, 20),
     menus: [
-      { id: 'books', title: '内部账目', sub: '佣金流水与累计', url: '/pages/recommend/recommend' },
-      { id: 'orders', title: '推广记录', sub: '邀请与奖励明细', url: '/pages/recommend/recommend' },
-      { id: 'supply', title: '供应链', sub: '首期查看推广规则与佣金', url: '/pages/recommend/recommend' },
-      { id: 'purchase', title: '采购跟进', sub: '切回商家身份后可下采购单', url: '' }
+      { id: 'books', title: '内部账目', sub: '佣金流水与累计', url: '/partner/books/books' },
+      { id: 'orders', title: '推广记录', sub: '邀请与奖励明细', url: '/partner/orders/orders' },
+      { id: 'supply', title: '供应链', sub: '供应链与佣金规则', url: '/partner/supply/supply' },
+      { id: 'purchase', title: '采购协同', sub: '合伙人采购单', url: '/partner/purchase/purchase' }
     ]
   }
 }

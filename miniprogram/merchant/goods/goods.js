@@ -28,28 +28,31 @@ Page({
           const optN = Number(g.optionGroupCount || 0)
           return {
             ...g,
+            onSale: g.onSale ? 1 : 0,
             coverImage: g.imageUrl || '',
             line: `¥${g.price} · 划拨 ${g.pointsGrant || 0} 积分 · ${
               optN > 0 ? `规格${optN}组` : '未配规格'
             } · 销量 ${g.sales || 0}`,
-            status: g.onSale ? '在售' : '下架'
+            statusLabel: g.onSale ? '在售' : '下架'
           }
         })
       } else if (s.role === 'cross') {
         title = '本店兑换商品'
         list = (rows || []).map((g) => ({
           ...g,
+          onSale: g.onSale ? 1 : 0,
           coverImage: g.imageUrl || '',
           line: `${g.pointsNeed} 积分 或 ¥${g.cashPrice} · ${g.allowMix === 0 ? '不支持组合' : '可组合支付'} · 销量 ${g.sales || 0}`,
-          status: g.onSale ? '在售' : '下架'
+          statusLabel: g.onSale ? '在售' : '下架'
         }))
       } else {
         title = '本店供货商品'
         list = (rows || []).map((g) => ({
           ...g,
+          onSale: g.onSale ? 1 : 0,
           coverImage: g.imageUrl || '',
-          line: `¥${g.price} · 买方获额 +${g.pointsGrant}`,
-          status: `库存 ${g.stock}`
+          line: `¥${g.price} · 买方获额 +${g.pointsGrant} · 库存 ${g.stock}`,
+          statusLabel: g.onSale ? '在售' : '下架'
         }))
       }
       this.setData({ role: s.role, title, shopHint, list, loading: false })
@@ -189,6 +192,7 @@ Page({
     })
   },
   saveGoods(g, patch) {
+    const onSale = patch.onSale != null ? patch.onSale : g.onSale ? 1 : 0
     return api.saveMerchantGoods({
       id: g.id,
       merchantId: store.getSession().merchantId,
@@ -198,13 +202,15 @@ Page({
       pointsNeed: g.pointsNeed,
       pointsGrant: g.pointsGrant,
       stock: g.stock,
-      onSale: g.onSale,
-      status: g.status,
+      onSale,
+      status: onSale,
       imageUrl: g.imageUrl,
       category: g.category,
       description: g.description,
       pointsRatio: g.pointsRatio,
-      ...patch
+      ...patch,
+      onSale,
+      status: patch.status != null ? patch.status : onSale
     })
   }
 })

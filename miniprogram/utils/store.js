@@ -264,18 +264,22 @@ async function refreshProfile() {
   const data = await api.profile()
   const cur = getSession() || {}
   if (data.cashRate) setCashRate(data.cashRate)
-  const role = data.role
+  // profile 偶发缺 role 时保留本地身份，避免 isLoggedIn / 路由被打空
+  const role = data.role != null && data.role !== '' ? data.role : cur.role
   const session = {
     ...cur,
     role,
     displayRole:
-      data.displayRole || (isMerchantRole(role) ? 'merchant' : role) || cur.displayRole || '',
+      data.displayRole ||
+      (isMerchantRole(role) ? 'merchant' : role) ||
+      cur.displayRole ||
+      '',
     shopType: data.shopType || (isMerchantRole(role) ? role : '') || cur.shopType || '',
     shopTypeLabel: data.shopTypeLabel || cur.shopTypeLabel || '',
     name: data.name || data.shopName || cur.name,
     shopName: data.shopName || cur.shopName || '',
-    merchantId: data.merchantId || cur.merchantId || null,
-    userId: data.userId || cur.userId || null,
+    merchantId: data.merchantId != null ? data.merchantId : cur.merchantId || null,
+    userId: data.userId != null ? data.userId : cur.userId || null,
     inviteCode: data.inviteCode || cur.inviteCode || '',
     coverUrl: data.coverUrl || data.avatarUrl || cur.coverUrl || '',
     avatarUrl: data.avatarUrl || data.coverUrl || cur.avatarUrl || '',

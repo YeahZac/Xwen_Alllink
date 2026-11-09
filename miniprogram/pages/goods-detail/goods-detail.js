@@ -18,7 +18,8 @@ Page({
     adding: false
   },
   onLoad(query) {
-    if (!store.ensureConsumerOrRedirect()) return
+    // 分享进入可游客浏览；加购/结算仍由后续流程要求登录
+    if (!store.ensureConsumerOrRedirect({ allowGuest: true, soft: true })) return
     const stallId = String((query && query.stallId) || '').trim()
     const goodsId = String((query && (query.goodsId || query.id)) || '').trim()
     if (!stallId || !goodsId) {

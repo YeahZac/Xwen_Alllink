@@ -4,14 +4,17 @@ const api = require('../../utils/api')
 const ROLE_NAME = { stall: '地摊', cross: '异业', supply: '供应链供货' }
 
 Page({
-  data: { shopName: '', userName: '', roleName: '' },
+  data: { shopName: '', userName: '', roleName: '', role: '', showPointsPool: true },
   onShow() {
     if (!store.ensureMerchantOrRedirect()) return
     const s = store.getSession() || {}
+    const role = s.role || ''
     this.setData({
       shopName: s.shopName || '门店',
       userName: s.name || '',
-      roleName: ROLE_NAME[s.role] || '商家'
+      roleName: ROLE_NAME[role] || '商家',
+      role,
+      showPointsPool: role === 'stall' || role === 'cross'
     })
   },
   go(e) {

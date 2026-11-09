@@ -10,7 +10,7 @@
         <text class="menu-tile__title">客户</text>
         <text class="menu-tile__sub">到店与核销客</text>
       </view>
-      <view class="menu-tile" bindtap="go" data-url="/merchant/points-pool/points-pool">
+      <view class="menu-tile" wx:if="{{showPointsPool}}" bindtap="go" data-url="/merchant/points-pool/points-pool">
         <text class="menu-tile__title">积分池</text>
         <text class="menu-tile__sub">额度与划拨</text>
       </view>
