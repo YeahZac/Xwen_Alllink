@@ -20,18 +20,18 @@ function httpsAgentOptions() {
   return extraCa
 }
 
-function requestJson(method, url, body) {
+function requestRaw(method, url, body, { json = true, timeout = 12000 } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(url)
     const lib = u.protocol === 'http:' ? http : https
-    const payload = body == null ? null : JSON.stringify(body)
+    const payload = body == null ? null : Buffer.isBuffer(body) ? body : JSON.stringify(body)
     const req = lib.request(
       {
         protocol: u.protocol,
         hostname: u.hostname,
         path: `${u.pathname}${u.search}`,
         method,
-        timeout: 12000,
+        timeout,
         ...(lib === https ? httpsAgentOptions() || {} : {}),
         headers: payload
           ? {
@@ -44,7 +44,12 @@ function requestJson(method, url, body) {
         const chunks = []
         res.on('data', (c) => chunks.push(c))
         res.on('end', () => {
-          const text = Buffer.concat(chunks).toString('utf8')
+          const buf = Buffer.concat(chunks)
+          if (!json) {
+            resolve({ status: res.statusCode, headers: res.headers, buffer: buf })
+            return
+          }
+          const text = buf.toString('utf8')
           try {
             resolve(JSON.parse(text))
           } catch (e) {
@@ -61,6 +66,10 @@ function requestJson(method, url, body) {
     if (payload) req.write(payload)
     req.end()
   })
+}
+
+function requestJson(method, url, body) {
+  return requestRaw(method, url, body, { json: true })
 }
 
 let tokenCache = { token: '', expireAt: 0 }
@@ -212,9 +221,46 @@ async function createJsapiPayForOrder(opts) {
   return wxPayService.createJsapiPrepay(opts)
 }
 
+/**
+ * 生成小程序码（无数量限制）。scene 最长 32 字符。
+ * 成功返回 PNG Buffer；失败抛 HttpError。
+ */
+async function getUnlimitedQrCode({ scene, page = 'pages/login/login', envVersion } = {}) {
+  const sc = String(scene || '').trim().slice(0, 32)
+  if (!sc) throw new HttpError(400, '缺少 scene')
+  const token = await getAccessToken()
+  const body = {
+    scene: sc,
+    page,
+    check_path: false,
+    width: 430
+  }
+  const ver = String(envVersion || process.env.WX_QRCODE_ENV || '').trim()
+  if (ver) body.env_version = ver
+  const res = await requestRaw(
+    'POST',
+    `https://api.weixin.qq.com/wxa/getwxacodeunlimit?access_token=${encodeURIComponent(token)}`,
+    body,
+    { json: false, timeout: 20000 }
+  )
+  const buf = res.buffer || Buffer.alloc(0)
+  const head = buf.slice(0, 1).toString('utf8')
+  if (head === '{' || head === '[') {
+    let err = {}
+    try {
+      err = JSON.parse(buf.toString('utf8'))
+    } catch (_) {}
+    throw new HttpError(502, err.errmsg || '生成小程序码失败')
+  }
+  if (buf.length < 100) throw new HttpError(502, '生成小程序码失败：空图')
+  return buf
+}
+
 module.exports = {
   code2Session,
   getPhoneNumber,
+  getAccessToken,
+  getUnlimitedQrCode,
   wxPayConfigured,
   buildPayResult,
   createJsapiPayForOrder,

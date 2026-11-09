@@ -3351,7 +3351,7 @@ async function renderReferrals() {
 async function renderReferralTriggers() {
   const editable = canEdit('referral_triggers') || canEdit('configs') || isSuper()
   content().innerHTML = `
-    <p class="muted">每个登录用户默认是推广员。奖励只发给直接邀请人（单级）。此处开关与积分即时生效。</p>
+    <p class="muted">每个登录用户默认是推广员。奖励只发给直接邀请人（单级）。「邀请好友」（trigger=<code>register</code>）控制：好友扫码/填邀请码绑定成功后，邀请人得多少积分。开关与积分即时生效。</p>
     <div class="toolbar" style="flex-wrap:wrap;gap:12px;align-items:flex-end">
       <label style="margin:0">总开关
         <select id="refEnabled" ${editable ? '' : 'disabled'}>

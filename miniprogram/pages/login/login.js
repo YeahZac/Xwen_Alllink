@@ -1,6 +1,7 @@
 const store = require('../../utils/store')
 const api = require('../../utils/api')
 const scan = require('../../utils/scan')
+const invite = require('../../utils/invite')
 const legal = require('../../utils/legal')
 const { ensureCloud } = require('../../utils/request')
 
@@ -103,9 +104,11 @@ Page({
       agreed: readAgreed()
     })
     this.syncPhoneCool()
-    if (q && q.ref) {
-      wx.setStorageSync('wy_pending_ref', String(q.ref))
-    }
+    const refCode =
+      invite.extractInviteCode(q && q.ref) ||
+      invite.extractInviteCode(q && q.scene) ||
+      (q && q.ref ? String(q.ref) : '')
+    if (refCode) invite.savePendingRef(refCode)
     // 仅在「非主动退出」时尝试恢复；不自动拉起手机号授权弹窗
     // 用户点「先逛逛」会走 enterGuest，不在此处自动跳（避免从「我的」进登录又被踢走）
     this.resumeIfPossible(fromScan)

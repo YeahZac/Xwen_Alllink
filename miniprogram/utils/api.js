@@ -225,6 +225,8 @@ const api = {
 
   myReferrals: () => request({ path: '/referral/mine' }),
   referralHome: () => request({ path: '/referral/home' }),
+  referralQrcode: (force) =>
+    request({ path: `/referral/qrcode${force ? '?force=1' : ''}` }),
 
   complaint: (body) => request({ path: '/complaints', method: 'POST', data: body }),
 

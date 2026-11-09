@@ -347,6 +347,13 @@ async function saveTrigger(body = {}) {
   if (key === 'first_order') {
     await setConfig('referral_first_order_reward', String(Math.max(0, Number(body.rewardPoints) || 0)), '与推荐触发点「好友首单」同步')
   }
+  if (key === 'register') {
+    await setConfig(
+      'referral_invite_friend_reward',
+      String(Math.max(0, Number(body.rewardPoints) || 0)),
+      '邀请好友绑定成功给邀请人的积分'
+    )
+  }
   return { triggerKey: key }
 }
 
@@ -382,6 +389,65 @@ async function ensureUserInviteCode(userId) {
   return code
 }
 
+/** scene 约定：ref=邀请码 或 纯邀请码（≤32） */
+function sceneForInviteCode(code) {
+  const c = String(code || '').trim()
+  if (!c) return ''
+  const withRef = `ref=${c}`
+  return withRef.length <= 32 ? withRef : c.slice(0, 32)
+}
+
+/**
+ * 每人一张固定小程序码：首次生成后写入 users.invite_qrcode_url，之后复用。
+ * force=true 时重新生成并覆盖。
+ */
+async function getOrCreateInviteQrcode(userId, { force = false } = {}) {
+  const uid = Number(userId)
+  if (!uid) throw new HttpError(400, '缺少用户')
+  const code = await ensureUserInviteCode(uid)
+  if (!code) throw new HttpError(404, '用户不存在')
+
+  let cached = ''
+  try {
+    const rows = await query(
+      'SELECT invite_qrcode_url AS url FROM users WHERE id=:id LIMIT 1',
+      { id: uid }
+    )
+    cached = rows.length ? String(rows[0].url || '').trim() : ''
+  } catch (e) {
+    if (!/Unknown column.*invite_qrcode_url/i.test(String(e.message || ''))) throw e
+  }
+  if (cached && !force) {
+    return { inviteCode: code, qrcodeUrl: cached, cached: true }
+  }
+
+  const wxService = require('./wxService')
+  const storageService = require('./storageService')
+  const scene = sceneForInviteCode(code)
+  const png = await wxService.getUnlimitedQrCode({
+    scene,
+    page: 'pages/login/login'
+  })
+  const uploaded = await storageService.uploadBuffer({
+    buffer: png,
+    mime: 'image/png',
+    originalName: `invite-${code}.png`,
+    bizType: 'invite_qr',
+    skipOptimize: true
+  })
+  const url = uploaded.fileUrl || uploaded.url || ''
+  if (!url) throw new HttpError(502, '邀请码图片上传失败')
+  try {
+    await query('UPDATE users SET invite_qrcode_url=:u WHERE id=:id', { u: url, id: uid })
+  } catch (e) {
+    if (/Unknown column.*invite_qrcode_url/i.test(String(e.message || ''))) {
+      throw new HttpError(503, '请先执行 sql/35_invite_qrcode.sql')
+    }
+    throw e
+  }
+  return { inviteCode: code, qrcodeUrl: url, cached: false, scene }
+}
+
 async function getHome(userId, { merchantId } = {}) {
   if (!userId) throw new HttpError(400, '当前账号未绑定推广身份')
   const personalCode = await ensureUserInviteCode(userId)
@@ -408,15 +474,28 @@ async function getHome(userId, { merchantId } = {}) {
       rewardPoints: Number(t.rewardPoints) || 0,
       remark: t.remark || ''
     }))
+  const inviteFriendRule = rules.find((t) => t.triggerKey === 'register') || null
   const records = await listMyReferrals(userId)
   const invited = new Set(records.map((r) => `${r.inviteeUserId || ''}-${r.inviteeMerchantId || r.inviteeCode || r.inviteeName}`)).size
   const rewardedPoints = records.reduce((s, r) => s + (Number(r.rewardPoints) || 0), 0)
+
+  let qrcodeUrl = ''
+  try {
+    const qr = await getOrCreateInviteQrcode(userId)
+    qrcodeUrl = qr.qrcodeUrl || ''
+  } catch (e) {
+    console.warn('[referral] invite qrcode', e.message || e)
+  }
+
   return {
     shareCode,
     personalCode,
+    qrcodeUrl,
     bound,
     referrerName: bound ? me[0].referrerName : '',
     referrerCode: bound ? me[0].referrerCode : '',
+    inviteFriendPoints: inviteFriendRule ? inviteFriendRule.rewardPoints : 0,
+    inviteFriendEnabled: inviteFriendRule ? !!inviteFriendRule.enabled : false,
     rules,
     records: records.map((r, i) => ({
       id: r.id || i,
@@ -444,5 +523,6 @@ module.exports = {
   saveSettings,
   getHome,
   ensureUserInviteCode,
+  getOrCreateInviteQrcode,
   resolveInviterUserId
 }

@@ -2258,6 +2258,18 @@ router.get('/referral/home', authRequired, requireRoles(...promoterRoles), async
   }
 })
 
+/** 获取/刷新本人固定邀请小程序码 */
+router.get('/referral/qrcode', authRequired, requireRoles(...promoterRoles), async (req, res, next) => {
+  try {
+    const userId = req.auth.userId
+    if (!userId) throw new HttpError(400, '当前账号未绑定推广身份')
+    const force = String(req.query.force || '') === '1'
+    res.json(ok(await referralService.getOrCreateInviteQrcode(userId, { force })))
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.post('/complaints', authRequired, async (req, res, next) => {
   try {
     res.json(

@@ -1,12 +1,26 @@
 const { ensureCloud } = require('./utils/request')
 const store = require('./utils/store')
 const scan = require('./utils/scan')
+const invite = require('./utils/invite')
 const location = require('./utils/location')
 const homePrefetch = require('./utils/home-prefetch')
 const { installPageShare } = require('./utils/share')
 
 // 须在任意 Page() 定义之前安装，使每个页面都可转发
 installPageShare()
+
+function captureInviteFromLaunch(opt) {
+  const o = opt || {}
+  const q = o.query || {}
+  let code =
+    invite.extractInviteCode(q.ref) ||
+    invite.extractInviteCode(q.scene) ||
+    invite.extractInviteCode(o.scene)
+  if (!code && o.path) {
+    code = invite.extractInviteCode(o.path)
+  }
+  if (code) invite.savePendingRef(code)
+}
 
 App({
   globalData: {
@@ -25,6 +39,8 @@ App({
     try {
       wx.setStorageSync('wy_guest_browse', 1)
     } catch (_) {}
+
+    captureInviteFromLaunch(opt)
 
     // 默认沙井：首屏立刻有城市与坐标基准
     location.ensureDefaultLoc()
@@ -56,7 +72,8 @@ App({
       this._openScanPay = true
     }
   },
-  onShow() {
+  onShow(opt) {
+    captureInviteFromLaunch(opt)
     if (!this._openScanPay) return
     this._openScanPay = false
     const pending = scan.getPendingPay()

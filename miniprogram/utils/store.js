@@ -360,8 +360,12 @@ function routeAfterLogin() {
       wx.removeStorageSync('wy_pending_ref')
       api
         .bindReferral(String(ref))
-        .then(() => {
-          wx.showToast({ title: '推荐关系已绑定', icon: 'none' })
+        .then((res) => {
+          const pts = Number(res && res.rewardPoints) || 0
+          wx.showToast({
+            title: pts > 0 ? `已绑定推荐人（邀请人 +${pts} 积分）` : '推荐关系已绑定',
+            icon: 'none'
+          })
         })
         .catch((err) => {
           wx.showToast({
