@@ -28,19 +28,54 @@ function readFileOptional(p) {
   return fs.readFileSync(full, 'utf8')
 }
 
-/** 云托管环境变量常把换行存成字面量 \\n；并去掉包裹引号 */
+/**
+ * 云托管环境变量常见坑：
+ * - 换行被存成字面量 \n / \\n
+ * - 控制台粘贴把换行挤成空格或整段单行 → OpenSSL3 DECODER unsupported
+ * - 首尾多一层引号、BOM、零宽字符
+ */
 function normalizePem(pem) {
-  let s = String(pem || '').trim()
-  if (!s) return ''
+  let s = String(pem || '')
+  if (!s.trim()) return ''
+  s = s.replace(/^\uFEFF/, '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim()
   if (
     (s.startsWith('"') && s.endsWith('"')) ||
     (s.startsWith("'") && s.endsWith("'"))
   ) {
     s = s.slice(1, -1).trim()
   }
-  if (s.includes('\\n')) s = s.replace(/\\n/g, '\n')
-  s = s.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
+  // 多层转义：\\\\n → \\n → 真换行（云托管/JSON 双重转义）
+  for (let i = 0; i < 4; i++) {
+    if (s.includes('\\\\n')) s = s.replace(/\\\\n/g, '\\n')
+    else break
+  }
+  for (let i = 0; i < 4; i++) {
+    if (s.includes('\\n')) s = s.replace(/\\n/g, '\n')
+    else break
+  }
+  s = s.replace(/\\r\\n/g, '\n').replace(/\\r/g, '\n')
+  s = s.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+
+  // 只要能识别 PEM 头尾，就规范化 body（去空格/重排 64 列），兼容云托管粘贴挤行
+  const block = s.match(/(-----BEGIN [^-]+-----)\s*([\s\S]*?)\s*(-----END [^-]+-----)/)
+  if (block) {
+    s = rewrapPemOneLine(`${block[1]}\n${block[2]}\n${block[3]}`)
+  }
+
+  s = s.trim()
   return s.endsWith('\n') ? s : `${s}\n`
+}
+
+/** 单行 / 空格分隔的 PEM → 标准多行 */
+function rewrapPemOneLine(raw) {
+  const m = String(raw || '').match(/^(-----BEGIN [^-]+-----)\s*([\s\S]*?)\s*(-----END [^-]+-----)$/)
+  if (!m) return String(raw || '')
+  const header = m[1]
+  const footer = m[3]
+  const body = m[2].replace(/\s+/g, '')
+  if (!body) return `${header}\n${footer}\n`
+  const lines = body.match(/.{1,64}/g) || [body]
+  return `${header}\n${lines.join('\n')}\n${footer}\n`
 }
 
 function diagnosePem(pem) {
@@ -189,19 +224,31 @@ function authorizationHeader(method, urlPathWithQuery, body = '') {
 
 function privateKeyHealth() {
   const c = payConfig()
+  const raw = c.privateKey || ''
+  const lines = raw.split('\n').filter((x) => x.length)
   const out = {
-    hasPrivateKey: Boolean(c.privateKey),
-    pemKind: diagnosePem(c.privateKey),
+    hasPrivateKey: Boolean(raw),
+    pemKind: diagnosePem(raw),
+    lineCount: lines.length,
+    header: lines[0] || null,
+    footer: lines.length > 1 ? lines[lines.length - 1] : null,
+    looksSingleLine: Boolean(raw) && !String(process.env.WX_PAY_PRIVATE_KEY || '').includes('\n') &&
+      !String(process.env.WX_PAY_PRIVATE_KEY || '').includes('\\n') &&
+      String(process.env.WX_PAY_PRIVATE_KEY || '').length > 80,
     parseOk: false,
     signOk: false,
     error: null
   }
-  if (!c.privateKey) {
+  if (!raw) {
     out.error = 'missing_private_key'
     return out
   }
+  if (/BEGIN\s+ENCRYPTED\s+PRIVATE\s+KEY/i.test(raw)) {
+    out.error = 'encrypted_private_key_not_supported'
+    return out
+  }
   try {
-    const keyObj = resolveMerchantPrivateKey(c.privateKey)
+    const keyObj = resolveMerchantPrivateKey(raw)
     out.parseOk = true
     const signer = crypto.createSign('RSA-SHA256')
     signer.update('ping')
