@@ -887,8 +887,15 @@ async function maybeAutoProfitShare({
 
   const totalFen = Math.round(Number(amountYuan || 0) * 100)
   if (totalFen < 1) return { skipped: true, reason: 'amount' }
-  const platformFen = Math.floor(totalFen * rate)
-  if (platformFen < 1) return { skipped: true, reason: 'platform_fen_zero' }
+  // 至少 1 分才可调微信分账；极小额（如 ¥0.01×10%）floor 后为 0 时跳过，避免脏请求
+  let platformFen = Math.floor(totalFen * rate)
+  if (platformFen < 1) {
+    if (totalFen >= 10 && rate > 0) platformFen = 1
+    else return { skipped: true, reason: 'platform_fen_zero' }
+  }
+  if (platformFen >= totalFen) {
+    return { skipped: true, reason: 'platform_fen_ge_total' }
+  }
 
   const outOrderNo = `PS${String(ono || '').replace(/\W/g, '').slice(-20)}${Date.now().toString(36)}`.slice(
     0,

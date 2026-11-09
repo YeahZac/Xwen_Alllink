@@ -10,6 +10,12 @@ const wxPayService = require('./wxPayService')
 const MERCHANT_PAY_READY_SQL = `NULLIF(TRIM(IFNULL(m.wx_sub_mch_id,'')), '') IS NOT NULL
        AND IFNULL(NULLIF(TRIM(IFNULL(m.wx_apply_state,'')), ''), 'FINISH') = 'FINISH'`
 
+/** 经营城市仍处于开通状态（关城后不得出现在 C 端列表） */
+const CITY_OPEN_SQL = `EXISTS (
+         SELECT 1 FROM operating_cities oc
+         WHERE oc.name = m.city AND oc.status = 1
+       )`
+
 /** 至少有一个上架商品，才进入小程序首页/分类 */
 function merchantHasOnSaleGoodsSql(alias = 'm') {
   return `(
@@ -29,6 +35,7 @@ function merchantHasOnSaleGoodsSql(alias = 'm') {
 }
 
 const HOME_VISIBLE_SQL = `${MERCHANT_PAY_READY_SQL}
+       AND ${CITY_OPEN_SQL}
        AND ${merchantHasOnSaleGoodsSql('m')}`
 
 function evaluateMerchantReady(row = {}) {
@@ -125,6 +132,7 @@ async function activateStallPlaceholderOnFinish(merchantId) {
 
 module.exports = {
   MERCHANT_PAY_READY_SQL,
+  CITY_OPEN_SQL,
   HOME_VISIBLE_SQL,
   merchantHasOnSaleGoodsSql,
   evaluateMerchantReady,

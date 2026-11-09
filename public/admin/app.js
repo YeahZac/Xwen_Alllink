@@ -2162,12 +2162,21 @@ async function renderCities() {
           const id = Number(input.getAttribute('data-city-switch'))
           const cityName = decodeURIComponent(input.getAttribute('data-city-name') || '')
           if (!input.checked) {
-            if (!confirmDanger(`确认关闭经营城市「${cityName}」？在营门店将无法新开城入驻。`)) {
+            if (
+              !confirmDanger(
+                `确认关闭经营城市「${cityName}」？关城后该城在营门店将强制歇业，C 端不再展示且无法新成交。`
+              )
+            ) {
               input.checked = true
               return
             }
             const res = await api(`/admin/cities/${id}/close`, { method: 'POST', body: '{}' })
-            alert(`已关城。当前仍有 ${res.activeMerchants ?? 0} 家在营门店归属该城市。`)
+            const paused = res.pausedMerchants ?? res.activeMerchants ?? 0
+            alert(
+              paused > 0
+                ? `已关城，并强制歇业 ${paused} 家在营门店。`
+                : '已关城。该城市暂无在营门店。'
+            )
           } else {
             await api('/admin/cities', {
               method: 'POST',

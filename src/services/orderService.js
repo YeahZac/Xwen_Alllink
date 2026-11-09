@@ -326,6 +326,10 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
     if (pointsSpend > cap) pointsSpend = cap
     const offset = round2(pointsToCash(pointsSpend, rate))
     const cashPaid = round2(Math.max(0, totalAmount - offset))
+    // SKU 未配赠积分时，按实付现金汇率回落（与扫码收款一致，满足验收 D5）
+    if (!pointsWant && cashPaid > 0) {
+      pointsWant = cashToPoints(cashPaid, rate)
+    }
     return { totalAmount, pointsWant, pointsSpend, offset, cashPaid, lines, rate }
   })
 
@@ -932,7 +936,12 @@ async function createScanPayOrder({ userId, merchantId, amount }) {
 function scheduleProfitShare(orderRow, transactionId, fin) {
   if (!orderRow || !transactionId || (fin && fin.alreadyPaid)) return
   const amountYuan =
-    orderRow.cash_paid != null ? orderRow.cash_paid : orderRow.total_amount
+    orderRow.cash_paid != null
+      ? orderRow.cash_paid
+      : orderRow.cash_amount != null
+        ? orderRow.cash_amount
+        : orderRow.total_amount
+  if (!(Number(amountYuan) > 0)) return
   setImmediate(() => {
     const subMerchantService = require('./subMerchantService')
     subMerchantService
@@ -956,14 +965,19 @@ async function handleWxPayNotify(headers, rawBody) {
 
   // 异业现金/组合单
   if (String(ono).startsWith('C')) {
-    return withTransaction(async (conn) => {
+    const crossResult = await withTransaction(async (conn) => {
       const [rows] = await conn.execute('SELECT * FROM cross_orders WHERE order_no=? FOR UPDATE', [ono])
       if (!rows.length) return { ignored: true, reason: 'cross_order_not_found', orderNo: ono }
       const fin = await finalizeCrossPaidOrder(conn, rows[0], {
         transactionId: parsed.transactionId
       })
-      return { ok: true, ...fin, transactionId: parsed.transactionId }
+      return { ok: true, ...fin, transactionId: parsed.transactionId, _order: rows[0] }
     })
+    if (crossResult && crossResult.ok && crossResult._order) {
+      scheduleProfitShare(crossResult._order, parsed.transactionId, crossResult)
+      delete crossResult._order
+    }
+    return crossResult
   }
 
   const result = await withTransaction(async (conn) => {
@@ -1203,11 +1217,20 @@ async function syncConsumerPay(orderNo, userId) {
     }
     if (o.status === 'cancelled') throw new HttpError(400, '订单已取消')
     const transactionId = await assertWxTradeSuccess(ono, o.merchant_id)
-    return withTransaction(async (conn) => {
+    const paid = await withTransaction(async (conn) => {
       const [locked] = await conn.execute('SELECT * FROM cross_orders WHERE order_no=? FOR UPDATE', [ono])
       const fin = await finalizeCrossPaidOrder(conn, locked[0], { transactionId })
-      return { orderNo: ono, status: fin.status || 'completed', payStatus: 'paid', ...fin }
+      return {
+        orderNo: ono,
+        status: fin.status || 'completed',
+        payStatus: 'paid',
+        ...fin,
+        _order: locked[0]
+      }
     })
+    scheduleProfitShare(paid._order, transactionId, paid)
+    delete paid._order
+    return paid
   }
 
   const rows = await query('SELECT * FROM consumer_orders WHERE order_no=:ono LIMIT 1', { ono })
@@ -1336,7 +1359,7 @@ async function redeemCross({ userId, merchantId, goodsId, payMode, pointsUse = 0
       if (e && e.code === 'ER_BAD_FIELD_ERROR') {
         ;[grows] = await conn.execute(
           `SELECT id, name, points_need, cash_price, 1 AS allow_mix, 9999 AS stock FROM cross_goods
-           WHERE id=? AND merchant_id=? AND on_sale=1`,
+           WHERE id=? AND merchant_id=? AND on_sale=1 AND deleted_at IS NULL`,
           [goodsId, merchantId]
         )
       } else {
@@ -1661,7 +1684,7 @@ async function createPurchaseOrder({ buyerMerchantId, goodsId, qty = 1, fulfillT
   return withTransaction(async (conn) => {
     const [grows] = await conn.execute(
       `SELECT id, merchant_id, name, price, points_grant, stock FROM supply_goods
-       WHERE id=? AND status=1 FOR UPDATE`,
+       WHERE id=? AND status=1 AND deleted_at IS NULL FOR UPDATE`,
       [goodsId]
     )
     if (!grows.length) throw new HttpError(404, '供货商品不存在')

@@ -120,17 +120,31 @@ async function saveCity(body = {}) {
   return { name, status }
 }
 
-/** 关城前提示影响面，避免误操作把在营商户挂空 */
+/**
+ * 关城：城市下线 + 强制该城在营门店歇业。
+ * C 端列表另有 CITY_OPEN_SQL；歇业可阻断深链下单（assertCanTransact）。
+ */
 async function closeCity(id) {
   const rows = await query('SELECT name FROM operating_cities WHERE id = :id', { id })
   if (!rows.length) throw new HttpError(404, '城市不存在')
+  const cityName = rows[0].name
   const cnt = await query(
     `SELECT COUNT(*) AS n FROM merchants
      WHERE city = :name AND status = 1 AND deleted_at IS NULL`,
-    { name: rows[0].name }
+    { name: cityName }
   )
+  const activeMerchants = Number(cnt[0].n) || 0
   await query('UPDATE operating_cities SET status = 0 WHERE id = :id', { id })
-  return { id, status: 0, activeMerchants: Number(cnt[0].n) || 0 }
+  let pausedMerchants = 0
+  if (activeMerchants > 0) {
+    const r = await query(
+      `UPDATE merchants SET status = 0
+       WHERE city = :name AND status = 1 AND deleted_at IS NULL`,
+      { name: cityName }
+    )
+    pausedMerchants = Number(r.affectedRows) || 0
+  }
+  return { id, status: 0, activeMerchants, pausedMerchants }
 }
 
 module.exports = { listOpenCities, listCities, resolveCity, ensureOpen, saveCity, closeCity }

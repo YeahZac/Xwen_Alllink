@@ -172,11 +172,11 @@ async function refreshOverdue() {
 
 /**
  * 成交阻断：仅当 overdue_policy=block 且商户处于逾费状态时拒绝新单。
- * 同时兜住「未审核/停业商户不得成交」（BRD §4.1 验收口径）。
+ * 同时兜住「未审核/停业商户不得成交」「关城后不得成交」（BRD §4.1 / §2.5）。
  */
 async function assertCanTransact(merchantId, { action = '成交' } = {}) {
   const rows = await query(
-    `SELECT status, service_status AS serviceStatus, name FROM merchants
+    `SELECT status, service_status AS serviceStatus, name, city FROM merchants
      WHERE id = :id AND deleted_at IS NULL`,
     { id: merchantId }
   )
@@ -184,6 +184,16 @@ async function assertCanTransact(merchantId, { action = '成交' } = {}) {
   const m = rows[0]
   if (Number(m.status) !== 1) {
     throw new HttpError(400, `「${m.name}」当前不在营业状态，无法${action}`)
+  }
+  const city = String(m.city || '').trim()
+  if (city) {
+    const cities = await query(
+      'SELECT status FROM operating_cities WHERE name = :name LIMIT 1',
+      { name: city }
+    )
+    if (!cities.length || !Number(cities[0].status)) {
+      throw new HttpError(400, `经营城市「${city}」已关闭，暂无法${action}`)
+    }
   }
   if (m.serviceStatus === 'overdue' && (await overduePolicy()) === 'block') {
     throw new HttpError(400, `「${m.name}」平台服务费逾期，已暂停${action}，请先结清账单`)
