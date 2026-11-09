@@ -247,6 +247,11 @@ async function ensureSchema() {
     console.warn('[schema] ensure open ops content', e.message)
   }
   try {
+    await runSqlStatements('44_goods_categories_trim_image.sql', 'goods categories trim+image')
+  } catch (e) {
+    console.warn('[schema] goods categories trim', e.message)
+  }
+  try {
     await addColumn(
       'admin_accounts',
       'user_id',

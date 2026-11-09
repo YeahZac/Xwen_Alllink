@@ -2488,7 +2488,7 @@ async function renderGoodsCategories() {
       <button class="btn" id="btnReload">刷新</button>
       ${editable ? '<button class="btn primary" id="btnAdd">新建类目</button>' : ''}
     </div>
-    <div class="muted" style="margin:8px 0 12px">类目按<strong>角色</strong>配置（地摊/异业/供应链），不是某家店私有；门店商品编辑时按角色拉取对应类目下拉。</div>
+    <div class="muted" style="margin:8px 0 12px">类目按<strong>角色</strong>配置（地摊/异业/供应链），每个角色最多启用 <strong>2</strong> 个类目名称。小程序「分类兑换」按此类目展示封面图后再进门店列表；封面在编辑里上传。</div>
     <div id="list"></div>`
   const load = async () => {
     const role = $('catRole').value
@@ -2496,12 +2496,13 @@ async function renderGoodsCategories() {
     const data = pageLocal(Array.isArray(rows) ? rows : rows.list || [], pageState)
     $('list').innerHTML =
       table(
-        ['ID', '关联角色', '类目名称', '排序', '状态', '操作'],
+        ['预览', 'ID', '关联角色', '类目名称', '排序', '状态', '操作'],
         data.list
           .map(
             (r) => {
               const on = Number(r.status) === 1
               return `<tr class="${on ? '' : 'is-off'}">
+        <td>${thumb(r.imageUrl)}</td>
         <td>${r.id}</td>
         <td>${esc(r.roleLabel || r.role)}</td>
         <td>${esc(r.name)}</td>
@@ -2561,7 +2562,7 @@ async function renderGoodsCategories() {
 }
 
 function openCategoryModal(row, reload) {
-  const r = row || { role: 'stall', name: '', sortOrder: 10, status: 1 }
+  const r = row || { role: 'stall', name: '', sortOrder: 10, status: 1, imageUrl: '' }
   openModal(
     row ? '编辑类目' : '新建类目',
     `<label>关联角色<select id="f_role">
@@ -2570,8 +2571,10 @@ function openCategoryModal(row, reload) {
       <option value="supply" ${r.role === 'supply' ? 'selected' : ''}>供应链</option>
     </select></label>` +
       field('name', '类目名称', r.name || '') +
-      field('sortOrder', '排序', r.sortOrder ?? 10, 'number') +
-      selectOnOff('status', r.status ?? 1, { onLabel: '启用', offLabel: '停用' }),
+      mediaField('imageUrl', '小程序类目封面图', r.imageUrl || '', 'category') +
+      field('sortOrder', '排序（越小越靠前）', r.sortOrder ?? 10, 'number') +
+      selectOnOff('status', r.status ?? 1, { onLabel: '启用', offLabel: '停用' }) +
+      `<p class="muted">每个角色最多启用 2 个类目；分类页按排序展示封面，点进后再出门店列表。</p>`,
     async () => {
       await api('/admin/goods-categories', {
         method: 'POST',
@@ -2579,6 +2582,7 @@ function openCategoryModal(row, reload) {
           id: r.id,
           role: $('f_role').value,
           name: formVal('name'),
+          imageUrl: formVal('imageUrl'),
           sortOrder: Number(formVal('sortOrder') || 0),
           status: Number(formVal('status') || 0)
         })

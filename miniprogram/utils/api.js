@@ -188,6 +188,13 @@ const api = {
   crossStores: (q, opts = {}) =>
     request({ path: `/cross-stores${toQuery(q)}`, auth: false, timeout: opts.timeout || 25000 }),
 
+  goodsCategories: (role = 'cross', opts = {}) =>
+    request({
+      path: `/goods-categories${toQuery({ role })}`,
+      auth: false,
+      timeout: opts.timeout || 15000
+    }),
+
   crossStore: (id) => request({ path: `/cross-stores/${id}`, auth: false }),
 
   supplyGoods: () => request({ path: '/supply/goods', auth: false }),

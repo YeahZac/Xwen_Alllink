@@ -2,24 +2,21 @@
 -- 重要：禁止再批量改写真实入驻商户的 name / cover / address。
 -- 演示店名回写已造成「海川众核科技」被改成「甜森蛋糕」等问题；见 sql/43_restore_apply_merchant_identity.sql
 
+-- 类目收敛为每角色 2 个（详见 sql/44）；此处不再灌 4 类目
 UPDATE `goods_categories` SET `status` = 0 WHERE `status` = 1;
 
 INSERT INTO `goods_categories` (`role`, `name`, `sort_order`, `status`) VALUES
 ('stall', '餐饮', 10, 1),
-('stall', '鲜花', 20, 1),
-('stall', '蛋糕', 30, 1),
-('stall', '百货商店', 40, 1),
+('stall', '百货商店', 20, 1),
 ('cross', '餐饮', 10, 1),
-('cross', '鲜花', 20, 1),
-('cross', '蛋糕', 30, 1),
-('cross', '百货商店', 40, 1),
-('supply', '餐饮', 10, 1),
-('supply', '鲜花', 20, 1),
-('supply', '蛋糕', 30, 1),
-('supply', '百货商店', 40, 1)
+('cross', '百货商店', 20, 1),
+('supply', '粮油', 10, 1),
+('supply', '生鲜', 20, 1)
 ON DUPLICATE KEY UPDATE
   `sort_order` = VALUES(`sort_order`),
   `status` = 1;
+
+DELETE FROM `goods_categories` WHERE `status` = 0;
 
 -- 仅给「尚未有 biz_type」的商户补默认品类，不覆盖已有值
 UPDATE `merchants`

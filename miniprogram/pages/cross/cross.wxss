@@ -64,6 +64,71 @@
   height: 240rpx;
 }
 
+.cat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+}
+
+.cat-tile {
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+}
+
+.cat-tile__cover {
+  height: 220rpx;
+  background: var(--color-surface-soft);
+}
+
+.cat-tile__cover .cover-img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.cat-tile__cover .cover-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 64rpx;
+  font-weight: 700;
+  color: var(--color-primary);
+  background: linear-gradient(145deg, #fff5eb, #ffe4cc);
+}
+
+.cat-tile__body {
+  padding: var(--space-sm) var(--space-md) var(--space-md);
+}
+
+.cat-tile__name {
+  display: block;
+  font-size: var(--font-body);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.cat-tile__meta {
+  display: block;
+  margin-top: 6rpx;
+  font-size: var(--font-tiny);
+  color: var(--color-text-muted);
+}
+
+.cat-back {
+  margin: 0 0 var(--space-md);
+  padding: var(--space-sm) 0;
+}
+
+.cat-back__text {
+  font-size: var(--font-caption);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
 /* 分类页强制不展示任何「异业」角标（含旧 store-card 样式残留） */
 .cross .store-tile__badge,
 .cross .store-card__badge {

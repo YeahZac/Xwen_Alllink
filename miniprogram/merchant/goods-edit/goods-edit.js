@@ -2,9 +2,9 @@ const store = require('../../utils/store')
 const api = require('../../utils/api')
 
 const CATS = {
-  stall: ['餐饮', '鲜花', '蛋糕', '百货商店'],
-  cross: ['餐饮', '鲜花', '蛋糕', '百货商店'],
-  supply: ['餐饮', '鲜花', '蛋糕', '百货商店']
+  stall: ['餐饮', '百货商店'],
+  cross: ['餐饮', '百货商店'],
+  supply: ['粮油', '生鲜']
 }
 const UNITS = ['份', '件', '束', '盒', '袋', '箱']
 

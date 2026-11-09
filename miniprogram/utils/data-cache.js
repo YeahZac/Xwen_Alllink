@@ -3,7 +3,8 @@
  * - fresh：直接用缓存，可后台静默刷新
  * - stale：先展示缓存，同时拉新
  */
-const PREFIX = 'wy_dc_'
+/** v2：正式清库后作废演示底包缓存 */
+const PREFIX = 'wy_dc_v2_'
 
 const TTL = {
   homeLists: 10 * 60 * 1000,

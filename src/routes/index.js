@@ -667,6 +667,15 @@ router.delete('/admin/goods/:type/:id', ...adminOnly, requirePage('goods'), asyn
   }
 })
 
+/** C 端：启用中的商品类目（分类页入口） */
+router.get('/goods-categories', async (req, res, next) => {
+  try {
+    res.json(ok(await categoryService.listPublicCategories(req.query.role || 'cross')))
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.get('/admin/goods-categories', ...adminOnly, requirePage('goods_categories'), async (req, res, next) => {
   try {
     res.json(ok(await categoryService.listCategories(req.query.role || '')))
