@@ -245,15 +245,30 @@ async function listStallGoods({ merchantId, page, pageSize, limit } = {}) {
     `SELECT COUNT(*) AS c FROM stall_goods g JOIN merchants m ON m.id=g.merchant_id${where}`,
     params
   )
-  const list = await query(
-    `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name, g.price,
-            g.points_grant AS pointsGrant, g.category, g.desc_text AS description,
-            g.image_url AS imageUrl, g.stock, g.on_sale AS onSale, g.sku_code AS sku,
-            g.sales_count AS sales
-     FROM stall_goods g JOIN merchants m ON m.id=g.merchant_id${where}
-     ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
-    params
-  )
+  let list
+  try {
+    list = await query(
+      `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name, g.price,
+              g.points_grant AS pointsGrant, g.category, g.desc_text AS description,
+              g.image_url AS imageUrl, g.stock, g.on_sale AS onSale, g.sku_code AS sku,
+              g.sales_count AS sales, IFNULL(g.allow_remark, 1) AS allowRemark,
+              (SELECT COUNT(*) FROM stall_goods_option_groups og WHERE og.goods_id = g.id) AS optionGroupCount
+       FROM stall_goods g JOIN merchants m ON m.id=g.merchant_id${where}
+       ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
+  } catch (e) {
+    if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+    list = await query(
+      `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name, g.price,
+              g.points_grant AS pointsGrant, g.category, g.desc_text AS description,
+              g.image_url AS imageUrl, g.stock, g.on_sale AS onSale, g.sku_code AS sku,
+              g.sales_count AS sales, 1 AS allowRemark, 0 AS optionGroupCount
+       FROM stall_goods g JOIN merchants m ON m.id=g.merchant_id${where}
+       ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
+  }
   return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
@@ -275,7 +290,8 @@ async function saveStallGoods(body) {
     stock: Number(body.stock) || 9999,
     sku: String(body.sku || '').trim() || null,
     onSale: body.onSale === 0 ? 0 : 1,
-    mix: body.mixEnabled === 0 ? 0 : 1
+    mix: body.mixEnabled === 0 ? 0 : 1,
+    allowRemark: body.allowRemark === 0 ? 0 : 1
   }
   if (!Number.isFinite(payload.price) || payload.price < 0) {
     throw new HttpError(400, '请填写正确的售价')
@@ -285,7 +301,7 @@ async function saveStallGoods(body) {
       await query(
         `UPDATE stall_goods SET name=:name, price=:price, points_grant=:pg, category=:cat,
          unit=:unit, desc_text=:desc, image_url=:img, stock=:stock, sku_code=IFNULL(:sku, sku_code),
-         on_sale=:onSale, mix_enabled=:mix
+         on_sale=:onSale, mix_enabled=:mix, allow_remark=:allowRemark
          WHERE id=:id AND merchant_id=:mid`,
         payload
       )
@@ -307,8 +323,8 @@ async function saveStallGoods(body) {
   try {
     r = await query(
       `INSERT INTO stall_goods
-        (merchant_id, name, sku_code, price, points_grant, category, unit, desc_text, image_url, stock, on_sale, mix_enabled)
-       VALUES (:mid, :name, :sku, :price, :pg, :cat, :unit, :desc, :img, :stock, :onSale, :mix)`,
+        (merchant_id, name, sku_code, price, points_grant, category, unit, desc_text, image_url, stock, on_sale, mix_enabled, allow_remark)
+       VALUES (:mid, :name, :sku, :price, :pg, :cat, :unit, :desc, :img, :stock, :onSale, :mix, :allowRemark)`,
       payload
     )
   } catch (e) {
@@ -541,15 +557,70 @@ async function saveSupplyGoods(body) {
 async function listConsumerOrders({ page, pageSize, limit } = {}) {
   const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
   const countRows = await query('SELECT COUNT(*) AS c FROM consumer_orders')
-  const list = await query(
-    `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount, o.points_allocated AS pointsAllocated,
-            o.pay_status AS payStatus, o.order_status AS orderStatus, o.created_at AS createdAt,
-            u.nickname AS userName, m.name AS shopName
-     FROM consumer_orders o
-     JOIN users u ON u.id=o.user_id
-     JOIN merchants m ON m.id=o.merchant_id
-     ORDER BY o.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`
-  )
+  let list
+  try {
+    list = await query(
+      `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount, o.points_allocated AS pointsAllocated,
+              o.pay_status AS payStatus, o.order_status AS orderStatus, o.buyer_remark AS buyerRemark,
+              o.created_at AS createdAt, u.nickname AS userName, m.name AS shopName
+       FROM consumer_orders o
+       JOIN users u ON u.id=o.user_id
+       JOIN merchants m ON m.id=o.merchant_id
+       ORDER BY o.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`
+    )
+  } catch (e) {
+    if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+    list = await query(
+      `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount, o.points_allocated AS pointsAllocated,
+              o.pay_status AS payStatus, o.order_status AS orderStatus, o.created_at AS createdAt,
+              u.nickname AS userName, m.name AS shopName
+       FROM consumer_orders o
+       JOIN users u ON u.id=o.user_id
+       JOIN merchants m ON m.id=o.merchant_id
+       ORDER BY o.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`
+    )
+  }
+  if (list.length) {
+    const ids = list.map((r) => r.id)
+    const ph = ids.map((_, i) => `:id${i}`).join(',')
+    const params = {}
+    ids.forEach((id, i) => {
+      params[`id${i}`] = id
+    })
+    let items = []
+    try {
+      items = await query(
+        `SELECT order_id AS orderId, goods_name AS goodsName, qty, options_text AS optionsText,
+                item_remark AS itemRemark, price
+         FROM consumer_order_items WHERE order_id IN (${ph}) ORDER BY id ASC`,
+        params
+      )
+    } catch (e) {
+      if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+      items = await query(
+        `SELECT order_id AS orderId, goods_name AS goodsName, qty, options_text AS optionsText, price
+         FROM consumer_order_items WHERE order_id IN (${ph}) ORDER BY id ASC`,
+        params
+      )
+    }
+    const byOrder = new Map()
+    for (const it of items) {
+      if (!byOrder.has(it.orderId)) byOrder.set(it.orderId, [])
+      byOrder.get(it.orderId).push(it)
+    }
+    list.forEach((row) => {
+      row.items = byOrder.get(row.id) || []
+      row.itemsText = (row.items || [])
+        .map((it) => {
+          const bits = [it.goodsName]
+          if (it.optionsText) bits.push(it.optionsText)
+          if (it.itemRemark) bits.push(`备注:${it.itemRemark}`)
+          bits.push(`x${it.qty}`)
+          return bits.join(' ')
+        })
+        .join('；')
+    })
+  }
   return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
@@ -1052,23 +1123,50 @@ async function grantPool(body) {
 
 async function getOrderDetail(type, id) {
   if (type === 'consumer') {
-    const rows = await query(
-      `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount, o.points_want AS pointsWant,
-              o.points_allocated AS pointsAllocated, o.pay_status AS payStatus, o.order_status AS orderStatus,
-              o.created_at AS createdAt, u.nickname AS userName, u.phone AS userPhone,
-              m.name AS shopName, m.cover_url AS shopCover
-       FROM consumer_orders o
-       JOIN users u ON u.id=o.user_id
-       JOIN merchants m ON m.id=o.merchant_id
-       WHERE o.id=:id`,
-      { id }
-    )
+    let rows
+    try {
+      rows = await query(
+        `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount, o.points_want AS pointsWant,
+                o.points_allocated AS pointsAllocated, o.pay_status AS payStatus, o.order_status AS orderStatus,
+                o.buyer_remark AS buyerRemark, o.created_at AS createdAt, u.nickname AS userName, u.phone AS userPhone,
+                m.name AS shopName, m.cover_url AS shopCover
+         FROM consumer_orders o
+         JOIN users u ON u.id=o.user_id
+         JOIN merchants m ON m.id=o.merchant_id
+         WHERE o.id=:id`,
+        { id }
+      )
+    } catch (e) {
+      if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+      rows = await query(
+        `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount, o.points_want AS pointsWant,
+                o.points_allocated AS pointsAllocated, o.pay_status AS payStatus, o.order_status AS orderStatus,
+                o.created_at AS createdAt, u.nickname AS userName, u.phone AS userPhone,
+                m.name AS shopName, m.cover_url AS shopCover
+         FROM consumer_orders o
+         JOIN users u ON u.id=o.user_id
+         JOIN merchants m ON m.id=o.merchant_id
+         WHERE o.id=:id`,
+        { id }
+      )
+    }
     if (!rows.length) throw new HttpError(404, '订单不存在')
-    const items = await query(
-      `SELECT goods_id AS goodsId, goods_name AS goodsName, price, points_grant AS pointsGrant, qty
-       FROM consumer_order_items WHERE order_id=:id`,
-      { id }
-    )
+    let items
+    try {
+      items = await query(
+        `SELECT goods_id AS goodsId, goods_name AS goodsName, price, points_grant AS pointsGrant, qty,
+                options_text AS optionsText, item_remark AS itemRemark, options_json AS optionsJson
+         FROM consumer_order_items WHERE order_id=:id`,
+        { id }
+      )
+    } catch (e) {
+      if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+      items = await query(
+        `SELECT goods_id AS goodsId, goods_name AS goodsName, price, points_grant AS pointsGrant, qty
+         FROM consumer_order_items WHERE order_id=:id`,
+        { id }
+      )
+    }
     return { ...rows[0], type: 'consumer', items }
   }
   if (type === 'cross') {

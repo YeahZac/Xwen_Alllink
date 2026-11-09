@@ -76,3 +76,16 @@
   border-radius: var(--radius-md);
   font-size: var(--font-body);
 }
+
+.confirm-remark {
+  width: 100%;
+  min-height: 120rpx;
+  margin-top: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  box-sizing: border-box;
+  background: var(--color-surface-soft);
+  border-radius: var(--radius-md);
+  font-size: var(--font-body);
+  line-height: var(--lh-snug);
+}

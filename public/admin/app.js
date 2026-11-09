@@ -2371,7 +2371,7 @@ async function renderGoods() {
       })
     const headers =
       type === 'stall'
-        ? ['预览', '商品ID', '所属门店', '品名', '价', '积分', '类目', '库存', '上架', '操作']
+        ? ['预览', '商品ID', '所属门店', '品名', '价', '积分', '类目', '规格', '备注', '库存', '上架', '操作']
         : type === 'cross'
           ? ['预览', '商品ID', '所属门店', '品名', '类目', '积分', '现金价', '库存', '上架', '操作']
           : ['预览', '商品ID', '所属门店', '品名', '类目', '价', '库存', '积分', '状态', '操作']
@@ -2381,14 +2381,20 @@ async function renderGoods() {
         rows
           .map((g) => {
             if (type === 'stall') {
+              const optN = Number(g.optionGroupCount || 0)
+              const optBadge = optN
+                ? `<span class="pill ok">${optN} 组</span>`
+                : `<span class="pill warn">未配置</span>`
+              const remarkBadge = Number(g.allowRemark) === 0 ? '关' : '开'
               return `<tr class="${saleOn(g) ? '' : 'is-off'}">
           <td>${thumb(g.imageUrl)}</td>
           <td>${g.id}</td><td>${shopCell(g)}</td><td>${esc(g.name)}</td>
-          <td>${g.price}</td><td>${g.pointsGrant}</td><td>${esc(g.category)}</td><td>${g.stock}</td>
+          <td>${g.price}</td><td>${g.pointsGrant}</td><td>${esc(g.category)}</td>
+          <td>${optBadge}</td><td>${remarkBadge}</td><td>${g.stock}</td>
           <td>${saleCell(g)}</td>
           <td class="actions">
             ${editable ? `<button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button>
-            <button class="btn sm" data-opts="${g.id}" data-name="${esc(g.name)}">规格</button>` : '-'}
+            <button class="btn sm primary" data-opts="${g.id}" data-name="${esc(g.name)}">规格</button>` : '-'}
             ${delBtn(g)}
           </td></tr>`
             }
@@ -2611,6 +2617,8 @@ async function editGoods(type, g, reload) {
       field('pointsGrant', '划拨积分', g.pointsGrant || 0, 'number') +
       field('stock', '库存', g.stock || 9999, 'number') +
       selectOnOff('onSale', g.onSale ?? 1, { onLabel: '上架', offLabel: '下架' }) +
+      selectOnOff('allowRemark', g.allowRemark ?? 1, { onLabel: '允许备注', offLabel: '关闭备注' }) +
+      `<p class="muted">口味/分量/配料请在列表「规格」里配置；点餐弹层会展示数量与备注。</p>` +
       field('description', '描述', g.description || '') +
       mediaField('imageUrl', '商品图片', g.imageUrl || '', 'goods')
   } else if (type === 'cross') {
@@ -2644,6 +2652,7 @@ async function editGoods(type, g, reload) {
       category: $('f_category') ? $('f_category').value : formVal('category'),
       stock: Number(formVal('stock') || 0),
       onSale: Number(formVal('onSale') || 0),
+      allowRemark: Number(formVal('allowRemark') || 0),
       description: formVal('description'),
       pointsNeed: Number(formVal('pointsNeed') || 0),
       cashPrice: Number(formVal('cashPrice') || 0),
@@ -2656,16 +2665,9 @@ async function editGoods(type, g, reload) {
   })
 }
 
-async function editStallOptions(goodsId, goodsName, reload) {
-  let groups = []
-  try {
-    groups = (await api(`/admin/goods/stall/${goodsId}/options`)) || []
-  } catch (e) {
-    alert(e.message || '加载规格失败，请先执行 sql/08_stall_options.sql')
-    return
-  }
-  if (!groups.length) {
-    groups = [
+function stallOptionTemplates() {
+  return {
+    meal: [
       {
         name: '口味',
         type: 'flavor',
@@ -2676,7 +2678,7 @@ async function editStallOptions(goodsId, goodsName, reload) {
         options: [
           { name: '微辣', priceDelta: 0, pointsDelta: 0, isDefault: 1 },
           { name: '中辣', priceDelta: 0, pointsDelta: 0, isDefault: 0 },
-          { name: '特辣', priceDelta: 1, pointsDelta: 1, isDefault: 0 }
+          { name: '特辣', priceDelta: 0.5, pointsDelta: 0, isDefault: 0 }
         ]
       },
       {
@@ -2688,8 +2690,8 @@ async function editStallOptions(goodsId, goodsName, reload) {
         maxSelect: 1,
         options: [
           { name: '标准', priceDelta: 0, pointsDelta: 0, isDefault: 1 },
-          { name: '大份', priceDelta: 3, pointsDelta: 2, isDefault: 0 },
-          { name: '小份', priceDelta: -2, pointsDelta: -1, isDefault: 0 }
+          { name: '大份', priceDelta: 2, pointsDelta: 1, isDefault: 0 },
+          { name: '小份', priceDelta: -1, pointsDelta: 0, isDefault: 0 }
         ]
       },
       {
@@ -2700,11 +2702,65 @@ async function editStallOptions(goodsId, goodsName, reload) {
         minSelect: 0,
         maxSelect: 5,
         options: [
-          { name: '加蛋', priceDelta: 2, pointsDelta: 1, isDefault: 0 },
-          { name: '加火腿肠', priceDelta: 3, pointsDelta: 1, isDefault: 0 }
+          { name: '加蛋', priceDelta: 1.5, pointsDelta: 0, isDefault: 0 },
+          { name: '加肠', priceDelta: 2, pointsDelta: 0, isDefault: 0 },
+          { name: '加豆皮', priceDelta: 1, pointsDelta: 0, isDefault: 0 }
+        ]
+      }
+    ],
+    drink: [
+      {
+        name: '甜度',
+        type: 'custom',
+        required: 1,
+        multiSelect: 0,
+        minSelect: 1,
+        maxSelect: 1,
+        options: [
+          { name: '正常糖', priceDelta: 0, pointsDelta: 0, isDefault: 1 },
+          { name: '少糖', priceDelta: 0, pointsDelta: 0, isDefault: 0 },
+          { name: '无糖', priceDelta: 0, pointsDelta: 0, isDefault: 0 }
+        ]
+      },
+      {
+        name: '温度',
+        type: 'custom',
+        required: 1,
+        multiSelect: 0,
+        minSelect: 1,
+        maxSelect: 1,
+        options: [
+          { name: '热饮', priceDelta: 0, pointsDelta: 0, isDefault: 1 },
+          { name: '常温', priceDelta: 0, pointsDelta: 0, isDefault: 0 },
+          { name: '冰', priceDelta: 0, pointsDelta: 0, isDefault: 0 }
+        ]
+      },
+      {
+        name: '加料',
+        type: 'topping',
+        required: 0,
+        multiSelect: 1,
+        minSelect: 0,
+        maxSelect: 4,
+        options: [
+          { name: '珍珠', priceDelta: 2, pointsDelta: 0, isDefault: 0 },
+          { name: '椰果', priceDelta: 1.5, pointsDelta: 0, isDefault: 0 }
         ]
       }
     ]
+  }
+}
+
+async function editStallOptions(goodsId, goodsName, reload) {
+  let groups = []
+  try {
+    groups = (await api(`/admin/goods/stall/${goodsId}/options`)) || []
+  } catch (e) {
+    alert(e.message || '加载规格失败，请先执行 sql/08_stall_options.sql')
+    return
+  }
+  if (!groups.length) {
+    groups = stallOptionTemplates().meal.map((g) => JSON.parse(JSON.stringify(g)))
   }
 
   const renderBody = () => {
@@ -2713,7 +2769,7 @@ async function editStallOptions(goodsId, goodsName, reload) {
         const opts = (g.options || [])
           .map(
             (o, oi) => `<div class="opt-row" data-gi="${gi}" data-oi="${oi}">
-            <input data-k="name" value="${esc(o.name || '')}" placeholder="选项名" />
+            <input data-k="name" value="${esc(o.name || '')}" placeholder="选项名，如微辣" />
             <input data-k="priceDelta" type="number" step="0.01" value="${o.priceDelta ?? 0}" placeholder="加价" title="价格增减" />
             <input data-k="pointsDelta" type="number" value="${o.pointsDelta ?? 0}" placeholder="积分增减" title="积分增减" />
             <label class="chk"><input data-k="isDefault" type="checkbox" ${o.isDefault ? 'checked' : ''}/>默认</label>
@@ -2723,7 +2779,7 @@ async function editStallOptions(goodsId, goodsName, reload) {
           .join('')
         return `<div class="opt-group" data-gi="${gi}">
           <div class="opt-group__head">
-            <input data-gk="name" value="${esc(g.name || '')}" placeholder="组名" />
+            <input data-gk="name" value="${esc(g.name || '')}" placeholder="组名：口味/分量/配料" />
             <select data-gk="type">
               <option value="flavor" ${g.type === 'flavor' ? 'selected' : ''}>口味</option>
               <option value="portion" ${g.type === 'portion' ? 'selected' : ''}>分量</option>
@@ -2734,13 +2790,18 @@ async function editStallOptions(goodsId, goodsName, reload) {
             <label class="chk"><input data-gk="multiSelect" type="checkbox" ${g.multiSelect ? 'checked' : ''}/>多选</label>
             <button type="button" class="btn sm danger" data-del-group="${gi}">删除组</button>
           </div>
-          <div class="opt-list">${opts}</div>
+          <div class="opt-list">${opts || '<p class="muted">暂无选项，请添加</p>'}</div>
           <button type="button" class="btn sm" data-add-opt="${gi}">+ 选项</button>
         </div>`
       })
       .join('')
-    return `<p class="muted">单价 = 基础价 + 所选规格加价；积分同理。多选配料可叠加。</p>
-      <div id="optEditor">${blocks}</div>
+    return `<p class="muted">小程序点餐会弹出规格层：口味 / 分量 / 配料 + 数量 + 备注。单价 = 基础价 + 所选加价。</p>
+      <div class="opt-toolbar">
+        <button type="button" class="btn sm" id="btnTplMeal">套用正餐模板</button>
+        <button type="button" class="btn sm" id="btnTplDrink">套用饮品模板</button>
+        <button type="button" class="btn sm" id="btnClearOpts">清空规格</button>
+      </div>
+      <div id="optEditor">${blocks || '<p class="muted">尚未配置规格组</p>'}</div>
       <button type="button" class="btn" id="btnAddGroup">+ 规格组</button>`
   }
 
@@ -2768,8 +2829,28 @@ async function editStallOptions(goodsId, goodsName, reload) {
     })
   }
 
+  const rebind = () => {
+    $('modalBody').innerHTML = renderBody()
+    bindEditor()
+  }
+
   const bindEditor = () => {
     const root = $('modalBody')
+    root.querySelector('#btnTplMeal')?.addEventListener('click', () => {
+      if (groups.length && !confirm('将覆盖当前规格为「正餐」模板，继续？')) return
+      groups = stallOptionTemplates().meal.map((g) => JSON.parse(JSON.stringify(g)))
+      rebind()
+    })
+    root.querySelector('#btnTplDrink')?.addEventListener('click', () => {
+      if (groups.length && !confirm('将覆盖当前规格为「饮品」模板，继续？')) return
+      groups = stallOptionTemplates().drink.map((g) => JSON.parse(JSON.stringify(g)))
+      rebind()
+    })
+    root.querySelector('#btnClearOpts')?.addEventListener('click', () => {
+      if (!confirm('确认清空全部规格组？')) return
+      groups = []
+      rebind()
+    })
     root.querySelector('#btnAddGroup')?.addEventListener('click', () => {
       syncFromDom()
       groups.push({
@@ -2777,10 +2858,11 @@ async function editStallOptions(goodsId, goodsName, reload) {
         type: 'custom',
         required: 0,
         multiSelect: 0,
+        minSelect: 0,
+        maxSelect: 1,
         options: [{ name: '选项1', priceDelta: 0, pointsDelta: 0, isDefault: 1 }]
       })
-      $('modalBody').innerHTML = renderBody()
-      bindEditor()
+      rebind()
     })
     root.querySelectorAll('[data-add-opt]').forEach((b) => {
       b.onclick = () => {
@@ -2788,8 +2870,7 @@ async function editStallOptions(goodsId, goodsName, reload) {
         const gi = Number(b.getAttribute('data-add-opt'))
         groups[gi].options = groups[gi].options || []
         groups[gi].options.push({ name: '', priceDelta: 0, pointsDelta: 0, isDefault: 0 })
-        $('modalBody').innerHTML = renderBody()
-        bindEditor()
+        rebind()
       }
     })
     root.querySelectorAll('[data-del-opt]').forEach((b) => {
@@ -2797,16 +2878,14 @@ async function editStallOptions(goodsId, goodsName, reload) {
         syncFromDom()
         const [gi, oi] = b.getAttribute('data-del-opt').split(':').map(Number)
         groups[gi].options.splice(oi, 1)
-        $('modalBody').innerHTML = renderBody()
-        bindEditor()
+        rebind()
       }
     })
     root.querySelectorAll('[data-del-group]').forEach((b) => {
       b.onclick = () => {
         syncFromDom()
         groups.splice(Number(b.getAttribute('data-del-group')), 1)
-        $('modalBody').innerHTML = renderBody()
-        bindEditor()
+        rebind()
       }
     })
   }
@@ -2849,11 +2928,13 @@ async function renderOrders() {
     if (type === 'consumer') {
       $('list').innerHTML =
         table(
-          ['单号', '用户', '门店', '金额', '积分', '支付', '状态', '时间', '操作'],
+          ['单号', '用户', '门店', '明细/规格', '备注', '金额', '积分', '支付', '状态', '时间', '操作'],
           rows
             .map(
               (o) => `<tr>
           <td>${esc(o.orderNo)}</td><td>${esc(o.userName)}</td><td>${esc(o.shopName)}</td>
+          <td class="ellipsis" title="${esc(o.itemsText || '')}">${esc(o.itemsText || '—')}</td>
+          <td>${esc(o.buyerRemark || '—')}</td>
           <td>${o.totalAmount}</td><td>${o.pointsAllocated}</td><td>${esc(o.payStatus)}</td>
           <td>${esc(o.orderStatus)}</td><td>${fmtTime(o.createdAt)}</td>
           <td><button class="btn sm" data-detail="${o.id}">详情</button></td></tr>`
@@ -2913,7 +2994,10 @@ async function showOrderDetail(type, id) {
         `<div class="goods-row">${thumb(it.imageUrl)} <span>${esc(it.goodsName)} × ${it.qty || 1}
         ${it.price != null ? ` · ¥${it.price}` : ''}
         ${it.pointsGrant != null ? ` · 积分${it.pointsGrant}` : ''}
-        ${it.pointsSpend != null ? ` · 消耗${it.pointsSpend}` : ''}</span></div>`
+        ${it.pointsSpend != null ? ` · 消耗${it.pointsSpend}` : ''}
+        ${it.optionsText ? `<br/><span class="muted">规格：${esc(it.optionsText)}</span>` : ''}
+        ${it.itemRemark ? `<br/><span class="muted">单品备注：${esc(it.itemRemark)}</span>` : ''}
+        </span></div>`
     )
     .join('')
   openModal(
@@ -2922,6 +3006,7 @@ async function showOrderDetail(type, id) {
      ${o.shopCover || o.sellerCover ? `<p>门店 ${thumb(o.shopCover || o.sellerCover)}</p>` : ''}
      <p>用户 ${esc(o.userName || o.buyerName || '-')} · 门店 ${esc(o.shopName || o.sellerName || '-')}</p>
      <p>金额 ${o.totalAmount ?? o.cashAmount ?? '-'} · 状态 ${esc(o.orderStatus || o.status || '-')}</p>
+     ${o.buyerRemark ? `<p>整单备注：${esc(o.buyerRemark)}</p>` : ''}
      <h4>明细</h4>${items || '<p class="muted">无明细</p>'}`,
     null,
     true

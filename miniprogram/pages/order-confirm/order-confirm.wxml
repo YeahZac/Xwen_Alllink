@@ -12,11 +12,24 @@
     <view wx:for="{{items}}" wx:key="lineKey" class="line row-between">
       <view class="line__main">
         <text class="line__name ellipsis-1">{{item.name}}</text>
-        <text class="muted ellipsis-1" wx:if="{{item.optionsText}}">{{item.optionsText}}</text>
+        <text class="muted ellipsis-1" wx:if="{{item.optionsText}}">规格：{{item.optionsText}}</text>
+        <text class="muted ellipsis-1" wx:if="{{item.remark}}">备注：{{item.remark}}</text>
         <text class="muted">×{{item.qty}} · 单价 ¥{{item.price}}</text>
       </view>
       <text class="price"><text class="price__yen">¥</text>{{item.lineTotal}}</text>
     </view>
+  </view>
+
+  <view class="surface block">
+    <text class="section-title" style="font-size: 30rpx;">整单备注</text>
+    <textarea
+      class="confirm-remark"
+      placeholder="给摊主的整单备注，如：尽快出餐、多拿餐具…"
+      maxlength="100"
+      value="{{orderRemark}}"
+      bindinput="onOrderRemark"
+      auto-height
+    />
   </view>
 
   <view class="surface block summary">

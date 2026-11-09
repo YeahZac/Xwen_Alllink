@@ -621,3 +621,71 @@ img.thumb.lg {
   overflow: auto;
 }
 .lightbox-inner img { max-width: 100%; max-height: 70vh; display: block; margin-bottom: 12px; }
+
+/* 地摊商品规格编辑 */
+.opt-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.opt-group {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.opt-group__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.opt-group__head input,
+.opt-group__head select {
+  width: auto;
+  min-width: 120px;
+  margin: 0;
+}
+.opt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.opt-row {
+  display: grid;
+  grid-template-columns: minmax(100px, 1.4fr) 90px 90px auto auto;
+  gap: 8px;
+  align-items: center;
+}
+.opt-row input {
+  margin: 0;
+}
+.opt-row .chk,
+.opt-group__head .chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.pill.ok {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+.pill.warn {
+  background: #fff7ed;
+  color: #c2410c;
+  border: 1px solid #fdba74;
+}
+@media (max-width: 720px) {
+  .opt-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}

@@ -130,6 +130,14 @@
   line-height: var(--lh-snug);
 }
 
+.dish__opts {
+  display: block;
+  margin-top: 4rpx;
+  font-size: var(--font-small);
+  color: var(--color-primary-deep);
+  line-height: var(--lh-snug);
+}
+
 .dish__foot {
   margin-top: auto;
   padding-top: var(--space-sm);
@@ -175,6 +183,15 @@
   background: var(--color-primary);
   color: #fff;
   box-shadow: var(--shadow-seal);
+}
+
+.qty__btn--spec {
+  width: auto;
+  min-width: 64rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  font-size: var(--font-caption);
+  font-weight: 700;
 }
 
 .qty__btn:active,
@@ -331,4 +348,21 @@
   font-size: var(--font-subtitle);
   margin: 0;
   flex-shrink: 0;
+}
+
+.sheet-empty {
+  padding: var(--space-md) 0 var(--space-sm);
+  font-size: var(--font-caption);
+}
+
+.sheet-remark {
+  width: 100%;
+  min-height: 120rpx;
+  padding: var(--space-sm) var(--space-md);
+  box-sizing: border-box;
+  background: var(--color-surface-soft);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-body);
+  color: var(--color-ink);
+  line-height: var(--lh-snug);
 }

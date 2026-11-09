@@ -64,6 +64,8 @@ Page({
     sheetFlags: {},
     sheetUnit: { price: 0, pointsGrant: 0, optionsText: '' },
     sheetQty: 1,
+    sheetRemark: '',
+    sheetAllowRemark: true,
     loading: true
   },
   async onLoad(query) {
@@ -73,11 +75,9 @@ Page({
       wx.redirectTo({ url: scan.scanPayUrl(stallId) })
       return
     }
-    // 主动进点餐页时清掉挂起收款，避免登录回流抢跳到扫码支付页
     try {
       scan.clearPendingPay()
     } catch (_) {}
-    // 允许游客先看菜单并本地加购；结算时再登录
     if (!store.ensureConsumerOrRedirect({ allowGuest: true, soft: true })) return
     if (!stallId) {
       wx.showToast({ title: '缺少门店', icon: 'none' })
@@ -139,7 +139,6 @@ Page({
     if (!store.ensureConsumerOrRedirect({ allowGuest: true, soft: true })) return
     this.refreshCart()
   },
-  /** 结算才强制登录；加购允许游客本地选菜，避免「点了加号没反应」 */
   requireLoginForCheckout() {
     if (store.isLoggedIn() && store.getSession() && store.getSession().role === 'consumer') {
       return true
@@ -196,17 +195,20 @@ Page({
     const goodsView = { ...goods, optionGroups: groups }
     const selected = defaultSelected(groups)
     const unit = calcUnit(goods.price, goods.pointsGrant, groups, selected)
+    const allowRemark = goods.allowRemark == null ? true : !!goods.allowRemark
     this.setData({
       sheetShow: true,
       sheetGoods: goodsView,
       sheetSelected: selected,
       sheetFlags: buildFlags(selected),
       sheetUnit: unit,
-      sheetQty: 1
+      sheetQty: 1,
+      sheetRemark: '',
+      sheetAllowRemark: allowRemark
     })
   },
   closeSheet() {
-    this.setData({ sheetShow: false, sheetGoods: null })
+    this.setData({ sheetShow: false, sheetGoods: null, sheetRemark: '' })
   },
   onPickOpt(e) {
     const { gid, oid, multi } = e.currentTarget.dataset
@@ -230,6 +232,9 @@ Page({
     const d = Number(e.currentTarget.dataset.d) || 0
     const q = Math.max(1, (this.data.sheetQty || 1) + d)
     this.setData({ sheetQty: q })
+  },
+  onSheetRemark(e) {
+    this.setData({ sheetRemark: String((e.detail && e.detail.value) || '').slice(0, 50) })
   },
   validateSheet() {
     const g = this.data.sheetGoods
@@ -261,7 +266,8 @@ Page({
         price: unit.price,
         pointsGrant: unit.pointsGrant,
         optionsText: unit.optionsText,
-        optionIds: unit.optionIds
+        optionIds: unit.optionIds,
+        remark: this.data.sheetAllowRemark ? this.data.sheetRemark : ''
       },
       this.data.sheetQty || 1
     )
@@ -275,14 +281,15 @@ Page({
       wx.showToast({ title: '菜品加载异常，请下拉刷新', icon: 'none' })
       return
     }
-    const groups = g.optionGroups || []
-    // 仅当确有规格组时弹层；避免 hasOptions 脏数据导致「点了没反应」
-    if (groups.length > 0) {
-      this.openSheet(g)
-      return
-    }
     if (!this.data.stallId) {
       wx.showToast({ title: '缺少门店', icon: 'none' })
+      return
+    }
+    const groups = g.optionGroups || []
+    const allowRemark = g.allowRemark == null ? true : !!g.allowRemark
+    // 有规格或允许备注时走弹层，保证口味/分量/数量/备注可配
+    if (groups.length > 0 || allowRemark || g.needSheet) {
+      this.openSheet(g)
       return
     }
     store.addToCart(this.data.stallId, g, 1)
@@ -294,7 +301,7 @@ Page({
     if (String(cart.stallId) !== String(this.data.stallId)) return
     const lines = cart.items.filter((i) => String(i.id) === String(id))
     if (!lines.length) return
-    if (lines.length > 1 || (lines[0].optionIds && lines[0].optionIds.length)) {
+    if (lines.length > 1 || (lines[0].optionIds && lines[0].optionIds.length) || lines[0].remark) {
       const last = lines[lines.length - 1]
       store.updateQty(last.lineKey || last.id, last.qty - 1)
     } else {

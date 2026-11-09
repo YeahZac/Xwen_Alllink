@@ -1802,7 +1802,8 @@ router.post(
         userId: req.auth.userId,
         merchantId: Number(req.body.merchantId),
         items: req.body.items || [],
-        pointsUse: Number(req.body.pointsUse) || 0
+        pointsUse: Number(req.body.pointsUse) || 0,
+        remark: req.body.remark || req.body.buyerRemark || ''
       })
       res.json(ok(data))
     } catch (e) {

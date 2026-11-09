@@ -147,12 +147,26 @@ async function getStallMenu(merchantId) {
   if (!merchants.length) throw new HttpError(404, '摊位不存在')
   enrichCoverRow(merchants[0])
   if (Number(merchants[0].status) !== 1) throw new HttpError(400, '本店已歇业，暂不能收款')
-  const goods = await query(
-    `SELECT id, name, price, points_grant AS pointsGrant, category, desc_text AS \`desc\`,
-            image_url AS coverImage, image_url AS imageUrl, stock, sku_code AS sku
-     FROM stall_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
-    { id: merchantId }
-  )
+  let goods
+  try {
+    goods = await query(
+      `SELECT id, name, price, points_grant AS pointsGrant, category, desc_text AS \`desc\`,
+              image_url AS coverImage, image_url AS imageUrl, stock, sku_code AS sku,
+              IFNULL(allow_remark, 1) AS allowRemark
+       FROM stall_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
+      { id: merchantId }
+    )
+  } catch (e) {
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('allow_remark')))) {
+      throw e
+    }
+    goods = await query(
+      `SELECT id, name, price, points_grant AS pointsGrant, category, desc_text AS \`desc\`,
+              image_url AS coverImage, image_url AS imageUrl, stock, sku_code AS sku, 1 AS allowRemark
+       FROM stall_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
+      { id: merchantId }
+    )
+  }
   const menu = await stallOptionsService.attachMenuOptions(goods)
   return { stall: merchants[0], menu }
 }
@@ -160,11 +174,12 @@ async function getStallMenu(merchantId) {
 async function insertStallOrderItems(conn, orderId, lines) {
   for (const l of lines) {
     const displayName = l.optionsText ? `${l.name}（${l.optionsText}）` : l.name
+    const itemRemark = l.itemRemark ? String(l.itemRemark).slice(0, 128) : null
     try {
       await conn.execute(
         `INSERT INTO consumer_order_items
-          (order_id, goods_id, goods_name, price, points_grant, qty, options_json, options_text)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          (order_id, goods_id, goods_name, price, points_grant, qty, options_json, options_text, item_remark)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           orderId,
           l.goodsId,
@@ -173,11 +188,41 @@ async function insertStallOrderItems(conn, orderId, lines) {
           l.pointsGrant,
           l.qty,
           JSON.stringify(l.optionsJson || []),
-          l.optionsText || null
+          l.optionsText || null,
+          itemRemark
         ]
       )
     } catch (e) {
-      if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('options_'))) {
+      if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('item_remark'))) {
+        try {
+          await conn.execute(
+            `INSERT INTO consumer_order_items
+              (order_id, goods_id, goods_name, price, points_grant, qty, options_json, options_text)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              orderId,
+              l.goodsId,
+              displayName,
+              l.price,
+              l.pointsGrant,
+              l.qty,
+              JSON.stringify(l.optionsJson || []),
+              l.optionsText || null
+            ]
+          )
+        } catch (e2) {
+          if (e2 && (e2.code === 'ER_BAD_FIELD_ERROR' || String(e2.message || '').includes('options_'))) {
+            await conn.execute(
+              `INSERT INTO consumer_order_items
+                (order_id, goods_id, goods_name, price, points_grant, qty)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+              [orderId, l.goodsId, displayName, l.price, l.pointsGrant, l.qty]
+            )
+          } else {
+            throw e2
+          }
+        }
+      } else if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('options_'))) {
         await conn.execute(
           `INSERT INTO consumer_order_items
             (order_id, goods_id, goods_name, price, points_grant, qty)
@@ -196,9 +241,10 @@ async function insertStallOrderItems(conn, orderId, lines) {
 }
 
 /** 创建点餐订单：积分抵现 + 剩余微信（未配商户号则模拟成功）；真实支付待回调入账 */
-async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0 }) {
+async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0, remark = '' }) {
   if (!items || !items.length) throw new HttpError(400, '购物车为空')
   await feeService.assertCanTransact(merchantId, { action: '接单' })
+  const buyerRemark = String(remark || '').trim().slice(0, 255)
 
   const preview = await withTransaction(async (conn) => {
     let totalAmount = 0
@@ -209,7 +255,8 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
         merchantId,
         goodsId: Number(it.goodsId),
         optionIds: it.optionIds || [],
-        qty: it.qty
+        qty: it.qty,
+        itemRemark: it.remark || it.itemRemark || ''
       })
       totalAmount += Number(line.price) * line.qty
       pointsWant += Number(line.pointsGrant) * line.qty
@@ -234,6 +281,61 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
   const ono = orderNo('O')
   const realPay = wxService.wxPayConfigured() && cashPaid > 0
 
+  async function insertConsumerOrder(conn, extra = {}) {
+    const payChannel = extra.payChannel || 'simulate'
+    let ins
+    try {
+      ;[ins] = await conn.execute(
+        `INSERT INTO consumer_orders
+          (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
+           points_spend, cash_paid, pay_channel, pay_status, order_status, buyer_remark)
+         VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, 'unpaid', 'pending', ?)`,
+        [
+          ono,
+          userId,
+          merchantId,
+          totalAmount,
+          pointsWant,
+          pointsSpend,
+          cashPaid,
+          payChannel,
+          buyerRemark || null
+        ]
+      )
+    } catch (e) {
+      if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('buyer_remark'))) {
+        try {
+          ;[ins] = await conn.execute(
+            `INSERT INTO consumer_orders
+              (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
+               points_spend, cash_paid, pay_channel, pay_status, order_status)
+             VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, 'unpaid', 'pending')`,
+            [ono, userId, merchantId, totalAmount, pointsWant, pointsSpend, cashPaid, payChannel]
+          )
+        } catch (e2) {
+          if (e2 && (e2.code === 'ER_BAD_FIELD_ERROR' || String(e2.message || '').includes('points_spend'))) {
+            ;[ins] = await conn.execute(
+              `INSERT INTO consumer_orders
+                (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
+                 pay_status, order_status)
+               VALUES (?, ?, ?, ?, ?, 0, 'unpaid', 'pending')`,
+              [ono, userId, merchantId, totalAmount, pointsWant]
+            )
+          } else throw e2
+        }
+      } else if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('points_spend'))) {
+        ;[ins] = await conn.execute(
+          `INSERT INTO consumer_orders
+            (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
+             pay_status, order_status)
+           VALUES (?, ?, ?, ?, ?, 0, 'unpaid', 'pending')`,
+          [ono, userId, merchantId, totalAmount, pointsWant]
+        )
+      } else throw e
+    }
+    return ins.insertId
+  }
+
   if (!realPay) {
     return withTransaction(async (conn) => {
       const payMeta = wxService.buildPayResult({
@@ -241,27 +343,7 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
         cashAmount: cashPaid,
         simulated: true
       })
-      let ins
-      try {
-        ;[ins] = await conn.execute(
-          `INSERT INTO consumer_orders
-            (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
-             points_spend, cash_paid, pay_channel, pay_status, order_status)
-           VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, 'unpaid', 'pending')`,
-          [ono, userId, merchantId, totalAmount, pointsWant, pointsSpend, cashPaid, payMeta.payChannel]
-        )
-      } catch (e) {
-        if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('points_spend'))) {
-          ;[ins] = await conn.execute(
-            `INSERT INTO consumer_orders
-              (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
-               pay_status, order_status)
-             VALUES (?, ?, ?, ?, ?, 0, 'unpaid', 'pending')`,
-            [ono, userId, merchantId, totalAmount, pointsWant]
-          )
-        } else throw e
-      }
-      const orderId = ins.insertId
+      const orderId = await insertConsumerOrder(conn, { payChannel: payMeta.payChannel })
       await insertStallOrderItems(conn, orderId, lines)
       const [orows] = await conn.execute('SELECT * FROM consumer_orders WHERE id=? FOR UPDATE', [orderId])
       const fin = await finalizePaidConsumerOrder(conn, orows[0], {})
@@ -286,27 +368,7 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
   }
 
   const created = await withTransaction(async (conn) => {
-    let ins
-    try {
-      ;[ins] = await conn.execute(
-        `INSERT INTO consumer_orders
-          (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
-           points_spend, cash_paid, pay_channel, pay_status, order_status)
-         VALUES (?, ?, ?, ?, ?, 0, ?, ?, 'wxpay', 'unpaid', 'pending')`,
-        [ono, userId, merchantId, totalAmount, pointsWant, pointsSpend, cashPaid]
-      )
-    } catch (e) {
-      if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('points_spend'))) {
-        ;[ins] = await conn.execute(
-          `INSERT INTO consumer_orders
-            (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
-             pay_status, order_status)
-           VALUES (?, ?, ?, ?, ?, 0, 'unpaid', 'pending')`,
-          [ono, userId, merchantId, totalAmount, pointsWant]
-        )
-      } else throw e
-    }
-    const orderId = ins.insertId
+    const orderId = await insertConsumerOrder(conn, { payChannel: 'wxpay' })
     await insertStallOrderItems(conn, orderId, lines)
     return { orderId }
   })

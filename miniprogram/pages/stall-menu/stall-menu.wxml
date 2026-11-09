@@ -20,7 +20,7 @@
 
     <view class="menu-panel__head">
       <text class="menu-panel__title">点餐</text>
-      <text class="menu-panel__hint">完成后积分划拨到你的账户</text>
+      <text class="menu-panel__hint">可选口味/分量/数量，结算前可写备注</text>
     </view>
 
     <view wx:if="{{loading}}" class="empty-state">
@@ -51,6 +51,7 @@
             <text class="dish__desc muted ellipsis-1">
               {{g.desc || '现做'}} · 可得 {{g.pointsGrant}} 积分
             </text>
+            <text class="dish__opts muted ellipsis-1" wx:if="{{g.optionHint}}">可选 {{g.optionHint}}</text>
             <view class="dish__foot">
               <text class="price"><text class="price__yen">¥</text>{{g.price}}{{g.hasOptions ? '起' : ''}}</text>
               <view class="qty">
@@ -63,11 +64,11 @@
                 >−</view>
                 <text class="qty__n" wx:if="{{cartMap[g.id]}}">{{cartMap[g.id]}}</text>
                 <view
-                  class="qty__btn qty__btn--plus"
+                  class="qty__btn qty__btn--plus {{g.hasOptions || g.allowRemark ? 'qty__btn--spec' : ''}}"
                   catchtap="inc"
                   data-id="{{g.id}}"
                   hover-class="qty__btn--pressed"
-                >+</view>
+                >{{g.hasOptions || g.allowRemark ? '选' : '+'}}</view>
               </view>
             </view>
           </view>
@@ -92,6 +93,7 @@
       <text class="sheet__close" bindtap="closeSheet">关闭</text>
     </view>
     <scroll-view scroll-y class="sheet__body">
+      <view wx:if="{{!sheetGoods.optionGroups.length}}" class="sheet-empty muted">本菜暂无口味/分量配置，可直接选数量与备注</view>
       <view wx:for="{{sheetGoods.optionGroups}}" wx:for-item="gr" wx:key="id" class="sheet-group">
         <text class="sheet-group__name">
           {{gr.name}}
@@ -114,6 +116,18 @@
             </text>
           </view>
         </view>
+      </view>
+
+      <view class="sheet-group" wx:if="{{sheetAllowRemark}}">
+        <text class="sheet-group__name">备注 <text class="muted">可选</text></text>
+        <textarea
+          class="sheet-remark"
+          placeholder="如：少盐、不要香菜、打包…"
+          maxlength="50"
+          value="{{sheetRemark}}"
+          bindinput="onSheetRemark"
+          auto-height
+        />
       </view>
     </scroll-view>
     <view class="sheet__foot">

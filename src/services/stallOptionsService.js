@@ -73,9 +73,18 @@ async function attachMenuOptions(menu) {
   const tree = await loadOptionTree((menu || []).map((g) => g.id))
   return (menu || []).map((g) => {
     const optionGroups = tree.get(g.id) || []
+    const allowRemark = g.allowRemark == null ? true : !!Number(g.allowRemark)
+    const optionHint = optionGroups
+      .map((gr) => gr.name || TYPE_LABEL[gr.type] || '规格')
+      .filter(Boolean)
+      .slice(0, 3)
+      .join(' · ')
     return {
       ...g,
+      allowRemark,
       hasOptions: optionGroups.length > 0,
+      needSheet: optionGroups.length > 0 || allowRemark,
+      optionHint,
       optionGroups
     }
   })
@@ -150,7 +159,7 @@ async function saveGoodsOptionGroups(goodsId, groups) {
 }
 
 /** 校验选项并计算单价/积分；返回行快照 */
-async function resolveStallLine(conn, { merchantId, goodsId, optionIds, qty }) {
+async function resolveStallLine(conn, { merchantId, goodsId, optionIds, qty, itemRemark }) {
   const [grows] = await conn.execute(
     `SELECT id, name, price, points_grant FROM stall_goods
      WHERE id=? AND merchant_id=? AND on_sale=1 AND deleted_at IS NULL`,
@@ -236,7 +245,8 @@ async function resolveStallLine(conn, { merchantId, goodsId, optionIds, qty }) {
     qty: q,
     optionsText,
     optionsJson,
-    optionIds: selected.map((o) => o.id)
+    optionIds: selected.map((o) => o.id),
+    itemRemark: String(itemRemark || '').trim().slice(0, 128) || null
   }
 }
 

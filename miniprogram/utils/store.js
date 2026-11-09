@@ -558,8 +558,10 @@ function addToCart(stallId, goods, qty = 1) {
   if (cart.stallId && String(cart.stallId) !== String(stallId)) cart.items = []
   cart.stallId = stallId
   const optionIds = (goods.optionIds || []).map(Number).filter(Boolean).sort((a, b) => a - b)
+  const remark = String(goods.remark || '').trim().slice(0, 128)
+  const remarkKey = remark ? remark.replace(/\s+/g, '_').slice(0, 24) : ''
   const lineKey =
-    goods.lineKey || `${goods.id}_${optionIds.join('-') || 'base'}`
+    goods.lineKey || `${goods.id}_${optionIds.join('-') || 'base'}${remarkKey ? `_${remarkKey}` : ''}`
   const found = cart.items.find((i) => String(i.lineKey || i.id) === String(lineKey))
   if (found) found.qty += qty
   else {
@@ -569,6 +571,7 @@ function addToCart(stallId, goods, qty = 1) {
       name: goods.name,
       optionsText: goods.optionsText || '',
       optionIds,
+      remark,
       price: Number(goods.price) || 0,
       pointsGrant: Number(goods.pointsGrant) || 0,
       qty

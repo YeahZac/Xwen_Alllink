@@ -15,7 +15,11 @@ Page({
     cashDue: '0.00',
     payLabel: '微信支付',
     paying: false,
-    loading: true
+    loading: true,
+    orderRemark: ''
+  },
+  onOrderRemark(e) {
+    this.setData({ orderRemark: String((e.detail && e.detail.value) || '').slice(0, 100) })
   },
   async onShow() {
     if (!store.ensureConsumerOrRedirect()) return
@@ -96,10 +100,12 @@ Page({
       const result = await api.payStall({
         merchantId: Number(cart.stallId),
         pointsUse: Number(this.data.pointsUse) || 0,
+        remark: this.data.orderRemark || '',
         items: cart.items.map((i) => ({
           goodsId: Number(i.id),
           qty: i.qty,
-          optionIds: i.optionIds || []
+          optionIds: i.optionIds || [],
+          remark: i.remark || ''
         }))
       })
       await requestWxPay(result)
