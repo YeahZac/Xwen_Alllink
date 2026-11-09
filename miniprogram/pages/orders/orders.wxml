@@ -13,24 +13,28 @@
     <button class="btn-primary empty__btn" bindtap="goHome">去逛逛</button>
   </view>
 
-  <view wx:for="{{orders}}" wx:key="id" class="order surface">
+  <view wx:for="{{orders}}" wx:key="id" class="order surface" bindtap="goDetail" data-id="{{item.id}}">
     <view class="row-between">
       <text class="order__shop">{{item.stallName || item.storeName}}</text>
       <text class="chip">{{item.statusText}}{{item.payModeText ? ' · ' + item.payModeText : ''}}</text>
     </view>
     <view class="order__items muted">
-      <text wx:for="{{item.items}}" wx:for-item="g" wx:key="id">{{g.name}}×{{g.qty}} </text>
+      <text wx:for="{{item.items}}" wx:for-item="g" wx:for-index="gi" wx:key="gi">{{g.name}}×{{g.qty}} </text>
     </view>
     <view class="row-between order__foot">
       <text class="muted order__time">{{item.timeText}}</text>
       <view class="order__sum">
         <text class="price" wx:if="{{item.totalPrice}}"><text class="price__yen">¥</text>{{item.totalPrice}}</text>
         <text class="pts" wx:if="{{item.pointsGrant}}">+{{item.pointsGrant}}积分</text>
-        <text class="pts" wx:elif="{{item.pointsWant && item.status !== 'completed' && item.status !== 'cancelled'}}">预计 +{{item.pointsWant}}</text>
+        <text class="pts" wx:elif="{{item.pointsWant && item.status !== 'completed' && item.status !== 'cancelled' && !item.unpaid}}">预计 +{{item.pointsWant}}</text>
         <text class="pts" wx:if="{{item.pointsSpend}}">−{{item.pointsSpend}}积分</text>
       </view>
     </view>
-    <view class="order__act" bindtap="onComplaint" data-id="{{item.id}}">
+    <view class="order__ops" wx:if="{{item.unpaid}}">
+      <text class="order__op order__op--ghost" catchtap="onCancel" data-id="{{item.id}}">取消</text>
+      <text class="order__op order__op--primary" catchtap="onRepay" data-id="{{item.id}}">继续支付</text>
+    </view>
+    <view class="order__act" catchtap="onComplaint" data-id="{{item.id}}">
       <text class="muted">投诉此单</text>
     </view>
   </view>

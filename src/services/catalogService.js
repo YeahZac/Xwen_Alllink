@@ -124,24 +124,52 @@ async function getUserPoints(userId) {
 }
 
 async function listConsumerOrders(userId) {
-  const orders = await query(
-    `SELECT o.order_no AS id, o.total_amount AS totalPrice, o.points_allocated AS pointsGrant,
-            o.points_want AS pointsWant, o.order_status AS status, o.created_at AS time,
-            m.name AS stallName, o.merchant_id AS merchantId
-     FROM consumer_orders o
-     JOIN merchants m ON m.id = o.merchant_id
-     WHERE o.user_id = :uid
-     ORDER BY o.id DESC LIMIT 50`,
-    { uid: userId }
-  )
+  let orders
+  try {
+    orders = await query(
+      `SELECT o.order_no AS id, o.total_amount AS totalPrice, o.points_allocated AS pointsGrant,
+              o.points_want AS pointsWant, o.points_spend AS pointsSpend, o.cash_paid AS cashPaid,
+              o.pay_status AS payStatus, o.order_status AS status, o.created_at AS time,
+              o.buyer_remark AS buyerRemark, m.name AS stallName, o.merchant_id AS merchantId
+       FROM consumer_orders o
+       JOIN merchants m ON m.id = o.merchant_id
+       WHERE o.user_id = :uid
+       ORDER BY o.id DESC LIMIT 50`,
+      { uid: userId }
+    )
+  } catch (e) {
+    if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+    orders = await query(
+      `SELECT o.order_no AS id, o.total_amount AS totalPrice, o.points_allocated AS pointsGrant,
+              o.points_want AS pointsWant, o.pay_status AS payStatus, o.order_status AS status,
+              o.created_at AS time, m.name AS stallName, o.merchant_id AS merchantId
+       FROM consumer_orders o
+       JOIN merchants m ON m.id = o.merchant_id
+       WHERE o.user_id = :uid
+       ORDER BY o.id DESC LIMIT 50`,
+      { uid: userId }
+    )
+  }
   for (const o of orders) {
     o.type = 'stall'
-    o.items = await query(
-      `SELECT goods_name AS name, qty FROM consumer_order_items coi
-       JOIN consumer_orders co ON co.id = coi.order_id
-       WHERE co.order_no = :ono`,
-      { ono: o.id }
-    )
+    o.unpaid = o.payStatus === 'unpaid' && o.status !== 'cancelled'
+    try {
+      o.items = await query(
+        `SELECT goods_name AS name, qty, options_text AS optionsText, item_remark AS remark
+         FROM consumer_order_items coi
+         JOIN consumer_orders co ON co.id = coi.order_id
+         WHERE co.order_no = :ono`,
+        { ono: o.id }
+      )
+    } catch (e) {
+      if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+      o.items = await query(
+        `SELECT goods_name AS name, qty FROM consumer_order_items coi
+         JOIN consumer_orders co ON co.id = coi.order_id
+         WHERE co.order_no = :ono`,
+        { ono: o.id }
+      )
+    }
   }
   const cross = await query(
     `SELECT order_no AS id, points_spend AS pointsSpend, cash_amount AS totalPrice,
@@ -153,6 +181,8 @@ async function listConsumerOrders(userId) {
   )
   cross.forEach((c) => {
     c.type = 'cross'
+    c.payStatus = c.status === 'cancelled' ? 'cancelled' : 'paid'
+    c.unpaid = false
     c.items = [{ name: c.goods_name, qty: 1 }]
   })
   return [...orders, ...cross].sort(

@@ -200,6 +200,12 @@ const api = {
     }),
 
   payStall: (body) => request({ path: '/orders/stall/pay', method: 'POST', data: body }),
+  cancelStallOrder: (body) =>
+    request({ path: '/orders/stall/cancel', method: 'POST', data: body }),
+  repayStallOrder: (body) =>
+    request({ path: '/orders/stall/repay', method: 'POST', data: body }),
+  orderDetail: (orderNo) =>
+    request({ path: `/orders/detail/${encodeURIComponent(orderNo)}` }),
 
   scanPay: (body) => request({ path: '/orders/stall/scan-pay', method: 'POST', data: body }),
   syncPay: (body) => request({ path: '/orders/pay/sync', method: 'POST', data: body }),

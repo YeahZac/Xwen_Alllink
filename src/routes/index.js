@@ -1812,6 +1812,46 @@ router.post(
   }
 )
 
+router.post(
+  '/orders/stall/cancel',
+  authRequired,
+  requireRoles('consumer'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await orderService.cancelUnpaidConsumerOrder(
+            req.body?.orderNo || req.body?.outTradeNo,
+            req.auth.userId
+          )
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/orders/stall/repay',
+  authRequired,
+  requireRoles('consumer'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await orderService.repayConsumerOrder(
+            req.body?.orderNo || req.body?.outTradeNo,
+            req.auth.userId
+          )
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
 /** 微信支付结果通知（无需登录；验签在服务内完成） */
 router.post('/wxpay/notify', async (req, res) => {
   try {
@@ -2071,6 +2111,19 @@ router.get('/orders/mine', authRequired, requireRoles('consumer'), async (req, r
     next(e)
   }
 })
+
+router.get(
+  '/orders/detail/:orderNo',
+  authRequired,
+  requireRoles('consumer'),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await orderService.getConsumerOrderDetail(req.params.orderNo, req.auth.userId)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
 
 router.get('/points/me', authRequired, requireRoles('consumer'), async (req, res, next) => {
   try {

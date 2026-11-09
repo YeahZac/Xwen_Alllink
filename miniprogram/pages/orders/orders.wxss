@@ -76,3 +76,32 @@
   font-size: var(--font-caption);
   font-variant-numeric: tabular-nums;
 }
+
+.order__ops {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  margin-top: var(--space-sm);
+}
+
+.order__op {
+  font-size: var(--font-caption);
+  font-weight: 700;
+  padding: 10rpx 24rpx;
+  border-radius: 999rpx;
+}
+
+.order__op--ghost {
+  color: var(--color-text-secondary);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.order__op--primary {
+  color: #fff;
+  background: var(--color-brand, #ff4d4f);
+}
+
+.order__act {
+  margin-top: var(--space-sm);
+  text-align: right;
+}

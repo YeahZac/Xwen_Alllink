@@ -358,8 +358,10 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
         pointsSpend,
         offsetCash: offset,
         pointsWant,
-        pointsAllocated: 0,
+        pointsAllocated: Number(fin.pointsAllocated) || Number(pointsWant) || 0,
+        pointsBalance: fin.pointsBalance,
         status: 'preparing',
+        payStatus: 'paid',
         commission: fin.commission,
         merchantNet: fin.merchantNet,
         ...payMeta
@@ -414,6 +416,7 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
     pointsWant,
     pointsAllocated: 0,
     status: 'unpaid',
+    payStatus: 'unpaid',
     needConfirm: true,
     payMode: prepay.mode,
     subMchId: prepay.subMchId,
@@ -825,6 +828,172 @@ async function handleWxPayNotify(headers, rawBody) {
     delete result._order
   }
   return result
+}
+
+/** 取消未支付点餐单（用户取消微信支付后主动关单） */
+async function cancelUnpaidConsumerOrder(orderNo, userId) {
+  const ono = String(orderNo || '').trim()
+  if (!ono) throw new HttpError(400, '缺少订单号')
+  const rows = await query('SELECT * FROM consumer_orders WHERE order_no=:ono LIMIT 1', { ono })
+  if (!rows.length) throw new HttpError(404, '订单不存在')
+  const o = rows[0]
+  if (Number(o.user_id) !== Number(userId)) throw new HttpError(403, '无权操作该订单')
+  if (o.pay_status === 'paid') throw new HttpError(400, '订单已支付，无法取消')
+  if (o.order_status === 'cancelled') {
+    return { orderNo: ono, status: 'cancelled', payStatus: o.pay_status, alreadyCancelled: true }
+  }
+  if (o.pay_status !== 'unpaid') throw new HttpError(400, '当前状态不可取消')
+  await query(
+    `UPDATE consumer_orders SET order_status='cancelled'
+     WHERE order_no=:ono AND pay_status='unpaid' AND order_status<>'cancelled'`,
+    { ono }
+  )
+  return { orderNo: ono, status: 'cancelled', payStatus: 'unpaid' }
+}
+
+/** 未支付订单重新拉起微信支付参数 */
+async function repayConsumerOrder(orderNo, userId) {
+  const ono = String(orderNo || '').trim()
+  if (!ono) throw new HttpError(400, '缺少订单号')
+  const rows = await query('SELECT * FROM consumer_orders WHERE order_no=:ono LIMIT 1', { ono })
+  if (!rows.length) throw new HttpError(404, '订单不存在')
+  const o = rows[0]
+  if (Number(o.user_id) !== Number(userId)) throw new HttpError(403, '无权操作该订单')
+  if (o.pay_status === 'paid') {
+    return {
+      orderNo: ono,
+      status: o.order_status,
+      payStatus: 'paid',
+      alreadyPaid: true,
+      cashPaid: Number(o.cash_paid) || 0,
+      simulated: false
+    }
+  }
+  if (o.order_status === 'cancelled') throw new HttpError(400, '订单已取消，请重新下单')
+  if (o.pay_status !== 'unpaid') throw new HttpError(400, '当前状态不可继续支付')
+
+  const cashPaid = round2(o.cash_paid != null ? o.cash_paid : o.total_amount)
+  if (!(cashPaid > 0)) {
+    // 全积分抵扣单理论上不会走到 unpaid；兜底直接入账
+    return withTransaction(async (conn) => {
+      const [locked] = await conn.execute('SELECT * FROM consumer_orders WHERE order_no=? FOR UPDATE', [ono])
+      const fin = await finalizePaidConsumerOrder(conn, locked[0], {})
+      try {
+        await conn.execute(`UPDATE consumer_orders SET order_status='preparing' WHERE id=?`, [locked[0].id])
+      } catch (_) {}
+      return {
+        orderId: locked[0].id,
+        orderNo: ono,
+        cashPaid: 0,
+        pointsSpend: Number(locked[0].points_spend) || 0,
+        pointsAllocated: fin.pointsAllocated,
+        status: 'preparing',
+        payStatus: 'paid',
+        simulated: true,
+        ...wxService.buildPayResult({ orderNo: ono, cashAmount: 0, simulated: true })
+      }
+    })
+  }
+
+  if (!wxService.wxPayConfigured()) {
+    throw new HttpError(400, '微信支付未配置，无法继续支付')
+  }
+
+  const merchants = await query('SELECT name FROM merchants WHERE id=:id', { id: o.merchant_id })
+  const shopName = merchants[0] ? merchants[0].name : '地摊点餐'
+  const openid = await getUserOpenid(userId)
+  const subMchId = await getMerchantSubMchId(o.merchant_id)
+  const prepay = await wxService.createJsapiPayForOrder({
+    orderNo: ono,
+    description: `${shopName}·点餐`,
+    amountYuan: cashPaid,
+    openid,
+    subMchId,
+    attach: `menu:${o.merchant_id}`
+  })
+  const payMeta = wxService.buildPayResult({
+    orderNo: ono,
+    cashAmount: cashPaid,
+    simulated: false,
+    payParams: prepay.payParams,
+    payChannel: 'wxpay',
+    message: '请完成微信支付'
+  })
+  return {
+    orderId: o.id,
+    orderNo: ono,
+    totalAmount: Number(o.total_amount) || cashPaid,
+    cashPaid,
+    pointsSpend: Number(o.points_spend) || 0,
+    pointsWant: Number(o.points_want) || 0,
+    pointsAllocated: 0,
+    status: 'unpaid',
+    payStatus: 'unpaid',
+    needConfirm: true,
+    payMode: prepay.mode,
+    subMchId: prepay.subMchId,
+    ...payMeta
+  }
+}
+
+/** 消费者订单详情 */
+async function getConsumerOrderDetail(orderNo, userId) {
+  const ono = String(orderNo || '').trim()
+  if (!ono) throw new HttpError(400, '缺少订单号')
+  let rows
+  try {
+    rows = await query(
+      `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount, o.points_want AS pointsWant,
+              o.points_allocated AS pointsAllocated, o.points_spend AS pointsSpend, o.cash_paid AS cashPaid,
+              o.pay_status AS payStatus, o.order_status AS status, o.buyer_remark AS buyerRemark,
+              o.created_at AS time, o.paid_at AS paidAt, o.merchant_id AS merchantId,
+              m.name AS stallName, m.cover_url AS stallCover, m.address AS stallAddress
+       FROM consumer_orders o
+       JOIN merchants m ON m.id=o.merchant_id
+       WHERE o.order_no=:ono LIMIT 1`,
+      { ono }
+    )
+  } catch (e) {
+    if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+    rows = await query(
+      `SELECT o.id, o.order_no AS orderNo, o.total_amount AS totalAmount, o.points_want AS pointsWant,
+              o.points_allocated AS pointsAllocated, o.pay_status AS payStatus, o.order_status AS status,
+              o.created_at AS time, o.merchant_id AS merchantId, m.name AS stallName
+       FROM consumer_orders o
+       JOIN merchants m ON m.id=o.merchant_id
+       WHERE o.order_no=:ono LIMIT 1`,
+      { ono }
+    )
+  }
+  if (!rows.length) throw new HttpError(404, '订单不存在')
+  const o = rows[0]
+  // 校验归属：通过 order id 再查 user（上面 select 未带 user_id 时）
+  const owner = await query('SELECT user_id AS userId FROM consumer_orders WHERE order_no=:ono LIMIT 1', { ono })
+  if (!owner.length || Number(owner[0].userId) !== Number(userId)) {
+    throw new HttpError(403, '无权查看该订单')
+  }
+  let items
+  try {
+    items = await query(
+      `SELECT goods_id AS goodsId, goods_name AS name, price, points_grant AS pointsGrant, qty,
+              options_text AS optionsText, item_remark AS remark
+       FROM consumer_order_items WHERE order_id=:id ORDER BY id ASC`,
+      { id: o.id }
+    )
+  } catch (e) {
+    if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+    items = await query(
+      `SELECT goods_id AS goodsId, goods_name AS name, price, points_grant AS pointsGrant, qty
+       FROM consumer_order_items WHERE order_id=:id ORDER BY id ASC`,
+      { id: o.id }
+    )
+  }
+  return {
+    ...o,
+    type: 'stall',
+    items: items || [],
+    unpaid: o.payStatus === 'unpaid' && o.status !== 'cancelled'
+  }
 }
 
 /** 小程序支付成功后主动对账入账（防回调延迟） */
@@ -1497,6 +1666,9 @@ module.exports = {
   completeStallOrder,
   handleWxPayNotify,
   syncConsumerPay,
+  cancelUnpaidConsumerOrder,
+  repayConsumerOrder,
+  getConsumerOrderDetail,
   redeemCross,
   createPurchaseOrder,
   shipPurchaseOrder,

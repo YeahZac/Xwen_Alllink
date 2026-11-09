@@ -6,6 +6,7 @@
     "pages/stall-menu/stall-menu",
     "pages/goods-detail/goods-detail",
     "pages/order-confirm/order-confirm",
+    "pages/order-detail/order-detail",
     "pages/orders/orders",
     "pages/logistics/logistics",
     "pages/confirm-receipt/confirm-receipt",

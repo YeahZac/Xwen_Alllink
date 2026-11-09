@@ -1,0 +1,68 @@
+<view class="page detail">
+  <view wx:if="{{loading}}" class="empty">
+    <text class="empty__title">加载订单中</text>
+    <text class="muted">请稍候</text>
+  </view>
+
+  <view wx:elif="{{!order}}" class="empty surface">
+    <text class="empty__title">订单不存在</text>
+    <button class="btn-primary empty__btn" bindtap="goOrders">返回订单列表</button>
+  </view>
+
+  <block wx:else>
+    <view class="surface block status-card">
+      <view class="row-between">
+        <text class="status-card__title">{{statusText}}</text>
+        <text class="chip" wx:if="{{order.unpaid}}">待支付</text>
+      </view>
+      <text class="muted">订单号 {{order.orderNo}}</text>
+      <text class="muted" wx:if="{{timeText}}">下单 {{timeText}}</text>
+      <text class="muted" wx:if="{{paidAtText}}">支付 {{paidAtText}}</text>
+    </view>
+
+    <view class="surface block">
+      <text class="section-title section-title--sm">{{order.stallName || '门店'}}</text>
+      <view wx:for="{{order.items}}" wx:key="_key" class="line row-between">
+        <view class="line__main">
+          <text class="line__name ellipsis-1">{{item.name}}</text>
+          <text class="muted ellipsis-1" wx:if="{{item.optionsText}}">规格：{{item.optionsText}}</text>
+          <text class="muted ellipsis-1" wx:if="{{item.remark}}">备注：{{item.remark}}</text>
+          <text class="muted">×{{item.qty}} · 单价 ¥{{item.price}}</text>
+        </view>
+        <text class="price"><text class="price__yen">¥</text>{{item.lineTotal}}</text>
+      </view>
+      <text class="muted" wx:if="{{order.buyerRemark}}">整单备注：{{order.buyerRemark}}</text>
+    </view>
+
+    <view class="surface block">
+      <view class="row-between line">
+        <text>商品合计</text>
+        <text class="price"><text class="price__yen">¥</text>{{order.totalAmount}}</text>
+      </view>
+      <view class="row-between line" wx:if="{{order.pointsSpend}}">
+        <text>积分抵扣</text>
+        <text>−{{order.pointsSpend}} 积分</text>
+      </view>
+      <view class="row-between line">
+        <text>微信支付</text>
+        <text class="price"><text class="price__yen">¥</text>{{order.cashPaid}}</text>
+      </view>
+      <view class="row-between line" wx:if="{{order.pointsAllocated}}">
+        <text>已划拨积分</text>
+        <text class="pts">+{{order.pointsAllocated}}</text>
+      </view>
+      <view class="row-between line" wx:elif="{{order.pointsWant && order.payStatus !== 'paid'}}">
+        <text>预计划拨积分</text>
+        <text class="pts">+{{order.pointsWant}}</text>
+      </view>
+    </view>
+
+    <view class="actions" wx:if="{{order.unpaid}}">
+      <button class="btn-ghost" bindtap="onCancel" disabled="{{acting}}">取消订单</button>
+      <button class="btn-primary" bindtap="onRepay" loading="{{acting}}" disabled="{{acting}}">继续支付</button>
+    </view>
+    <view class="actions" wx:else>
+      <button class="btn-primary" bindtap="goOrders">返回订单列表</button>
+    </view>
+  </block>
+</view>

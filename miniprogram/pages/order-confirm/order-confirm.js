@@ -1,6 +1,6 @@
 const store = require('../../utils/store')
 const api = require('../../utils/api')
-const { requestWxPay } = require('../../utils/pay')
+const { requestWxPay, isCancelError } = require('../../utils/pay')
 
 Page({
   data: {
@@ -16,7 +16,8 @@ Page({
     payLabel: '微信支付',
     paying: false,
     loading: true,
-    orderRemark: ''
+    orderRemark: '',
+    pendingOrderNo: ''
   },
   onOrderRemark(e) {
     this.setData({ orderRemark: String((e.detail && e.detail.value) || '').slice(0, 100) })
@@ -25,6 +26,12 @@ Page({
     if (!store.ensureConsumerOrRedirect()) return
     const cart = store.getCart()
     if (!cart.items.length) {
+      // 可能刚支付成功清了车；若有待支付单可去订单
+      const pending = this.data.pendingOrderNo
+      if (pending) {
+        wx.redirectTo({ url: `/pages/order-detail/order-detail?id=${encodeURIComponent(pending)}` })
+        return
+      }
       wx.showToast({ title: '购物车为空', icon: 'none' })
       setTimeout(() => wx.navigateBack(), 500)
       return
@@ -32,7 +39,6 @@ Page({
     try {
       this.setData({ loading: true })
       const data = await api.stallMenu(cart.stallId)
-      const rate = store.getCashRate()
       const summary = store.cartSummary(cart)
       let points = store.getConsumerPoints()
       try {
@@ -92,8 +98,97 @@ Page({
   useAll() {
     this.recompute(this.data.maxPoints)
   },
+  showPaySuccess(result) {
+    const cash = result.cashPaid != null ? result.cashPaid : result.cashAmount
+    const pts = result.pointsSpend || 0
+    const sim = result.simulated ? '（模拟微信支付）' : ''
+    const allocated =
+      result.pointsAllocated != null ? result.pointsAllocated : result.pointsWant || 0
+    wx.showModal({
+      title: '支付成功',
+      content: `积分抵扣 ${pts}，微信收款 ¥${cash}${sim}。本单预计/已划拨积分 ${allocated}。`,
+      showCancel: false,
+      confirmText: '查看订单',
+      success: () => {
+        const ono = result.orderNo || this.data.pendingOrderNo
+        if (ono) {
+          wx.redirectTo({ url: `/pages/order-detail/order-detail?id=${encodeURIComponent(ono)}` })
+        } else {
+          wx.redirectTo({ url: '/pages/orders/orders' })
+        }
+      }
+    })
+  },
+  handlePayInterrupt(err, orderNo) {
+    const ono = orderNo || (err && err.orderNo) || this.data.pendingOrderNo || ''
+    const cancelled = isCancelError(err) || (err && err.code === 'USER_CANCEL')
+    const syncPending = err && err.code === 'SYNC_PENDING'
+    if (syncPending && ono) {
+      wx.showModal({
+        title: '支付结果确认中',
+        content: '微信侧可能已扣款，入账稍有延迟。请到订单查看，勿重复支付。',
+        confirmText: '查看订单',
+        showCancel: false,
+        success: () =>
+          wx.redirectTo({ url: `/pages/order-detail/order-detail?id=${encodeURIComponent(ono)}` })
+      })
+      return
+    }
+    if (!ono) {
+      wx.showToast({ title: (err && err.message) || '支付失败', icon: 'none' })
+      return
+    }
+    wx.showModal({
+      title: cancelled ? '已取消支付' : '支付未完成',
+      content: cancelled
+        ? '订单仍保留为待支付。可继续支付，或取消订单后重新选购。'
+        : `${(err && err.message) || '支付失败'}。可继续支付或稍后在订单中处理。`,
+      confirmText: '继续支付',
+      cancelText: '取消订单',
+      success: async (r) => {
+        if (r.confirm) {
+          await this.continuePay(ono)
+          return
+        }
+        try {
+          await api.cancelStallOrder({ orderNo: ono })
+          this.setData({ pendingOrderNo: '' })
+          wx.showToast({ title: '订单已取消', icon: 'none' })
+        } catch (e2) {
+          wx.showToast({ title: (e2 && e2.message) || '取消失败', icon: 'none' })
+        }
+      }
+    })
+  },
+  async continuePay(orderNo) {
+    if (this.data.paying) return
+    this.setData({ paying: true })
+    try {
+      const result = await api.repayStallOrder({ orderNo })
+      if (result.alreadyPaid || result.payStatus === 'paid' || result.simulated) {
+        store.clearCart()
+        this.setData({ pendingOrderNo: '', paying: false })
+        this.showPaySuccess(result)
+        return
+      }
+      this.setData({ pendingOrderNo: result.orderNo || orderNo })
+      const paid = await requestWxPay(result)
+      store.clearCart()
+      await store.refreshProfile().catch(() => {})
+      this.setData({ pendingOrderNo: '', paying: false })
+      this.showPaySuccess(paid || result)
+    } catch (e) {
+      this.setData({ paying: false })
+      this.handlePayInterrupt(e, orderNo)
+    }
+  },
   async onPay() {
     if (this.data.paying) return
+    // 若已有待支付单，优先继续支付，避免重复建单
+    if (this.data.pendingOrderNo) {
+      await this.continuePay(this.data.pendingOrderNo)
+      return
+    }
     this.setData({ paying: true })
     const cart = store.getCart()
     try {
@@ -108,25 +203,26 @@ Page({
           remark: i.remark || ''
         }))
       })
-      await requestWxPay(result)
+      if (result.orderNo) this.setData({ pendingOrderNo: result.orderNo })
+
+      // 模拟/已支付：直接成功
+      if (result.simulated || result.payStatus === 'paid' || !(Number(result.cashPaid) > 0)) {
+        const paid = await requestWxPay(result)
+        store.clearCart()
+        await store.refreshProfile().catch(() => {})
+        this.setData({ pendingOrderNo: '', paying: false })
+        this.showPaySuccess(paid || result)
+        return
+      }
+
+      const paid = await requestWxPay(result)
       store.clearCart()
       await store.refreshProfile().catch(() => {})
-      this.setData({ paying: false })
-      const cash = result.cashPaid != null ? result.cashPaid : result.cashAmount
-      const pts = result.pointsSpend || 0
-      const sim = result.simulated ? '（模拟微信支付）' : ''
-      wx.showModal({
-        title: '支付成功',
-        content: `积分抵扣 ${pts}，微信收款 ¥${cash}${sim}。支付成功后积分到账（本单划拨 ${
-          result.pointsAllocated != null ? result.pointsAllocated : result.pointsWant || 0
-        }）。`,
-        showCancel: false,
-        confirmText: '查看订单',
-        success: () => wx.redirectTo({ url: '/pages/orders/orders' })
-      })
+      this.setData({ pendingOrderNo: '', paying: false })
+      this.showPaySuccess(paid || result)
     } catch (e) {
       this.setData({ paying: false })
-      wx.showToast({ title: e.message || '支付失败', icon: 'none' })
+      this.handlePayInterrupt(e, this.data.pendingOrderNo)
     }
   }
 })
