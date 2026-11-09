@@ -692,6 +692,23 @@ async function loadAdminAccountOptions({ includeEmpty = true } = {}) {
   return options
 }
 
+/** 已开通城市下拉（代客入驻等） */
+async function loadOpenCityOptions({ includeEmpty = true, emptyLabel = '请选择开通城市' } = {}) {
+  let rows = []
+  try {
+    rows = (await api('/cities')) || []
+  } catch (_) {
+    rows = []
+  }
+  if (!Array.isArray(rows)) rows = []
+  const options = rows.map((c) => ({
+    value: c.name,
+    label: c.province ? `${c.name}（${c.province}）` : c.name
+  }))
+  if (includeEmpty) options.unshift({ value: '', label: emptyLabel })
+  return options
+}
+
 /** 图片/文件上传控件：压缩后上传云托管存储，支持删除 */
 function mediaField(name, label, value = '', bizType = 'general') {
   const v = value || ''
@@ -868,7 +885,8 @@ async function renderIdentities(role) {
     btn.textContent = labels[r] || '新增'
   }
 
-  const openProxyApplyModal = (fixedRole) => {
+  const openProxyApplyModal = async (fixedRole) => {
+    const cityOpts = await loadOpenCityOptions()
     const roleSelect = fixedRole
       ? `<input type="hidden" name="role" value="${esc(fixedRole)}" />`
       : selectField(
@@ -889,12 +907,13 @@ async function renderIdentities(role) {
         field('contactName', '联系人', '') +
         field('contactPhone', '联系电话', '') +
         field('creditCode', '统一社会信用代码（地摊可空）', '') +
-        field('city', '城市', '') +
+        selectField('city', '城市（已开通）', cityOpts, '') +
         field('address', '详细地址', '', 'textarea') +
         mediaField('coverUrl', '门店封面（可作证照占位）', '', 'merchant') +
         `<p class="muted">不会直接出现在门店列表。请到「商家入驻审核」核对资料后点通过，门店才会进入地摊/异业/供应链。</p>`,
       async () => {
         const role = formVal('role') || fixedRole
+        if (!formVal('city')) throw new Error('请选择已开通城市')
         const res = await api('/admin/applies', {
           method: 'POST',
           body: JSON.stringify({
@@ -923,11 +942,12 @@ async function renderIdentities(role) {
     const isAll = r === 'all'
 
     if (isStore) {
-      openProxyApplyModal(r)
+      await openProxyApplyModal(r)
       return
     }
 
     if (isPlatform || isAll) {
+      const cityOpts = await loadOpenCityOptions()
       const roleSelect = isAll
         ? selectField(
             'role',
@@ -952,7 +972,7 @@ async function renderIdentities(role) {
             ${field('contactName', '联系人', '')}
             ${field('contactPhone', '联系电话', '')}
             ${field('creditCode', '统一社会信用代码（地摊可空）', '')}
-            ${field('city', '城市', '')}
+            ${selectField('city', '城市（已开通）', cityOpts, '')}
             ${field('address', '详细地址', '', 'textarea')}
             ${mediaField('coverUrl', '门店封面', '', 'merchant')}
             <p class="muted">门店将进入「商家入驻审核」，通过后才出现在门店列表。</p>
@@ -965,6 +985,7 @@ async function renderIdentities(role) {
         async () => {
           const chosen = formVal('role') || r
           if (['stall', 'cross', 'supply'].includes(chosen)) {
+            if (!formVal('city')) throw new Error('请选择已开通城市')
             const res = await api('/admin/applies', {
               method: 'POST',
               body: JSON.stringify({
@@ -1820,49 +1841,52 @@ async function renderApplies() {
     load()
   }
   if ($('btnProxyApply')) {
-    $('btnProxyApply').onclick = () => {
-      openModal(
-        '代客入驻',
-        selectField(
-          'role',
-          '入驻类型',
-          [
-            { value: 'stall', label: '地摊' },
-            { value: 'cross', label: '异业门店' },
-            { value: 'supply', label: '供应链' }
-          ],
-          'stall'
-        ) +
-          field('shopName', '店铺名称', '') +
-          field('legalPerson', '法人/经营者', '') +
-          field('contactName', '联系人', '') +
-          field('contactPhone', '联系电话', '') +
-          field('creditCode', '统一社会信用代码（地摊可空）', '') +
-          field('city', '城市', '') +
-          field('address', '详细地址', '', 'textarea') +
-          mediaField('coverUrl', '门店封面', '', 'merchant'),
-        async () => {
-          const res = await api('/admin/applies', {
-            method: 'POST',
-            body: JSON.stringify({
-              role: formVal('role'),
-              shopName: formVal('shopName'),
-              legalPerson: formVal('legalPerson'),
-              contactName: formVal('contactName'),
-              contactPhone: formVal('contactPhone'),
-              creditCode: formVal('creditCode'),
-              city: formVal('city'),
-              address: formVal('address'),
-              coverUrl: formVal('coverUrl')
+    $('btnProxyApply').onclick = () =>
+      runAction(async () => {
+        const cityOpts = await loadOpenCityOptions()
+        openModal(
+          '代客入驻',
+          selectField(
+            'role',
+            '入驻类型',
+            [
+              { value: 'stall', label: '地摊' },
+              { value: 'cross', label: '异业门店' },
+              { value: 'supply', label: '供应链' }
+            ],
+            'stall'
+          ) +
+            field('shopName', '店铺名称', '') +
+            field('legalPerson', '法人/经营者', '') +
+            field('contactName', '联系人', '') +
+            field('contactPhone', '联系电话', '') +
+            field('creditCode', '统一社会信用代码（地摊可空）', '') +
+            selectField('city', '城市（已开通）', cityOpts, '') +
+            field('address', '详细地址', '', 'textarea') +
+            mediaField('coverUrl', '门店封面', '', 'merchant'),
+          async () => {
+            if (!formVal('city')) throw new Error('请选择已开通城市')
+            const res = await api('/admin/applies', {
+              method: 'POST',
+              body: JSON.stringify({
+                role: formVal('role'),
+                shopName: formVal('shopName'),
+                legalPerson: formVal('legalPerson'),
+                contactName: formVal('contactName'),
+                contactPhone: formVal('contactPhone'),
+                creditCode: formVal('creditCode'),
+                city: formVal('city'),
+                address: formVal('address'),
+                coverUrl: formVal('coverUrl')
+              })
             })
-          })
-          alert(`已提交 ${res.applyNo || ''}，请在本列表审核通过`)
-          await load()
-          refreshNavBadges()
-        },
-        true
-      )
-    }
+            alert(`已提交 ${res.applyNo || ''}，请在本列表审核通过`)
+            await load()
+            refreshNavBadges()
+          },
+          true
+        )
+      })
   }
   await load()
   refreshNavBadges()
