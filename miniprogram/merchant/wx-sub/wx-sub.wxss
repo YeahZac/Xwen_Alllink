@@ -29,6 +29,16 @@
   margin-bottom: 8px;
 }
 
+.sign-qr {
+  width: 280rpx;
+  height: 280rpx;
+  display: block;
+  margin: 12px auto 16px;
+  background: #fff;
+  padding: 12rpx;
+  box-sizing: border-box;
+}
+
 .wx-card__meta {
   display: block;
   font-size: 13px;

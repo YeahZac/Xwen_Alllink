@@ -10,6 +10,7 @@ Page({
     subMchId: '',
     ratePercent: 0,
     signUrl: '',
+    signQrDataUrl: '',
     mats: {},
     form: {
       bankName: '',
@@ -37,6 +38,7 @@ Page({
         subMchId: d.wxSubMchId || '',
         ratePercent: d.profitSharePercent ?? 0,
         signUrl: d.wxSignUrl || '',
+        signQrDataUrl: d.wxSignQrDataUrl || '',
         mats,
         form: {
           bankName: mats.bankName || '',

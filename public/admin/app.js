@@ -3198,7 +3198,20 @@ async function renderWxSubMerchants() {
            <p>主体类型 ${esc(d.organizationType)} · 分账 ${d.profitSharePercent}% · 支付配置 ${
              d.wxPayReady ? '就绪' : '未就绪'
            }</p>
-           ${d.wxSignUrl ? `<p>签约链接 <a href="${esc(d.wxSignUrl)}" target="_blank" rel="noopener">打开签约</a>（需超管用微信打开）</p>` : ''}
+           ${
+             d.wxSignUrl
+               ? `<div class="sign-box" style="margin:12px 0;padding:12px;border:1px solid #eee;border-radius:8px;background:#fafafa">
+             <p style="margin:0 0 8px"><b>待签约二维码</b>（微信官方要求：勿在浏览器点开链接）</p>
+             <p class="muted" style="margin:0 0 10px">请用进件超级管理员（经营者本人，实名须与证件一致）的微信 →「扫一扫」扫描下方二维码；浏览器直接打开/长按识别通常会提示「扫码失败」。</p>
+             ${
+               d.wxSignQrDataUrl
+                 ? `<img alt="签约二维码" width="220" height="220" style="display:block;background:#fff;padding:8px;border-radius:6px" src="${esc(d.wxSignQrDataUrl)}" />`
+                 : `<img alt="签约二维码" width="220" height="220" style="display:block;background:#fff;padding:8px;border-radius:6px" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${encodeURIComponent(d.wxSignUrl)}" />`
+             }
+             <p class="muted" style="margin:10px 0 0;word-break:break-all;font-size:12px">链接备份（勿浏览器打开）：${esc(d.wxSignUrl)}</p>
+           </div>`
+               : ''
+           }
            <h4>资料完备度</h4>
            <ul>
              <li>身份证人像面：${mats.hasIdCardFront ? '有' : '缺'}</li>

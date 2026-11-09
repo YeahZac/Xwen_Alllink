@@ -12,8 +12,10 @@
 
     <view class="wx-card" wx:if="{{signUrl}}">
       <text class="wx-card__title">待签约</text>
-      <text class="wx-card__desc">请使用超级管理员实名微信号打开下方链接完成签约（微信强制步骤）。</text>
-      <view class="btn-gradient" bindtap="onCopySign">复制签约链接</view>
+      <text class="wx-card__desc">微信官方要求：将签约链接做成二维码，由经营者本人用微信「扫一扫」扫描。浏览器点开链接会提示「扫码失败」。</text>
+      <image wx:if="{{signQrDataUrl}}" class="sign-qr" src="{{signQrDataUrl}}" mode="aspectFit" show-menu-by-longpress="{{false}}" />
+      <text class="wx-card__desc">请另开手机微信 → 扫一扫 → 对准上方二维码（须与进件证件同名实名）。也可截图后用扫一扫·相册选图。</text>
+      <view class="btn-outline-primary" bindtap="onCopySign">复制链接（仅备用，勿浏览器打开）</view>
     </view>
 
     <view class="wx-card">

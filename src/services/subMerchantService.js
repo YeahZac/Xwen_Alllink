@@ -252,7 +252,8 @@ async function getSubMerchantDetail(id) {
     throw e
   })
   const orgType = resolveOrgType(m, materials)
-  return {
+  const wxSignUrl = m.wx_sign_url || ''
+  const detail = {
     id: m.id,
     merchantNo: m.merchant_no,
     role: m.role,
@@ -270,7 +271,8 @@ async function getSubMerchantDetail(id) {
     wxOutRequestNo: m.wx_out_request_no || '',
     wxApplyState: m.wx_apply_state || '',
     wxApplyStateDesc: m.wx_apply_state_desc || '',
-    wxSignUrl: m.wx_sign_url || '',
+    wxSignUrl,
+    wxSignQrDataUrl: '',
     profitShareRate: Number(m.profit_share_rate) || 0,
     profitSharePercent: Math.round((Number(m.profit_share_rate) || 0) * 10000) / 100,
     wxApplySyncedAt: m.wx_apply_synced_at,
@@ -294,6 +296,20 @@ async function getSubMerchantDetail(id) {
     applyments: applyRows,
     wxPayReady: wxPayService.wxPayConfigured()
   }
+  // 官方要求：sign_url 转二维码，由超管用微信「扫一扫」打开；浏览器直接点开会「扫码失败」
+  if (wxSignUrl) {
+    try {
+      const QRCode = require('qrcode')
+      detail.wxSignQrDataUrl = await QRCode.toDataURL(wxSignUrl, {
+        width: 280,
+        margin: 2,
+        errorCorrectionLevel: 'M'
+      })
+    } catch (_) {
+      detail.wxSignQrDataUrl = ''
+    }
+  }
+  return detail
 }
 
 /**
