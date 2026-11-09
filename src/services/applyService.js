@@ -74,6 +74,37 @@ function assertApplyPayload(body) {
   }
 }
 
+/** 软删停业未删门店，使「已停用，可重申」与一人一店规则一致 */
+async function retireClosedMerchantsForReapply({ role, phone, userId } = {}) {
+  const r = String(role || '').trim()
+  const p = String(phone || '').trim()
+  const uid = Number(userId) || 0
+  if (!r || !p) return { retired: 0 }
+  let rows = []
+  try {
+    rows = await query(
+      `SELECT id FROM merchants
+       WHERE role=:role AND deleted_at IS NULL AND status=2
+         AND (contact_phone=:phone ${uid ? 'OR owner_user_id=:uid' : ''})`,
+      uid ? { role: r, phone: p, uid } : { role: r, phone: p }
+    )
+  } catch (_) {
+    return { retired: 0 }
+  }
+  if (!rows.length) return { retired: 0 }
+  const opsService = require('./opsService')
+  let retired = 0
+  for (const row of rows) {
+    try {
+      await opsService.softDeleteMerchant(row.id)
+      retired += 1
+    } catch (_) {
+      /* 已删或并发忽略 */
+    }
+  }
+  return { retired }
+}
+
 /** 推荐码可来自 C 端用户，也可来自已入驻商户的邀请码 */
 async function resolveReferrer(code) {
   const c = String(code || '').trim()
@@ -105,56 +136,53 @@ async function submitApply(body) {
   const applicantUserId = Number(body.applicantUserId || body.userId) || 0
   const phone = String(body.contactPhone || '').trim()
 
-  // 一人一地摊：存在未删除的地摊门店则不可再申请（删除后门店可重提）
-  if (body.role === 'stall') {
-    const activeStall = await query(
-      `SELECT id, name FROM merchants
-       WHERE role='stall' AND deleted_at IS NULL
-         AND (contact_phone=:phone ${applicantUserId ? 'OR owner_user_id=:uid' : ''})
-       ORDER BY id DESC LIMIT 1`,
-      applicantUserId ? { phone, uid: applicantUserId } : { phone }
+  // 停业未删的旧店：先软删以便「可重申」与一人一店一致
+  await retireClosedMerchantsForReapply({
+    role: body.role,
+    phone,
+    userId: applicantUserId
+  })
+
+  // 一人一活跃店：营业中（status=1 且未删）不可再申请同角色
+  const activeShop = await query(
+    `SELECT id, name FROM merchants
+     WHERE role=:role AND deleted_at IS NULL AND status=1
+       AND (contact_phone=:phone ${applicantUserId ? 'OR owner_user_id=:uid' : ''})
+     ORDER BY id DESC LIMIT 1`,
+    applicantUserId
+      ? { role: body.role, phone, uid: applicantUserId }
+      : { role: body.role, phone }
+  )
+  if (activeShop.length) {
+    const roleLabel = { stall: '地摊', cross: '异业', supply: '供应链' }[body.role] || body.role
+    throw new HttpError(
+      400,
+      `您已有营业中的${roleLabel}门店「${activeShop[0].name}」；如需重新入驻请先在后台删除旧店`
     )
-    if (activeStall.length) {
-      throw new HttpError(
-        400,
-        `您已有地摊门店「${activeStall[0].name}」，一人仅可经营一个地摊；如需重新入驻请联系平台在后台删除旧店后再申请`
-      )
-    }
-    const pendingStall = await query(
+  }
+
+  const pending = await query(
+    `SELECT id FROM merchant_applications
+     WHERE role=:role AND status='pending' AND deleted_at IS NULL
+       AND (contact_phone=:phone ${applicantUserId ? 'OR applicant_user_id=:uid' : ''})
+     LIMIT 1`,
+    applicantUserId
+      ? { role: body.role, phone, uid: applicantUserId }
+      : { role: body.role, phone }
+  ).catch(async (e) => {
+    if (!/Unknown column.*deleted_at/i.test(String(e.message || ''))) throw e
+    return query(
       `SELECT id FROM merchant_applications
-       WHERE role='stall' AND status='pending' AND deleted_at IS NULL
+       WHERE role=:role AND status='pending'
          AND (contact_phone=:phone ${applicantUserId ? 'OR applicant_user_id=:uid' : ''})
        LIMIT 1`,
-      applicantUserId ? { phone, uid: applicantUserId } : { phone }
-    ).catch(async (e) => {
-      if (!/Unknown column.*deleted_at/i.test(String(e.message || ''))) throw e
-      return query(
-        `SELECT id FROM merchant_applications
-         WHERE role='stall' AND status='pending'
-           AND (contact_phone=:phone ${applicantUserId ? 'OR applicant_user_id=:uid' : ''})
-         LIMIT 1`,
-        applicantUserId ? { phone, uid: applicantUserId } : { phone }
-      )
-    })
-    if (pendingStall.length) {
-      throw new HttpError(400, '您已有审核中的地摊入驻申请，请勿重复提交')
-    }
-  } else {
-    const pending = await query(
-      `SELECT id FROM merchant_applications
-       WHERE contact_phone = :phone AND status = 'pending' AND deleted_at IS NULL LIMIT 1`,
-      { phone }
-    ).catch(async (e) => {
-      if (!/Unknown column.*deleted_at/i.test(String(e.message || ''))) throw e
-      return query(
-        `SELECT id FROM merchant_applications
-         WHERE contact_phone = :phone AND status = 'pending' LIMIT 1`,
-        { phone }
-      )
-    })
-    if (pending.length) {
-      throw new HttpError(400, '该手机号已有审核中的申请，请勿重复提交')
-    }
+      applicantUserId
+        ? { role: body.role, phone, uid: applicantUserId }
+        : { role: body.role, phone }
+    )
+  })
+  if (pending.length) {
+    throw new HttpError(400, '您已有审核中的入驻申请，请勿重复提交')
   }
   // 停用(status=2) / 软删除 / 驳回 不拦截：允许重新提交商家申请
   const applyNo = orderNo('AP')
@@ -386,6 +414,41 @@ async function appendApplyReviewLog(payload) {
   }
 }
 
+/** 地摊通过后植入「到店消费」占位 SKU，保证空店也能走收款码 */
+async function ensureStallPlaceholderGoods(conn, merchantId, role) {
+  const mid = Number(merchantId)
+  if (!mid || role !== 'stall') return null
+  try {
+    const [exist] = await conn.execute(
+      `SELECT id FROM stall_goods WHERE merchant_id=? AND deleted_at IS NULL LIMIT 1`,
+      [mid]
+    )
+    if (exist.length) return Number(exist[0].id)
+  } catch (_) {
+    try {
+      const [exist] = await conn.execute(
+        `SELECT id FROM stall_goods WHERE merchant_id=? LIMIT 1`,
+        [mid]
+      )
+      if (exist.length) return Number(exist[0].id)
+    } catch (e2) {
+      return null
+    }
+  }
+  try {
+    const [ins] = await conn.execute(
+      `INSERT INTO stall_goods
+        (merchant_id, name, sku_code, price, points_grant, category, unit, desc_text, stock, on_sale)
+       VALUES (?, '到店消费', ?, 0.01, 0, '收款', '次', '收款码占位商品，可改价或下架', 9999, 1)`,
+      [mid, `SCAN${mid}`]
+    )
+    return ins.insertId || null
+  } catch (e) {
+    console.warn('[apply] placeholder goods', e.message)
+    return null
+  }
+}
+
 /** 运营审核通过：创建商户 + 额度池 + 账户 + 邀请码（支持驳回后改审通过） */
 async function approveApply(applyId, { reviewerId, reviewerName, remark } = {}) {
   return withTransaction(async (conn) => {
@@ -400,29 +463,21 @@ async function approveApply(applyId, { reviewerId, reviewerName, remark } = {}) 
     }
     const fromStatus = a.status
 
-    // 已有商户：仅改状态（改审），避免重复建店
+    // 已有商户：改审通过并回写申请资料到门店
     if (a.merchant_id) {
       const adminRemark = String(remark || '').trim()
-      if (adminRemark) {
-        const licenses = parseMaybeJson(a.license_json) || {}
-        licenses.adminRemark = adminRemark.slice(0, 255)
-        try {
-          await conn.execute(
-            `UPDATE merchant_applications
-             SET status='approved', reject_reason=NULL, reviewer_id=?, reviewed_at=NOW(),
-                 license_json=CAST(? AS JSON)
-             WHERE id=?`,
-            [reviewerId || null, JSON.stringify(licenses), applyId]
-          )
-        } catch (_) {
-          await conn.execute(
-            `UPDATE merchant_applications
-             SET status='approved', reject_reason=NULL, reviewer_id=?, reviewed_at=NOW()
-             WHERE id=?`,
-            [reviewerId || null, applyId]
-          )
-        }
-      } else {
+      const licenses = parseMaybeJson(a.license_json) || {}
+      if (adminRemark) licenses.adminRemark = adminRemark.slice(0, 255)
+      const coverUrl = pickCoverFromLicenses(licenses) || null
+      try {
+        await conn.execute(
+          `UPDATE merchant_applications
+           SET status='approved', reject_reason=NULL, reviewer_id=?, reviewed_at=NOW(),
+               license_json=CAST(? AS JSON)
+           WHERE id=?`,
+          [reviewerId || null, JSON.stringify(licenses), applyId]
+        )
+      } catch (_) {
         await conn.execute(
           `UPDATE merchant_applications
            SET status='approved', reject_reason=NULL, reviewer_id=?, reviewed_at=NOW()
@@ -432,12 +487,45 @@ async function approveApply(applyId, { reviewerId, reviewerName, remark } = {}) 
       }
       try {
         await conn.execute(
-          `UPDATE merchants SET status=1, deleted_at=NULL WHERE id=?`,
-          [a.merchant_id]
+          `UPDATE merchants SET
+             status=1, deleted_at=NULL,
+             name=?, credit_code=?, legal_person=?, contact_name=?, contact_phone=?,
+             city=?, address=?, latitude=?, longitude=?,
+             cover_url=COALESCE(?, cover_url),
+             materials_json=CAST(? AS JSON)
+           WHERE id=?`,
+          [
+            a.shop_name,
+            a.credit_code,
+            a.legal_person,
+            a.contact_name,
+            a.contact_phone,
+            a.city,
+            a.address,
+            a.latitude,
+            a.longitude,
+            coverUrl,
+            JSON.stringify(licenses),
+            a.merchant_id
+          ]
         )
       } catch (_) {
-        await conn.execute(`UPDATE merchants SET status=1 WHERE id=?`, [a.merchant_id])
+        await conn.execute(
+          `UPDATE merchants SET status=1, deleted_at=NULL,
+             name=?, legal_person=?, contact_name=?, contact_phone=?, city=?, address=?
+           WHERE id=?`,
+          [
+            a.shop_name,
+            a.legal_person,
+            a.contact_name,
+            a.contact_phone,
+            a.city,
+            a.address,
+            a.merchant_id
+          ]
+        )
       }
+      await ensureStallPlaceholderGoods(conn, Number(a.merchant_id), a.role)
       await appendApplyReviewLog({
         applyType: 'merchant',
         applyId,
@@ -620,6 +708,8 @@ async function approveApply(applyId, { reviewerId, reviewerName, remark } = {}) 
         [merchantId, reviewerId || null, applyId]
       )
     }
+
+    await ensureStallPlaceholderGoods(conn, merchantId, a.role)
 
     // 触发点：商户入驻审核通过（BRD §4.5 第 4 步第 3 项）
     const rewarded = await referralService.rewardMerchantApproved(conn, {
@@ -871,14 +961,22 @@ async function rejectApply(applyId, { reason, reviewerId, reviewerName } = {}) {
       rid: reviewerId || null
     }
   )
-  // 已通过改驳回：门店停业，不删除记录
+  // 已通过改驳回：软删门店释放一人一店，入驻单仍保留在审核列表
   if (fromStatus === 'approved' && rows[0].merchantId) {
     try {
-      await query(`UPDATE merchants SET status=2 WHERE id=:mid AND deleted_at IS NULL`, {
-        mid: rows[0].merchantId
+      await require('./opsService').softDeleteMerchant(rows[0].merchantId, {
+        hideApplies: false
       })
-    } catch (_) {
-      await query(`UPDATE merchants SET status=2 WHERE id=:mid`, { mid: rows[0].merchantId })
+    } catch (e) {
+      if (!(e && Number(e.status) === 404)) {
+        try {
+          await query(`UPDATE merchants SET status=2, deleted_at=NOW() WHERE id=:mid`, {
+            mid: rows[0].merchantId
+          })
+        } catch (_) {
+          await query(`UPDATE merchants SET status=2 WHERE id=:mid`, { mid: rows[0].merchantId })
+        }
+      }
     }
   }
   await appendApplyReviewLog({
@@ -890,7 +988,7 @@ async function rejectApply(applyId, { reason, reviewerId, reviewerName } = {}) {
     reviewerId,
     reviewerName
   })
-  return { id: applyId, status: 'rejected', fromStatus }
+  return { id: applyId, status: 'rejected', fromStatus, reapplyAllowed: true }
 }
 
 async function listMerchants({ role, page, pageSize, limit } = {}) {
@@ -937,10 +1035,77 @@ async function listMerchants({ role, page, pageSize, limit } = {}) {
   return pageResult(list, total, paging)
 }
 
+/**
+ * 运营台代客入驻：写入 pending 申请，不直建门店；审核通过后进入用户与门店
+ */
+async function submitAdminApply(body = {}) {
+  const role = String(body.role || '').trim()
+  if (!['stall', 'cross', 'supply'].includes(role)) {
+    throw new HttpError(400, '请选择入驻身份：地摊/异业/供应链')
+  }
+  const shopName = String(body.shopName || body.name || '').trim()
+  const legalPerson = String(body.legalPerson || body.contactName || '').trim()
+  const contactName = String(body.contactName || legalPerson || shopName).trim()
+  const contactPhone = String(body.contactPhone || '').trim()
+  const city = String(body.city || '').trim()
+  const address = String(body.address || '').trim()
+  if (!shopName) throw new HttpError(400, '请填写店铺名称')
+  if (!legalPerson) throw new HttpError(400, '请填写法人/经营者')
+  if (!contactPhone || !/^1\d{10}$/.test(contactPhone)) {
+    throw new HttpError(400, '请填写正确的联系电话')
+  }
+  if (!city) throw new HttpError(400, '请填写城市')
+  if (!address) throw new HttpError(400, '请填写详细地址')
+  if (role !== 'stall' && !String(body.creditCode || '').trim()) {
+    throw new HttpError(400, '异业/供应链请填写统一社会信用代码')
+  }
+  await cityService.ensureOpen(city)
+
+  const licenses = { ...(body.licenses || {}), adminProxy: true, source: 'admin' }
+  if (body.coverUrl) {
+    licenses.storePhoto = body.coverUrl
+    licenses.coverUrl = body.coverUrl
+  }
+  // 代客草稿：证照可后补，审核前运营台详情可再改；地摊承诺由平台代勾
+  return submitApply({
+    role,
+    shopName,
+    creditCode: body.creditCode || '',
+    legalPerson,
+    contactName,
+    contactPhone,
+    city,
+    address,
+    latitude: body.latitude != null ? Number(body.latitude) : 22.5431,
+    longitude: body.longitude != null ? Number(body.longitude) : 114.0579,
+    agreed: true,
+    stallCommitment: role === 'stall' ? true : undefined,
+    idCardNumber: body.idCardNumber || '110101199001011234',
+    idCardValidBegin: body.idCardValidBegin || '2020-01-01',
+    idCardValidEnd: body.idCardValidEnd || '长期',
+    bankAccountNo: body.bankAccountNo || '6222020000000000000',
+    bankName: body.bankName || '待补全',
+    bankAccountName: body.bankAccountName || legalPerson,
+    licenses: {
+      ...licenses,
+      idCardFront: licenses.idCardFront || body.coverUrl || '/static/placeholder-id-front.png',
+      idCardBack: licenses.idCardBack || body.coverUrl || '/static/placeholder-id-back.png',
+      storePhoto: licenses.storePhoto || body.coverUrl || '/static/placeholder-store.png',
+      businessLicense:
+        role === 'stall'
+          ? licenses.businessLicense
+          : licenses.businessLicense || body.coverUrl || '/static/placeholder-license.png'
+    },
+    applicantUserId: body.applicantUserId || body.userId || 0,
+    referrerCode: body.referrerCode || ''
+  })
+}
+
 module.exports = {
   ROLE_LICENSE_RULES,
   ROLE_OPTIONAL_LICENSES,
   submitApply,
+  submitAdminApply,
   queryByPhone,
   queryByUserId,
   approveApply,

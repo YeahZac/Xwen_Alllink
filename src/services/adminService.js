@@ -219,9 +219,23 @@ async function adjustUserPoints(id, { points, title } = {}) {
 }
 
 /* ---------- goods ---------- */
+async function assertMerchantForGoods(merchantId, expectedRole) {
+  const mid = Number(merchantId)
+  if (!mid) throw new HttpError(400, '缺少商户ID')
+  const rows = await query(
+    `SELECT id, role, status, name FROM merchants WHERE id=:id AND deleted_at IS NULL LIMIT 1`,
+    { id: mid }
+  )
+  if (!rows.length) throw new HttpError(404, '门店不存在或已删除')
+  if (expectedRole && rows[0].role !== expectedRole) {
+    throw new HttpError(400, `该门店是「${rows[0].role}」，不能挂到${expectedRole}商品`)
+  }
+  return rows[0]
+}
+
 async function listStallGoods({ merchantId, page, pageSize, limit } = {}) {
   const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
-  let where = ` WHERE g.deleted_at IS NULL`
+  let where = ` WHERE g.deleted_at IS NULL AND m.deleted_at IS NULL AND m.role='stall'`
   const params = {}
   if (merchantId) {
     where += ` AND g.merchant_id=:merchantId`
@@ -245,7 +259,7 @@ async function listStallGoods({ merchantId, page, pageSize, limit } = {}) {
 
 async function saveStallGoods(body) {
   const merchantId = Number(body.merchantId)
-  if (!merchantId) throw new HttpError(400, '缺少商户ID')
+  await assertMerchantForGoods(merchantId, 'stall')
   const name = String(body.name || '').trim()
   if (!name) throw new HttpError(400, '请填写商品名称')
   const payload = {
@@ -319,7 +333,7 @@ async function saveStallGoods(body) {
 
 async function listCrossGoods({ merchantId, page, pageSize, limit } = {}) {
   const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
-  let where = ` WHERE g.deleted_at IS NULL`
+  let where = ` WHERE g.deleted_at IS NULL AND m.deleted_at IS NULL AND m.role='cross'`
   const params = {}
   if (merchantId) {
     where += ` AND g.merchant_id=:merchantId`
@@ -357,7 +371,7 @@ async function listCrossGoods({ merchantId, page, pageSize, limit } = {}) {
 
 async function saveCrossGoods(body) {
   const merchantId = Number(body.merchantId)
-  if (!merchantId) throw new HttpError(400, '缺少商户ID')
+  await assertMerchantForGoods(merchantId, 'cross')
   const name = String(body.name || '').trim()
   if (!name) throw new HttpError(400, '请填写商品名称')
   const payload = {
@@ -429,7 +443,7 @@ async function saveCrossGoods(body) {
 
 async function listSupplyGoodsAdmin({ merchantId, page, pageSize, limit } = {}) {
   const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
-  let where = ` WHERE g.deleted_at IS NULL`
+  let where = ` WHERE g.deleted_at IS NULL AND m.deleted_at IS NULL AND m.role='supply'`
   const params = {}
   if (merchantId) {
     where += ` AND g.merchant_id=:merchantId`
@@ -452,7 +466,7 @@ async function listSupplyGoodsAdmin({ merchantId, page, pageSize, limit } = {}) 
 
 async function saveSupplyGoods(body) {
   const merchantId = Number(body.merchantId)
-  if (!merchantId) throw new HttpError(400, '缺少供应链商户ID')
+  await assertMerchantForGoods(merchantId, 'supply')
   const name = String(body.name || '').trim()
   if (!name) throw new HttpError(400, '请填写商品名称')
   const payload = {

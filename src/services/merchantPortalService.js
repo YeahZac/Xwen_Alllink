@@ -290,9 +290,18 @@ async function listGoods(merchantId, role) {
 }
 
 async function saveGoods(merchantId, role, body) {
-  const payload = { ...body, merchantId: Number(merchantId) }
-  if (role === 'stall') return adminService.saveStallGoods(payload)
-  if (role === 'cross') return adminService.saveCrossGoods(payload)
+  const mid = Number(merchantId)
+  if (!mid) throw new HttpError(400, '缺少商户ID')
+  const rows = await query(
+    `SELECT id, role, status FROM merchants WHERE id=:id AND deleted_at IS NULL LIMIT 1`,
+    { id: mid }
+  )
+  if (!rows.length) throw new HttpError(404, '门店不存在或已删除')
+  if (Number(rows[0].status) !== 1) throw new HttpError(400, '门店已停业，无法维护商品')
+  if (role && rows[0].role !== role) throw new HttpError(400, '门店角色与当前身份不符')
+  const payload = { ...body, merchantId: mid }
+  if (rows[0].role === 'stall') return adminService.saveStallGoods(payload)
+  if (rows[0].role === 'cross') return adminService.saveCrossGoods(payload)
   return adminService.saveSupplyGoods({
     ...payload,
     status: body.onSale === 0 ? 0 : body.status === 0 ? 0 : 1
@@ -462,6 +471,12 @@ async function getOrCreateStoreQrcode(merchantId, { kind = 'menu', force = false
   if (!rows.length) throw new HttpError(404, '门店不存在')
   const m = rows[0]
   const cached = k === 'pay' ? String(m.payUrl || '').trim() : String(m.menuUrl || '').trim()
+  if (k === 'menu' && m.role === 'supply') {
+    throw new HttpError(400, '供应链暂不支持点餐码，请使用供应链货品列表')
+  }
+  if (k === 'pay' && m.role !== 'stall') {
+    throw new HttpError(400, '仅地摊支持收款码')
+  }
   const page =
     k === 'pay'
       ? 'pages/scan-pay/scan-pay'

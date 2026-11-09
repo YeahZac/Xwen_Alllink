@@ -40,12 +40,13 @@ async function grantPool(conn, { merchantId, points, bizType, bizId, title }) {
  * 从商家额度池划拨给消费者
  * pool_shortage_policy=block 时额度不足抛错；默认 partial 部分划拨
  */
-async function allocateToConsumer(conn, { merchantId, userId, wantPoints, shopName, orderNo }) {
+async function allocateToConsumer(conn, { merchantId, userId, wantPoints, shopName, orderNo, allowDegrade }) {
   await ensurePool(conn, merchantId)
   const pool = await getPoolBalance(conn, merchantId)
   const want = Number(wantPoints) || 0
   const policy = String(await getConfig('pool_shortage_policy', 'partial'))
-  if (policy === 'block' && pool < want) {
+  // 支付入账场景 allowDegrade：额度不足只部分/0 划拨，不抛错以免卡死已支付订单
+  if (policy === 'block' && pool < want && !allowDegrade) {
     throw new HttpError(400, '商家积分额度不足，暂无法完单划拨')
   }
   const allocated = Math.min(want, pool)

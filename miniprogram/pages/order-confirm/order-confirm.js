@@ -111,7 +111,9 @@ Page({
       const sim = result.simulated ? '（模拟微信支付）' : ''
       wx.showModal({
         title: '支付成功',
-        content: `积分抵扣 ${pts}，微信收款 ¥${cash}${sim}。摊主出餐完成后积分到账（预计划拨 ${result.pointsWant || 0}）。`,
+        content: `积分抵扣 ${pts}，微信收款 ¥${cash}${sim}。支付成功后积分到账（本单划拨 ${
+          result.pointsAllocated != null ? result.pointsAllocated : result.pointsWant || 0
+        }）。`,
         showCancel: false,
         confirmText: '查看订单',
         success: () => wx.redirectTo({ url: '/pages/orders/orders' })

@@ -379,6 +379,19 @@ router.delete(
   }
 )
 
+router.post(
+  '/admin/applies',
+  ...adminOnly,
+  requirePage('applies', { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await applyService.submitAdminApply(req.body || {})))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
 router.get(
   '/admin/applies/:id/logs',
   ...adminOnly,

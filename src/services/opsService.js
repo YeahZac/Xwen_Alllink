@@ -500,6 +500,7 @@ async function getStoreDetail(merchantId) {
     legalPerson: m.legal_person || '',
     contactName: m.contact_name,
     contactPhone: m.contact_phone,
+    creditCode: m.credit_code || '',
     city: m.city,
     address: m.address,
     latitude: m.latitude,
@@ -583,8 +584,14 @@ async function updateStore(id, body = {}) {
   return getStoreDetail(Number(id))
 }
 
-/** 运营台直接新建门店（地摊/异业/供应链），无需走入驻审核 */
+/** 运营台直接新建门店 —— 默认关闭，统一走「商家入驻审核」 */
 async function createStore(body = {}) {
+  if (String(process.env.ALLOW_DIRECT_STORE_CREATE || '0') !== '1') {
+    throw new HttpError(
+      400,
+      '请从「商家入驻审核」新建门店：小程序入驻或运营台代客入驻，审核通过后进入对应门店列表'
+    )
+  }
   const role = String(body.role || '').trim()
   if (!['stall', 'cross', 'supply'].includes(role)) {
     throw new HttpError(400, '请选择门店类型：地摊/异业/供应链')
@@ -862,7 +869,7 @@ async function setMerchantStatus(id, status) {
   return { id: Number(id), status: Number(status) }
 }
 
-async function softDeleteMerchant(id) {
+async function softDeleteMerchant(id, { hideApplies = true } = {}) {
   const mid = Number(id)
   const rows = await query(
     'SELECT id, role, name FROM merchants WHERE id=:id AND deleted_at IS NULL',
@@ -881,17 +888,28 @@ async function softDeleteMerchant(id) {
   } catch (_) {
     /* 表或列缺失时忽略 */
   }
-  // 关联入驻单改为驳回并软删，便于列表清理与小程序重新入驻
+  // 关联入驻单：默认软删隐藏；改驳回场景可 keep 以保留审核列表
   try {
-    await query(
-      `UPDATE merchant_applications
-       SET status='rejected',
-           reject_reason=IFNULL(NULLIF(reject_reason,''), '门店已由平台删除，可重新提交入驻'),
-           reviewed_at=NOW(),
-           deleted_at=IFNULL(deleted_at, NOW())
-       WHERE merchant_id=:id AND (deleted_at IS NULL OR status IN ('approved','pending'))`,
-      { id: mid }
-    )
+    if (hideApplies) {
+      await query(
+        `UPDATE merchant_applications
+         SET status='rejected',
+             reject_reason=IFNULL(NULLIF(reject_reason,''), '门店已由平台删除，可重新提交入驻'),
+             reviewed_at=NOW(),
+             deleted_at=IFNULL(deleted_at, NOW())
+         WHERE merchant_id=:id AND (deleted_at IS NULL OR status IN ('approved','pending'))`,
+        { id: mid }
+      )
+    } else {
+      await query(
+        `UPDATE merchant_applications
+         SET status='rejected',
+             reject_reason=IFNULL(NULLIF(reject_reason,''), '门店已停用，可重新提交入驻'),
+             reviewed_at=NOW()
+         WHERE merchant_id=:id AND status IN ('approved','pending')`,
+        { id: mid }
+      )
+    }
   } catch (e) {
     if (/Unknown column.*deleted_at/i.test(String(e.message || ''))) {
       try {
@@ -1070,6 +1088,7 @@ async function listSkus({ type, merchantId, shopName, includeDeleted, page, page
     let where = ` WHERE 1=1`
     const params = {}
     if (!includeDeleted) where += ` AND g.deleted_at IS NULL`
+    where += ` AND m.deleted_at IS NULL AND m.role='${t}'`
     if (merchantId) {
       where += ` AND g.merchant_id=:mid`
       params.mid = Number(merchantId)

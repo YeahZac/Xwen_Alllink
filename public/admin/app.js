@@ -765,17 +765,13 @@ async function renderIdentities(role) {
     )
   const canCreateFor = (r) => {
     if (r === 'consumer') return false
+    // 门店统一走入驻审核代客提交，不再直建
     if (r === 'stall' || r === 'cross' || r === 'supply') {
-      return canEdit(`stores_${r}`) || canEdit('users_all')
+      return canEdit('applies') || canEdit(`stores_${r}`) || canEdit('users_all')
     }
     if (r === 'partner' || r === 'founder' || r === 'lead') return canEdit('users_all')
     if (r === 'all') {
-      return (
-        canEdit('users_all') ||
-        canEdit('stores_stall') ||
-        canEdit('stores_cross') ||
-        canEdit('stores_supply')
-      )
+      return canEdit('users_all') || canEdit('applies')
     }
     return false
   }
@@ -813,23 +809,75 @@ async function renderIdentities(role) {
     }
     btn.style.display = ''
     const labels = {
-      stall: '新增地摊门店',
-      cross: '新增异业门店',
-      supply: '新增供应链门店',
+      stall: '代客入驻（地摊）',
+      cross: '代客入驻（异业）',
+      supply: '代客入驻（供应链）',
       partner: '新增合伙人',
       founder: '新增创始人',
       lead: '新增负责人',
-      all: '新增（门店/身份）'
+      all: '新增平台身份 / 代客入驻'
     }
     btn.textContent = labels[r] || '新增'
   }
 
+  const openProxyApplyModal = (fixedRole) => {
+    const roleSelect = fixedRole
+      ? `<input type="hidden" name="role" value="${esc(fixedRole)}" />`
+      : selectField(
+          'role',
+          '入驻类型',
+          [
+            { value: 'stall', label: '地摊' },
+            { value: 'cross', label: '异业门店' },
+            { value: 'supply', label: '供应链' }
+          ],
+          'stall'
+        )
+    openModal(
+      '代客入驻（提交后进入商家入驻审核）',
+      roleSelect +
+        field('shopName', '店铺名称', '') +
+        field('legalPerson', '法人/经营者', '') +
+        field('contactName', '联系人', '') +
+        field('contactPhone', '联系电话', '') +
+        field('creditCode', '统一社会信用代码（地摊可空）', '') +
+        field('city', '城市', '') +
+        field('address', '详细地址', '', 'textarea') +
+        mediaField('coverUrl', '门店封面（可作证照占位）', '', 'merchant') +
+        `<p class="muted">不会直接出现在门店列表。请到「商家入驻审核」核对资料后点通过，门店才会进入地摊/异业/供应链。</p>`,
+      async () => {
+        const role = formVal('role') || fixedRole
+        const res = await api('/admin/applies', {
+          method: 'POST',
+          body: JSON.stringify({
+            role,
+            shopName: formVal('shopName'),
+            legalPerson: formVal('legalPerson'),
+            contactName: formVal('contactName'),
+            contactPhone: formVal('contactPhone'),
+            creditCode: formVal('creditCode'),
+            city: formVal('city'),
+            address: formVal('address'),
+            coverUrl: formVal('coverUrl')
+          })
+        })
+        alert(`已提交入驻单 ${res.applyNo || ''}，请到「商家入驻审核」处理`)
+        await load()
+      },
+      true
+    )
+  }
+
   const openCreateModal = async () => {
-    const adminOpts = await loadAdminAccountOptions()
     const r = filterRole
     const isStore = r === 'stall' || r === 'cross' || r === 'supply'
     const isPlatform = r === 'partner' || r === 'founder' || r === 'lead'
     const isAll = r === 'all'
+
+    if (isStore) {
+      openProxyApplyModal(r)
+      return
+    }
 
     if (isPlatform || isAll) {
       const roleSelect = isAll
@@ -837,32 +885,31 @@ async function renderIdentities(role) {
             'role',
             '类型',
             [
-              { value: 'stall', label: '地摊门店' },
-              { value: 'cross', label: '异业门店' },
-              { value: 'supply', label: '供应链门店' },
+              { value: 'stall', label: '代客入驻·地摊' },
+              { value: 'cross', label: '代客入驻·异业' },
+              { value: 'supply', label: '代客入驻·供应链' },
               { value: 'partner', label: '合伙人' },
               { value: 'founder', label: '创始人' },
               { value: 'lead', label: '负责人' }
             ],
-            'stall'
+            'partner'
           )
         : `<input type="hidden" name="role" value="${esc(r)}" />`
       openModal(
-        isAll ? '新增门店或平台身份' : `新增${{ partner: '合伙人', founder: '创始人', lead: '负责人' }[r]}`,
+        isAll ? '新增平台身份 / 代客入驻' : `新增${{ partner: '合伙人', founder: '创始人', lead: '负责人' }[r]}`,
         roleSelect +
-          `<div id="createStoreFields">
-            ${field('name', '店铺名称', '')}
-            ${field('legalPerson', '法人/负责人', '')}
+          `<div id="createStoreFields" style="display:none">
+            ${field('shopName', '店铺名称', '')}
+            ${field('legalPerson', '法人/经营者', '')}
             ${field('contactName', '联系人', '')}
             ${field('contactPhone', '联系电话', '')}
             ${field('creditCode', '统一社会信用代码（地摊可空）', '')}
             ${field('city', '城市', '')}
-            ${field('address', '地址', '', 'textarea')}
-            ${field('bizType', '经营类目(餐饮/鲜花/蛋糕/百货商店)', '')}
-            ${selectField('bizOwnerAdminId', '商务负责人', adminOpts, '')}
+            ${field('address', '详细地址', '', 'textarea')}
             ${mediaField('coverUrl', '门店封面', '', 'merchant')}
+            <p class="muted">门店将进入「商家入驻审核」，通过后才出现在门店列表。</p>
           </div>
-          <div id="createPlatformFields" style="display:none">
+          <div id="createPlatformFields">
             ${field('nickname', '姓名/昵称', '')}
             ${field('phone', '手机号', '')}
             ${field('password', '后台初始密码', '123456', 'password')}
@@ -870,22 +917,21 @@ async function renderIdentities(role) {
         async () => {
           const chosen = formVal('role') || r
           if (['stall', 'cross', 'supply'].includes(chosen)) {
-            await api('/admin/ops/stores', {
+            const res = await api('/admin/applies', {
               method: 'POST',
               body: JSON.stringify({
                 role: chosen,
-                name: formVal('name'),
+                shopName: formVal('shopName'),
                 legalPerson: formVal('legalPerson'),
                 contactName: formVal('contactName'),
                 contactPhone: formVal('contactPhone'),
                 creditCode: formVal('creditCode'),
                 city: formVal('city'),
                 address: formVal('address'),
-                bizType: formVal('bizType'),
-                bizOwnerAdminId: formVal('bizOwnerAdminId') || null,
                 coverUrl: formVal('coverUrl')
               })
             })
+            alert(`已提交入驻单 ${res.applyNo || ''}，请到「商家入驻审核」处理`)
           } else {
             await api('/admin/ops/identities', {
               method: 'POST',
@@ -912,43 +958,7 @@ async function renderIdentities(role) {
       const roleEl = $('modalBody') && $('modalBody').querySelector('[name="role"]')
       if (roleEl && roleEl.tagName === 'SELECT') roleEl.onchange = syncType
       syncType()
-      return
     }
-
-    openModal(
-      `新增${{ stall: '地摊', cross: '异业', supply: '供应链' }[r] || ''}门店`,
-      `<input type="hidden" name="role" value="${esc(r)}" />` +
-        field('name', '店铺名称', '') +
-        field('legalPerson', '法人/负责人', '') +
-        field('contactName', '联系人', '') +
-        field('contactPhone', '联系电话', '') +
-        field('creditCode', '统一社会信用代码（地摊可空）', '') +
-        field('city', '城市', '') +
-        field('address', '地址', '', 'textarea') +
-        field('bizType', '经营类目(餐饮/鲜花/蛋糕/百货商店)', '') +
-        selectField('bizOwnerAdminId', '商务负责人', adminOpts, '') +
-        mediaField('coverUrl', '门店封面', '', 'merchant'),
-      async () => {
-        await api('/admin/ops/stores', {
-          method: 'POST',
-          body: JSON.stringify({
-            role: r,
-            name: formVal('name'),
-            legalPerson: formVal('legalPerson'),
-            contactName: formVal('contactName'),
-            contactPhone: formVal('contactPhone'),
-            creditCode: formVal('creditCode'),
-            city: formVal('city'),
-            address: formVal('address'),
-            bizType: formVal('bizType'),
-            bizOwnerAdminId: formVal('bizOwnerAdminId') || null,
-            coverUrl: formVal('coverUrl')
-          })
-        })
-        await load()
-      },
-      true
-    )
   }
 
   const load = async () => {
@@ -1306,8 +1316,11 @@ async function showStoreDetail(id, listReload) {
             field('legalPerson', '法人', d.legalPerson || '') +
             field('contactName', '联系人', d.contactName || '') +
             field('contactPhone', '联系电话', d.contactPhone || '') +
+            field('creditCode', '统一社会信用代码', d.creditCode || '') +
             field('city', '城市', d.city || '') +
             field('address', '地址', d.address || '', 'textarea') +
+            field('latitude', '纬度', d.latitude != null ? d.latitude : '', 'number') +
+            field('longitude', '经度', d.longitude != null ? d.longitude : '', 'number') +
             field('bizType', '经营类目(餐饮/鲜花/蛋糕/百货商店)', d.bizType || '') +
             selectField('bizOwnerAdminId', '商务负责人', adminOpts, d.bizOwnerAdminId || '') +
             mediaField('coverUrl', '门店封面', d.coverUrl || '', 'merchant'),
@@ -1319,8 +1332,11 @@ async function showStoreDetail(id, listReload) {
                 legalPerson: formVal('legalPerson'),
                 contactName: formVal('contactName'),
                 contactPhone: formVal('contactPhone'),
+                creditCode: formVal('creditCode'),
                 city: formVal('city'),
                 address: formVal('address'),
+                latitude: formVal('latitude') === '' ? null : Number(formVal('latitude')),
+                longitude: formVal('longitude') === '' ? null : Number(formVal('longitude')),
                 bizType: formVal('bizType'),
                 bizOwnerAdminId: formVal('bizOwnerAdminId') || null,
                 coverUrl: formVal('coverUrl')
@@ -1628,7 +1644,9 @@ async function renderApplies() {
         <option value="rejected">已驳回</option>
       </select>
       <button class="btn" id="btnReload">刷新</button>
+      ${editable ? '<button class="btn primary" id="btnProxyApply">代客入驻</button>' : ''}
     </div>
+    <p class="muted">门店唯一入口：小程序入驻或本页「代客入驻」→ 审核通过后进入地摊/异业/供应链列表，再维护 SKU 与收款。</p>
     <div id="list"></div>`
   const load = async () => {
     const status = $('fStatus').value
@@ -1752,6 +1770,51 @@ async function renderApplies() {
   $('fStatus').onchange = () => {
     pageState.page = 1
     load()
+  }
+  if ($('btnProxyApply')) {
+    $('btnProxyApply').onclick = () => {
+      openModal(
+        '代客入驻',
+        selectField(
+          'role',
+          '入驻类型',
+          [
+            { value: 'stall', label: '地摊' },
+            { value: 'cross', label: '异业门店' },
+            { value: 'supply', label: '供应链' }
+          ],
+          'stall'
+        ) +
+          field('shopName', '店铺名称', '') +
+          field('legalPerson', '法人/经营者', '') +
+          field('contactName', '联系人', '') +
+          field('contactPhone', '联系电话', '') +
+          field('creditCode', '统一社会信用代码（地摊可空）', '') +
+          field('city', '城市', '') +
+          field('address', '详细地址', '', 'textarea') +
+          mediaField('coverUrl', '门店封面', '', 'merchant'),
+        async () => {
+          const res = await api('/admin/applies', {
+            method: 'POST',
+            body: JSON.stringify({
+              role: formVal('role'),
+              shopName: formVal('shopName'),
+              legalPerson: formVal('legalPerson'),
+              contactName: formVal('contactName'),
+              contactPhone: formVal('contactPhone'),
+              creditCode: formVal('creditCode'),
+              city: formVal('city'),
+              address: formVal('address'),
+              coverUrl: formVal('coverUrl')
+            })
+          })
+          alert(`已提交 ${res.applyNo || ''}，请在本列表审核通过`)
+          await load()
+          refreshNavBadges()
+        },
+        true
+      )
+    }
   }
   await load()
   refreshNavBadges()
@@ -2199,15 +2262,31 @@ async function renderGoods() {
         <option value="cross">异业兑换</option>
         <option value="supply">供应链货品</option>
       </select>
+      <input id="gMerchantId" placeholder="门店ID（必填筛选更清晰）" style="width:140px" />
+      <input id="gShop" placeholder="店名关键词" style="min-width:120px" />
       <button class="btn" id="btnReload">刷新</button>
       ${editable ? '<button class="btn primary" id="btnAdd">新建</button>' : ''}
     </div>
+    <p class="muted">商品必须挂在已入驻审核通过的门店下；建议按门店ID筛选维护。</p>
     <div id="list"></div>`
   const load = async () => {
     const type = $('gType').value
-    const data = unwrapList(
-      await api(`/admin/goods/${type}?page=${pageState.page}&pageSize=${pageState.pageSize}`)
-    )
+    const mid = ($('gMerchantId').value || '').trim()
+    const shop = ($('gShop').value || '').trim()
+    const qs = new URLSearchParams({
+      page: String(pageState.page),
+      pageSize: String(pageState.pageSize)
+    })
+    if (mid) qs.set('merchantId', mid)
+    const data = unwrapList(await api(`/admin/goods/${type}?${qs}`))
+    // 店名关键词前端再滤一层（接口仅有 merchantId）
+    if (shop) {
+      data.list = (data.list || []).filter((g) =>
+        String(g.shopName || g.vendor || '')
+          .toLowerCase()
+          .includes(shop.toLowerCase())
+      )
+    }
     pageState.page = data.page
     const rows = data.list
     const delBtn = (g) =>

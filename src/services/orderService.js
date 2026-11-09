@@ -396,16 +396,7 @@ async function finalizePaidConsumerOrder(conn, orderRow, { transactionId } = {})
         ? 'preparing'
         : 'preparing'
 
-  const pointsSpend = Number(o.points_spend) || 0
-  if (pointsSpend > 0) {
-    await pointsService.spendConsumerPoints(conn, {
-      userId: uid,
-      points: pointsSpend,
-      title: '点餐积分抵现',
-      bizId: o.order_no
-    })
-  }
-
+  // 先落支付成功，再处理积分；积分失败不得回滚已确认的微信入账
   try {
     await conn.execute(
       `UPDATE consumer_orders
@@ -441,18 +432,39 @@ async function finalizePaidConsumerOrder(conn, orderRow, { transactionId } = {})
     }
   }
 
+  const pointsSpend = Number(o.points_spend) || 0
+  if (pointsSpend > 0) {
+    try {
+      await pointsService.spendConsumerPoints(conn, {
+        userId: uid,
+        points: pointsSpend,
+        title: '点餐积分抵现',
+        bizId: o.order_no
+      })
+    } catch (e) {
+      console.warn('[order] finalize points spend', o.order_no, e.message)
+    }
+  }
+
   let allocated = Number(o.points_allocated) || 0
   let shortage = 0
   if (allocated === 0 && pointsWant > 0) {
-    const alloc = await pointsService.allocateToConsumer(conn, {
-      merchantId: mid,
-      userId: uid,
-      wantPoints: pointsWant,
-      shopName,
-      orderNo: o.order_no
-    })
-    allocated = alloc.allocated
-    shortage = alloc.shortage
+    try {
+      const alloc = await pointsService.allocateToConsumer(conn, {
+        merchantId: mid,
+        userId: uid,
+        wantPoints: pointsWant,
+        shopName,
+        orderNo: o.order_no,
+        allowDegrade: true
+      })
+      allocated = alloc.allocated
+      shortage = alloc.shortage
+    } catch (e) {
+      console.warn('[order] finalize points allocate', o.order_no, e.message)
+      allocated = 0
+      shortage = pointsWant
+    }
     try {
       await conn.execute(
         'UPDATE consumer_orders SET points_allocated=?, points_allocated_at=NOW() WHERE id=?',
@@ -522,6 +534,34 @@ async function createScanPayOrder({ userId, merchantId, amount }) {
 
   await feeService.assertCanTransact(mid, { action: '接单' })
 
+  async function ensureScanGoodsId(conn) {
+    try {
+      const [grows] = await conn.execute(
+        `SELECT id FROM stall_goods WHERE merchant_id=? AND deleted_at IS NULL ORDER BY id ASC LIMIT 1`,
+        [mid]
+      )
+      if (grows.length) return Number(grows[0].id)
+    } catch (_) {
+      const [grows] = await conn.execute(
+        `SELECT id FROM stall_goods WHERE merchant_id=? ORDER BY id ASC LIMIT 1`,
+        [mid]
+      )
+      if (grows.length) return Number(grows[0].id)
+    }
+    try {
+      const [ins] = await conn.execute(
+        `INSERT INTO stall_goods
+          (merchant_id, name, sku_code, price, points_grant, category, unit, desc_text, stock, on_sale)
+         VALUES (?, '到店消费', ?, 0.01, 0, '收款', '次', '收款码占位', 9999, 1)`,
+        [mid, `SCAN${mid}`]
+      )
+      return Number(ins.insertId) || 0
+    } catch (e) {
+      console.warn('[scan-pay] placeholder goods', e.message)
+      return 0
+    }
+  }
+
   const realPay = wxService.wxPayConfigured()
   const rate = await getCashRate()
   const pointsWant = cashToPoints(cash, rate)
@@ -553,20 +593,16 @@ async function createScanPayOrder({ userId, merchantId, amount }) {
         }
       }
       const orderId = ins.insertId
+      const gid = await ensureScanGoodsId(conn)
       try {
         await conn.execute(
           `INSERT INTO consumer_order_items
             (order_id, goods_id, goods_name, price, points_grant, qty)
-           VALUES (?, 0, '到店消费', ?, ?, 1)`,
-          [orderId, cash, pointsWant]
+           VALUES (?, ?, '到店消费', ?, ?, 1)`,
+          [orderId, gid || 0, cash, pointsWant]
         )
       } catch (e) {
         if (!(e && (e.code === 'ER_NO_REFERENCED_ROW_2' || e.code === 'ER_NO_REFERENCED_ROW'))) throw e
-        const [grows] = await conn.execute(
-          `SELECT id FROM stall_goods WHERE merchant_id=? AND deleted_at IS NULL LIMIT 1`,
-          [mid]
-        )
-        const gid = grows.length ? grows[0].id : 0
         if (!gid) throw new HttpError(400, '该摊位暂未上架商品，无法完成收款')
         await conn.execute(
           `INSERT INTO consumer_order_items
@@ -621,20 +657,16 @@ async function createScanPayOrder({ userId, merchantId, amount }) {
       }
     }
     const orderId = ins.insertId
+    const gid = await ensureScanGoodsId(conn)
     try {
       await conn.execute(
         `INSERT INTO consumer_order_items
           (order_id, goods_id, goods_name, price, points_grant, qty)
-         VALUES (?, 0, '到店消费', ?, ?, 1)`,
-        [orderId, cash, pointsWant]
+         VALUES (?, ?, '到店消费', ?, ?, 1)`,
+        [orderId, gid || 0, cash, pointsWant]
       )
     } catch (e) {
       if (!(e && (e.code === 'ER_NO_REFERENCED_ROW_2' || e.code === 'ER_NO_REFERENCED_ROW'))) throw e
-      const [grows] = await conn.execute(
-        `SELECT id FROM stall_goods WHERE merchant_id=? AND deleted_at IS NULL LIMIT 1`,
-        [mid]
-      )
-      const gid = grows.length ? grows[0].id : 0
       if (!gid) throw new HttpError(400, '该摊位暂未上架商品，无法完成收款')
       await conn.execute(
         `INSERT INTO consumer_order_items
