@@ -159,18 +159,24 @@ async function getMerchantDetail(id) {
 }
 
 /* ---------- users ---------- */
-async function listUsers({ q, limit = 100 } = {}) {
-  const lim = Math.min(Number(limit) || 100, 300)
-  let sql = `SELECT id, nickname, invite_code, phone, points_balance, status, avatar_url, created_at
-             FROM users WHERE deleted_at IS NULL`
+async function listUsers({ q, page, pageSize, limit } = {}) {
+  const { parsePaging, pageResult } = require('../utils/paging')
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = 'WHERE deleted_at IS NULL'
   const params = {}
   if (q) {
-    sql += ` AND (nickname LIKE :q OR invite_code LIKE :q OR phone LIKE :q)`
+    where += ` AND (nickname LIKE :q OR invite_code LIKE :q OR phone LIKE :q)`
     params.q = `%${q}%`
   }
-  sql += ` ORDER BY id DESC LIMIT ${lim}`
-  const rows = await query(sql, params)
-  return rows.map((u) => ({
+  const countRows = await query(`SELECT COUNT(*) AS c FROM users ${where}`, params)
+  const total = Number(countRows[0]?.c) || 0
+  const rows = await query(
+    `SELECT id, nickname, invite_code, phone, points_balance, status, avatar_url, created_at
+     FROM users ${where}
+     ORDER BY id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+    params
+  )
+  const list = rows.map((u) => ({
     id: u.id,
     nickname: u.nickname,
     inviteCode: u.invite_code,
@@ -180,6 +186,7 @@ async function listUsers({ q, limit = 100 } = {}) {
     avatarUrl: u.avatar_url,
     createdAt: u.created_at
   }))
+  return pageResult(list, total, paging)
 }
 
 async function updateUser(id, body) {
@@ -1099,64 +1106,95 @@ async function getOrderDetail(type, id) {
   throw new HttpError(400, '订单类型无效')
 }
 
-async function listCommissions({ limit = 100 } = {}) {
-  const lim = Math.min(Number(limit) || 100, 300)
-  return query(
+async function listCommissions({ page, pageSize, limit } = {}) {
+  const { parsePaging, pageResult } = require('../utils/paging')
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  const countRows = await query(`SELECT COUNT(*) AS c FROM commission_ledger`)
+  const total = Number(countRows[0]?.c) || 0
+  const list = await query(
     `SELECT c.id, c.biz_type AS bizType, c.biz_id AS bizId, c.amount_gross AS amountGross,
             c.rate, c.commission, c.rule_version AS ruleVersion, c.created_at AS createdAt,
             m.name AS payerName
      FROM commission_ledger c
      LEFT JOIN merchants m ON m.id=c.payer_merchant_id
-     ORDER BY c.id DESC LIMIT ${lim}`
+     ORDER BY c.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`
   )
+  return pageResult(list, total, paging)
 }
 
-async function listAccountLedgers({ limit = 100, merchantId } = {}) {
-  const lim = Math.min(Number(limit) || 100, 300)
-  let sql = `SELECT l.id, l.account_type AS accountType, l.change_amount AS changeAmount,
-                    l.balance_after AS balanceAfter, l.biz_type AS bizType, l.biz_id AS bizId,
-                    l.title, l.created_at AS createdAt, m.name AS shopName, m.role
-             FROM merchant_account_ledger l
-             JOIN merchants m ON m.id=l.merchant_id WHERE 1=1`
+async function listAccountLedgers({ page, pageSize, limit, merchantId } = {}) {
+  const { parsePaging, pageResult } = require('../utils/paging')
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = 'WHERE 1=1'
   const params = {}
   if (merchantId) {
-    sql += ` AND l.merchant_id=:mid`
+    where += ` AND l.merchant_id=:mid`
     params.mid = Number(merchantId)
   }
-  sql += ` ORDER BY l.id DESC LIMIT ${lim}`
-  return query(sql, params)
+  const countRows = await query(
+    `SELECT COUNT(*) AS c FROM merchant_account_ledger l ${where}`,
+    params
+  )
+  const total = Number(countRows[0]?.c) || 0
+  const list = await query(
+    `SELECT l.id, l.account_type AS accountType, l.change_amount AS changeAmount,
+            l.balance_after AS balanceAfter, l.biz_type AS bizType, l.biz_id AS bizId,
+            l.title, l.created_at AS createdAt, m.name AS shopName, m.role
+     FROM merchant_account_ledger l
+     JOIN merchants m ON m.id=l.merchant_id ${where}
+     ORDER BY l.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+    params
+  )
+  return pageResult(list, total, paging)
 }
 
-async function listUserPointsLedger({ limit = 100, userId } = {}) {
-  const lim = Math.min(Number(limit) || 100, 300)
-  let sql = `SELECT l.id, l.change_amount AS changeAmount, l.balance_after AS balanceAfter,
-                    l.biz_type AS bizType, l.title, l.created_at AS createdAt,
-                    u.nickname AS userName, u.invite_code AS inviteCode, u.avatar_url AS avatarUrl
-             FROM user_points_ledger l
-             JOIN users u ON u.id=l.user_id WHERE 1=1`
+async function listUserPointsLedger({ page, pageSize, limit, userId } = {}) {
+  const { parsePaging, pageResult } = require('../utils/paging')
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = 'WHERE 1=1'
   const params = {}
   if (userId) {
-    sql += ` AND l.user_id=:uid`
+    where += ` AND l.user_id=:uid`
     params.uid = Number(userId)
   }
-  sql += ` ORDER BY l.id DESC LIMIT ${lim}`
-  return query(sql, params)
+  const countRows = await query(`SELECT COUNT(*) AS c FROM user_points_ledger l ${where}`, params)
+  const total = Number(countRows[0]?.c) || 0
+  const list = await query(
+    `SELECT l.id, l.change_amount AS changeAmount, l.balance_after AS balanceAfter,
+            l.biz_type AS bizType, l.title, l.created_at AS createdAt,
+            u.nickname AS userName, u.invite_code AS inviteCode, u.avatar_url AS avatarUrl
+     FROM user_points_ledger l
+     JOIN users u ON u.id=l.user_id ${where}
+     ORDER BY l.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+    params
+  )
+  return pageResult(list, total, paging)
 }
 
-async function listPoolLedger({ limit = 100, merchantId } = {}) {
-  const lim = Math.min(Number(limit) || 100, 300)
-  let sql = `SELECT l.id, l.change_amount AS changeAmount, l.balance_after AS balanceAfter,
-                    l.biz_type AS bizType, l.title, l.created_at AS createdAt,
-                    m.name AS shopName, m.role, m.cover_url AS coverUrl
-             FROM merchant_pool_ledger l
-             JOIN merchants m ON m.id=l.merchant_id WHERE 1=1`
+async function listPoolLedger({ page, pageSize, limit, merchantId } = {}) {
+  const { parsePaging, pageResult } = require('../utils/paging')
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = 'WHERE 1=1'
   const params = {}
   if (merchantId) {
-    sql += ` AND l.merchant_id=:mid`
+    where += ` AND l.merchant_id=:mid`
     params.mid = Number(merchantId)
   }
-  sql += ` ORDER BY l.id DESC LIMIT ${lim}`
-  return query(sql, params)
+  const countRows = await query(
+    `SELECT COUNT(*) AS c FROM merchant_pool_ledger l ${where}`,
+    params
+  )
+  const total = Number(countRows[0]?.c) || 0
+  const list = await query(
+    `SELECT l.id, l.change_amount AS changeAmount, l.balance_after AS balanceAfter,
+            l.biz_type AS bizType, l.title, l.created_at AS createdAt,
+            m.name AS shopName, m.role, m.cover_url AS coverUrl
+     FROM merchant_pool_ledger l
+     JOIN merchants m ON m.id=l.merchant_id ${where}
+     ORDER BY l.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+    params
+  )
+  return pageResult(list, total, paging)
 }
 
 module.exports = {

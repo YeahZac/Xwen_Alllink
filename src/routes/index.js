@@ -436,7 +436,16 @@ router.get(
   requireAnyPage(STORE_PAGES, { edit: false }),
   async (req, res, next) => {
     try {
-      res.json(ok(await applyService.listMerchants({ role: req.query.role, limit: req.query.limit })))
+      res.json(
+        ok(
+          await applyService.listMerchants({
+            role: req.query.role,
+            page: req.query.page,
+            pageSize: req.query.pageSize,
+            limit: req.query.limit
+          })
+        )
+      )
     } catch (e) {
       next(e)
     }
@@ -483,7 +492,16 @@ router.get(
   requireAnyPage(['users_consumer', 'users_all'], { edit: false }),
   async (req, res, next) => {
     try {
-      res.json(ok(await adminService.listUsers({ q: req.query.q, limit: req.query.limit })))
+      res.json(
+        ok(
+          await adminService.listUsers({
+            q: req.query.q,
+            page: req.query.page,
+            pageSize: req.query.pageSize,
+            limit: req.query.limit
+          })
+        )
+      )
     } catch (e) {
       next(e)
     }
@@ -668,7 +686,15 @@ router.get('/admin/orders/:type/:id', ...adminOnly, requirePage('orders'), async
 
 router.get('/admin/settlements/commissions', ...adminOnly, requirePage('settlements'), async (req, res, next) => {
   try {
-    res.json(ok(await adminService.listCommissions({ limit: req.query.limit })))
+    res.json(
+      ok(
+        await adminService.listCommissions({
+          page: req.query.page,
+          pageSize: req.query.pageSize,
+          limit: req.query.limit
+        })
+      )
+    )
   } catch (e) {
     next(e)
   }
@@ -677,7 +703,14 @@ router.get('/admin/settlements/commissions', ...adminOnly, requirePage('settleme
 router.get('/admin/settlements/accounts', ...adminOnly, requirePage('settlements'), async (req, res, next) => {
   try {
     res.json(
-      ok(await adminService.listAccountLedgers({ limit: req.query.limit, merchantId: req.query.merchantId }))
+      ok(
+        await adminService.listAccountLedgers({
+          page: req.query.page,
+          pageSize: req.query.pageSize,
+          limit: req.query.limit,
+          merchantId: req.query.merchantId
+        })
+      )
     )
   } catch (e) {
     next(e)
@@ -687,7 +720,14 @@ router.get('/admin/settlements/accounts', ...adminOnly, requirePage('settlements
 router.get('/admin/points/user-ledger', ...adminOnly, requirePage('points'), async (req, res, next) => {
   try {
     res.json(
-      ok(await adminService.listUserPointsLedger({ limit: req.query.limit, userId: req.query.userId }))
+      ok(
+        await adminService.listUserPointsLedger({
+          page: req.query.page,
+          pageSize: req.query.pageSize,
+          limit: req.query.limit,
+          userId: req.query.userId
+        })
+      )
     )
   } catch (e) {
     next(e)
@@ -697,7 +737,14 @@ router.get('/admin/points/user-ledger', ...adminOnly, requirePage('points'), asy
 router.get('/admin/points/pool-ledger', ...adminOnly, requirePage('points'), async (req, res, next) => {
   try {
     res.json(
-      ok(await adminService.listPoolLedger({ limit: req.query.limit, merchantId: req.query.merchantId }))
+      ok(
+        await adminService.listPoolLedger({
+          page: req.query.page,
+          pageSize: req.query.pageSize,
+          limit: req.query.limit,
+          merchantId: req.query.merchantId
+        })
+      )
     )
   } catch (e) {
     next(e)
@@ -1801,6 +1848,8 @@ router.get(
             q: req.query.q,
             state: req.query.state,
             role: req.query.role,
+            page: req.query.page,
+            pageSize: req.query.pageSize,
             limit: req.query.limit
           })
         )

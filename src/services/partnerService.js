@@ -153,31 +153,44 @@ async function submitWithdraw(auth, body) {
   return { status: 'pending', amountPoints, amountCash, remark: '已提交，等待创始人/运营审核' }
 }
 
-async function listPartnerApplies({ status } = {}) {
-  let sql = `SELECT id, apply_no AS applyNo, user_id AS userId, contact_name AS contactName,
-                    contact_phone AS contactPhone, city, referrer_code AS referrerCode,
-                    remark, status, reject_reason AS rejectReason, created_at AS createdAt
-             FROM partner_applications`
+async function listPartnerApplies({ status, page, pageSize, limit } = {}) {
+  const { parsePaging, pageResult } = require('../utils/paging')
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = 'WHERE 1=1'
   const params = {}
   if (status && ['pending', 'approved', 'rejected'].includes(status)) {
-    sql += ` WHERE status = :status`
+    where += ` AND status = :status`
     params.status = status
   }
-  sql += ` ORDER BY id DESC LIMIT 100`
   try {
-    const rows = await query(sql, params)
+    const countRows = await query(
+      `SELECT COUNT(*) AS c FROM partner_applications ${where}`,
+      params
+    )
+    const total = Number(countRows[0]?.c) || 0
+    const rows = await query(
+      `SELECT id, apply_no AS applyNo, user_id AS userId, contact_name AS contactName,
+              contact_phone AS contactPhone, city, referrer_code AS referrerCode,
+              remark, status, reject_reason AS rejectReason, created_at AS createdAt
+       FROM partner_applications ${where}
+       ORDER BY id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
     const applyReviewLogService = require('./applyReviewLogService')
     const logMap = await applyReviewLogService.listLogsBatch(
       'partner',
       rows.map((r) => r.id)
     )
-    return rows.map((r) => ({
+    const list = rows.map((r) => ({
       ...r,
       reviewLogs: logMap[String(r.id)] || [],
       lastReviewReason: (logMap[String(r.id)] || [])[0]?.reason || r.rejectReason || ''
     }))
+    return pageResult(list, total, paging)
   } catch (e) {
-    if (/partner_applications|doesn't exist/i.test(String(e.message || ''))) return []
+    if (/partner_applications|doesn't exist/i.test(String(e.message || ''))) {
+      return pageResult([], 0, paging)
+    }
     throw e
   }
 }
@@ -272,21 +285,32 @@ async function rejectPartnerApply(id, { reason, reviewerId, reviewerName } = {})
   return { ok: true, fromStatus }
 }
 
-async function listPartnerWithdraws({ status } = {}) {
-  let sql = `SELECT id, user_id AS userId, amount_points AS amountPoints, amount_cash AS amountCash,
-                    bank_name AS bankName, bank_account AS bankAccount, account_name AS accountName,
-                    status, reject_reason AS rejectReason, created_at AS createdAt
-             FROM partner_withdraw_requests`
+async function listPartnerWithdraws({ status, page, pageSize, limit } = {}) {
+  const { parsePaging, pageResult } = require('../utils/paging')
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = 'WHERE 1=1'
   const params = {}
   if (status) {
-    sql += ` WHERE status=:status`
+    where += ` AND status=:status`
     params.status = status
   }
-  sql += ` ORDER BY id DESC LIMIT 100`
   try {
-    return await query(sql, params)
+    const countRows = await query(
+      `SELECT COUNT(*) AS c FROM partner_withdraw_requests ${where}`,
+      params
+    )
+    const total = Number(countRows[0]?.c) || 0
+    const list = await query(
+      `SELECT id, user_id AS userId, amount_points AS amountPoints, amount_cash AS amountCash,
+              bank_name AS bankName, bank_account AS bankAccount, account_name AS accountName,
+              status, reject_reason AS rejectReason, created_at AS createdAt
+       FROM partner_withdraw_requests ${where}
+       ORDER BY id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
+    return pageResult(list, total, paging)
   } catch (_) {
-    return []
+    return pageResult([], 0, paging)
   }
 }
 
@@ -557,35 +581,46 @@ async function submitPlatformRoleApply(body, auth) {
   }
 }
 
-async function listPlatformRoleApplies({ status, role } = {}) {
-  let sql = `SELECT id, apply_no AS applyNo, user_id AS userId, apply_role AS applyRole,
-                    contact_name AS contactName, contact_phone AS contactPhone, city, remark,
-                    status, reject_reason AS rejectReason, created_at AS createdAt
-             FROM platform_role_applications WHERE 1=1`
+async function listPlatformRoleApplies({ status, role, page, pageSize, limit } = {}) {
+  const { parsePaging, pageResult } = require('../utils/paging')
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = 'WHERE 1=1'
   const params = {}
   if (status) {
-    sql += ` AND status=:st`
+    where += ` AND status=:st`
     params.st = status
   }
   if (role && ['founder', 'lead'].includes(role)) {
-    sql += ` AND apply_role=:role`
+    where += ` AND apply_role=:role`
     params.role = role
   }
-  sql += ` ORDER BY id DESC LIMIT 100`
   try {
-    const rows = await query(sql, params)
+    const countRows = await query(
+      `SELECT COUNT(*) AS c FROM platform_role_applications ${where}`,
+      params
+    )
+    const total = Number(countRows[0]?.c) || 0
+    const rows = await query(
+      `SELECT id, apply_no AS applyNo, user_id AS userId, apply_role AS applyRole,
+              contact_name AS contactName, contact_phone AS contactPhone, city, remark,
+              status, reject_reason AS rejectReason, created_at AS createdAt
+       FROM platform_role_applications ${where}
+       ORDER BY id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
     const applyReviewLogService = require('./applyReviewLogService')
     const logMap = await applyReviewLogService.listLogsBatch(
       'platform_role',
       rows.map((r) => r.id)
     )
-    return rows.map((r) => ({
+    const list = rows.map((r) => ({
       ...r,
       reviewLogs: logMap[String(r.id)] || [],
       lastReviewReason: (logMap[String(r.id)] || [])[0]?.reason || r.rejectReason || ''
     }))
+    return pageResult(list, total, paging)
   } catch (_) {
-    return []
+    return pageResult([], 0, paging)
   }
 }
 

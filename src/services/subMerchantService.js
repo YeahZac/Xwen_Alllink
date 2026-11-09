@@ -157,24 +157,31 @@ function settlementOf(m) {
   return parseMaybeJson(m.wx_settlement_json) || {}
 }
 
-async function listSubMerchants({ q, state, role, limit = 100 } = {}) {
-  const lim = Math.min(Math.max(Number(limit) || 100, 1), 500)
+async function listSubMerchants({ q, state, role, page, pageSize, limit } = {}) {
+  const { parsePaging, pageResult } = require('../utils/paging')
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
   const where = ['m.deleted_at IS NULL']
-  const params = { lim }
+  const params = {}
   if (role) {
     where.push('m.role = :role')
     params.role = role
   }
   if (state) {
-    where.push('IFNULL(m.wx_apply_state, \'\') = :state')
+    where.push("IFNULL(m.wx_apply_state, '') = :state")
     params.state = state
   }
   if (q) {
-    where.push('(m.name LIKE :q OR m.merchant_no LIKE :q OR m.contact_phone LIKE :q OR m.wx_sub_mch_id LIKE :q)')
+    where.push(
+      '(m.name LIKE :q OR m.merchant_no LIKE :q OR m.contact_phone LIKE :q OR m.wx_sub_mch_id LIKE :q)'
+    )
     params.q = `%${String(q).trim()}%`
   }
+  const whereSql = where.join(' AND ')
   let rows
+  let total = 0
   try {
+    const countRows = await query(`SELECT COUNT(*) AS c FROM merchants m WHERE ${whereSql}`, params)
+    total = Number(countRows[0]?.c) || 0
     rows = await query(
       `SELECT m.id, m.merchant_no AS merchantNo, m.role, m.name, m.city, m.contact_phone AS contactPhone,
               m.status, m.wx_sub_mch_id AS wxSubMchId, m.wx_applyment_id AS wxApplymentId,
@@ -182,11 +189,11 @@ async function listSubMerchants({ q, state, role, limit = 100 } = {}) {
               m.wx_apply_state_desc AS wxApplyStateDesc, m.wx_sign_url AS wxSignUrl,
               m.profit_share_rate AS profitShareRate, m.wx_apply_synced_at AS wxApplySyncedAt
        FROM merchants m
-       WHERE ${where.join(' AND ')}
+       WHERE ${whereSql}
        ORDER BY
          CASE WHEN m.wx_sub_mch_id IS NULL OR m.wx_sub_mch_id='' THEN 0 ELSE 1 END,
          m.id DESC
-       LIMIT ${lim}`,
+       LIMIT ${paging.limit} OFFSET ${paging.offset}`,
       params
     )
   } catch (e) {
@@ -195,13 +202,14 @@ async function listSubMerchants({ q, state, role, limit = 100 } = {}) {
     }
     throw e
   }
-  return rows.map((r) => ({
+  const list = rows.map((r) => ({
     ...r,
     profitShareRate: Number(r.profitShareRate) || 0,
     profitSharePercent: Math.round((Number(r.profitShareRate) || 0) * 10000) / 100,
     stateLabel: STATE_LABEL[r.wxApplyState] || r.wxApplyState || '未进件',
     ready: Boolean(r.wxSubMchId)
   }))
+  return pageResult(list, total, paging)
 }
 
 async function getSubMerchantDetail(id) {

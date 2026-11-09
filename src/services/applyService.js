@@ -764,24 +764,31 @@ async function rejectApply(applyId, { reason, reviewerId, reviewerName } = {}) {
   return { id: applyId, status: 'rejected', fromStatus }
 }
 
-async function listMerchants({ role, limit = 200 } = {}) {
-  const lim = Math.min(Number(limit) || 200, 500)
-  let sql = `SELECT m.id, m.merchant_no, m.role, m.name, m.city, m.invite_code, m.status,
-                    m.contact_phone, m.cover_url, m.materials_json,
-                    IFNULL(p.balance, 0) AS pool_balance
-             FROM merchants m
-             LEFT JOIN merchant_points_pool p ON p.merchant_id = m.id
-             WHERE m.deleted_at IS NULL`
+async function listMerchants({ role, page, pageSize, limit } = {}) {
+  const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
+  let where = 'WHERE m.deleted_at IS NULL'
   const params = {}
   if (role && ['stall', 'cross', 'supply'].includes(role)) {
-    sql += ` AND m.role = :role`
+    where += ` AND m.role = :role`
     params.role = role
   }
-  // 新审核通过的门店优先展示，避免 ASC+limit 把新店挤出列表
-  sql += ` ORDER BY m.id DESC LIMIT ${lim}`
-  const rows = await query(sql, params)
+  const countRows = await query(
+    `SELECT COUNT(*) AS c FROM merchants m ${where}`,
+    params
+  )
+  const total = Number(countRows[0]?.c) || 0
+  const rows = await query(
+    `SELECT m.id, m.merchant_no, m.role, m.name, m.city, m.invite_code, m.status,
+            m.contact_phone, m.cover_url, m.materials_json,
+            IFNULL(p.balance, 0) AS pool_balance
+     FROM merchants m
+     LEFT JOIN merchant_points_pool p ON p.merchant_id = m.id
+     ${where}
+     ORDER BY m.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+    params
+  )
   const roleMap = { stall: '地摊', cross: '异业', supply: '供应链' }
-  return rows.map((r) => {
+  const list = rows.map((r) => {
     const coverUrl = r.cover_url || pickCoverFromLicenses(r.materials_json) || ''
     return {
       id: r.id,
@@ -798,6 +805,7 @@ async function listMerchants({ role, limit = 200 } = {}) {
       coverImage: coverUrl
     }
   })
+  return pageResult(list, total, paging)
 }
 
 module.exports = {
