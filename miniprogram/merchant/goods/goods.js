@@ -30,7 +30,7 @@ Page({
             ...g,
             onSale: g.onSale ? 1 : 0,
             coverImage: g.imageUrl || '',
-            line: `¥${g.price} · 划拨 ${g.pointsGrant || 0} 积分 · ${
+            line: `SKU ${g.sku || '—'} · ¥${g.price} · 划拨 ${g.pointsGrant || 0} 积分 · ${
               optN > 0 ? `规格${optN}组` : '未配规格'
             } · 销量 ${g.sales || 0}`,
             statusLabel: g.onSale ? '在售' : '下架'
@@ -42,7 +42,9 @@ Page({
           ...g,
           onSale: g.onSale ? 1 : 0,
           coverImage: g.imageUrl || '',
-          line: `${g.pointsNeed} 积分 或 ¥${g.cashPrice} · ${g.allowMix === 0 ? '不支持组合' : '可组合支付'} · 销量 ${g.sales || 0}`,
+          line: `SKU ${g.sku || '—'} · ${g.pointsNeed} 积分 或 ¥${g.cashPrice} · ${
+            g.allowMix === 0 ? '不支持组合' : '可组合支付'
+          } · 销量 ${g.sales || 0}`,
           statusLabel: g.onSale ? '在售' : '下架'
         }))
       } else {
@@ -51,7 +53,7 @@ Page({
           ...g,
           onSale: g.onSale ? 1 : 0,
           coverImage: g.imageUrl || '',
-          line: `¥${g.price} · 买方获额 +${g.pointsGrant} · 库存 ${g.stock}`,
+          line: `SKU ${g.sku || '—'} · ¥${g.price} · 买方获额 +${g.pointsGrant} · 库存 ${g.stock}`,
           statusLabel: g.onSale ? '在售' : '下架'
         }))
       }

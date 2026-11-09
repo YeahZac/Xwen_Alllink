@@ -1,7 +1,7 @@
 <view class="page">
   <view class="m-page-head">
     <text class="m-page-head__title">{{goodsId ? '编辑商品' : '添加商品'}}</text>
-    <text class="m-page-head__desc">完善资料后上架，消费者即可看到</text>
+    <text class="m-page-head__desc">{{readyHint || '完善资料后上架，消费者即可看到'}}</text>
   </view>
 
   <view class="form surface">

@@ -29,6 +29,9 @@
     <view wx:if="{{feeHint}}" class="status-strip">
       <text>{{feeHint}}</text>
     </view>
+    <view wx:if="{{readyHint}}" class="status-strip status-strip--warn">
+      <text>{{readyHint}}</text>
+    </view>
     <view class="status-strip {{shopOpen ? '' : 'status-strip--warn'}}" bindtap="onToggleOpen">
       <text>{{shopOpen ? '营业中 · 点此歇业' : '歇业中 · 点此开业'}}</text>
     </view>

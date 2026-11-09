@@ -26,24 +26,40 @@ function mapOrder(o, role) {
   let sub = o.userName || o.peerName || o.goodsName || ''
   if (o.fulfillType) sub = [sub, o.fulfillType === 'offline' ? '线下' : '线上'].filter(Boolean).join(' · ')
   if (o.pointsGrant) sub = [sub, `额度+${o.pointsGrant}`].filter(Boolean).join(' · ')
-  const status = o.status || o.payStatus || ''
+  if (Number(o.pointsAllocated) > 0) {
+    sub = [sub, `已划拨${o.pointsAllocated}积分`].filter(Boolean).join(' · ')
+  }
+  if (o.payMode === 'points') sub = [sub, '积分兑'].filter(Boolean).join(' · ')
+  if (o.payMode === 'cash') sub = [sub, '现金'].filter(Boolean).join(' · ')
+  if (o.payMode === 'mix') sub = [sub, '组合付'].filter(Boolean).join(' · ')
+  const status = o.status || ''
+  const payStatus = o.payStatus || ''
   const canShip = role === 'supply' && status === 'pending'
   // 线上采购：仅「已发货」可确认收货（与后端 confirmPurchaseOrder 对齐）
   const canConfirm =
     (role === 'stall' || role === 'cross') &&
     o.type === 'purchase_buy' &&
     status === 'shipped'
-  const payStatus = o.payStatus || ''
-  const paid = payStatus === 'paid' || status === 'paid' || status === 'preparing' || status === 'ready'
-  // 仅已支付且制作中的点餐单可「完成出餐」；未支付 pending 禁止露出按钮
+  const paid = payStatus === 'paid'
+  // 仅已支付点餐单可「完成出餐」；未支付/已取消/已完成不露出
   const canComplete =
     role === 'stall' &&
     o.type === 'stall' &&
     paid &&
-    (status === 'preparing' || status === 'ready')
+    status !== 'cancelled' &&
+    status !== 'completed' &&
+    (status === 'preparing' || status === 'ready' || status === 'pending')
   const canCancel =
     (o.type === 'purchase_buy' || o.type === 'purchase_sell') &&
     (status === 'pending' || status === 'shipped')
+  let statusText = STATUS_LABEL[status] || status || '处理中'
+  if (o.type === 'stall') {
+    if (payStatus === 'unpaid') {
+      statusText = status === 'cancelled' ? '未支付已取消' : '待支付'
+    } else if (paid) {
+      statusText = STATUS_LABEL[status] || (status === 'pending' ? '已支付' : status || '已支付')
+    }
+  }
   return {
     ...o,
     title: o.orderNo || o.goodsName || `#${o.id}`,
@@ -51,7 +67,7 @@ function mapOrder(o, role) {
     time,
     amount,
     status,
-    statusText: STATUS_LABEL[status] || status || '处理中',
+    statusText,
     canShip,
     canConfirm,
     canComplete,

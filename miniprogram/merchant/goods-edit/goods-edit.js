@@ -13,6 +13,8 @@ Page({
     role: '',
     goodsId: '',
     saving: false,
+    catalogReady: true,
+    readyHint: '',
     catOptions: [],
     unitOptions: UNITS,
     form: {
@@ -39,13 +41,23 @@ Page({
     const s = store.getSession()
     const role = s.role
     const cats = CATS[role] || CATS.stall
+    let catalogReady = true
+    let readyHint = ''
+    try {
+      const dash = await api.merchantDashboard()
+      catalogReady = dash.catalogReady === true
+      if (!catalogReady) {
+        readyHint = '进件未完成或支付未就绪：可先保存为下架草稿；上架会被拦截'
+      }
+    } catch (_) {}
     const form = {
       ...this.data.form,
       category: cats[0],
       unit: '份',
-      stock: role === 'supply' ? '0' : '9999'
+      stock: role === 'supply' ? '0' : '9999',
+      onSale: catalogReady ? 1 : 0
     }
-    this.setData({ role, catOptions: cats, form })
+    this.setData({ role, catOptions: cats, form, catalogReady, readyHint })
     wx.setNavigationBarTitle({ title: q.id ? '编辑商品' : '添加商品' })
     if (!q.id) return
     this.setData({ goodsId: String(q.id) })

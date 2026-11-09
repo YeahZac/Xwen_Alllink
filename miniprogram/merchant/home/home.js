@@ -80,7 +80,9 @@ Page({
     loading: true,
     loadError: '',
     shopOpen: true,
-    feeHint: ''
+    feeHint: '',
+    readyHint: '',
+    catalogReady: false
   },
   onLoad() {
     ensureCloud()
@@ -130,9 +132,24 @@ Page({
             }
 
     let feeHint = ''
-    if (fee.inTrial) feeHint = `体验期剩余 ${fee.trialDaysLeft || 0} 天`
+    if (fee.inTrial) feeHint = `试用期剩余 ${fee.trialDaysLeft || 0} 天`
     else if (fee.dueAmount > 0) feeHint = `待缴服务费 ¥${Number(fee.dueAmount).toFixed(0)}`
     else if (fee.serviceStatus === 'overdue') feeHint = '服务费已逾期，请联系平台'
+
+    const catalogReady = dash.catalogReady === true
+    let readyHint = ''
+    if (!catalogReady) {
+      const st = dash.wxApplyState || ''
+      if (!dash.wxSubMchId) {
+        readyHint = '尚未完成二级商户进件：商品可先存草稿，进件完成并支付就绪后才能上架进首页'
+      } else if (st && st !== 'FINISH') {
+        readyHint = `进件状态「${st}」：完成签约并同步为已完成后，才能上架商品`
+      } else if (dash.platformPayReady === false) {
+        readyHint = '平台支付配置未就绪，暂不能上架收款商品'
+      } else {
+        readyHint = '上架条件未满足：请先完成二级商户进件'
+      }
+    }
 
     const shopName = session.shopName || '未命名门店'
     const userName = session.name || session.contactName || '老板'
@@ -154,6 +171,8 @@ Page({
       kpi,
       shopOpen,
       feeHint,
+      readyHint,
+      catalogReady,
       menus: menusFor(role),
       loading: false
     })

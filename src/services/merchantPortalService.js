@@ -108,17 +108,45 @@ async function dashboard(merchantId, role) {
     goodsCount = Number(g.c)
   }
 
-  const merchant = await query(
-    `SELECT id, name, role, cover_url AS coverUrl, materials_json AS materialsJson,
-            city, invite_code AS inviteCode, status,
-            service_status AS serviceStatus, trial_end_at AS trialEndAt
-     FROM merchants WHERE id=:id`,
-    { id: mid }
-  )
-  if (merchant[0]) {
-    const { enrichCoverRow } = require('../utils/mediaPick')
-    enrichCoverRow(merchant[0], 'coverUrl', 'materialsJson')
+  let merchantRows
+  try {
+    merchantRows = await query(
+      `SELECT id, name, role, cover_url AS coverUrl, materials_json AS materialsJson,
+              city, invite_code AS inviteCode, status,
+              service_status AS serviceStatus, trial_end_at AS trialEndAt,
+              wx_sub_mch_id AS wxSubMchId, wx_apply_state AS wxApplyState
+       FROM merchants WHERE id=:id`,
+      { id: mid }
+    )
+  } catch (e) {
+    if (!/Unknown column.*wx_/i.test(String(e.message || ''))) throw e
+    merchantRows = await query(
+      `SELECT id, name, role, cover_url AS coverUrl, materials_json AS materialsJson,
+              city, invite_code AS inviteCode, status,
+              service_status AS serviceStatus, trial_end_at AS trialEndAt
+       FROM merchants WHERE id=:id`,
+      { id: mid }
+    )
   }
+  if (merchantRows[0]) {
+    const { enrichCoverRow } = require('../utils/mediaPick')
+    enrichCoverRow(merchantRows[0], 'coverUrl', 'materialsJson')
+  }
+  const merchant = merchantRows[0] || null
+  let ready = {
+    catalogReady: false,
+    homeEligible: false,
+    platformPayReady: false,
+    applyState: '',
+    hasSubMchId: false
+  }
+  try {
+    const { evaluateMerchantReady } = require('./merchantReady')
+    ready = evaluateMerchantReady({
+      wx_sub_mch_id: merchant && merchant.wxSubMchId,
+      wx_apply_state: merchant && merchant.wxApplyState
+    })
+  } catch (_) {}
 
   let fee = null
   try {
@@ -128,7 +156,7 @@ async function dashboard(merchantId, role) {
   }
 
   return {
-    merchant: merchant[0] || null,
+    merchant,
     poolBalance,
     accounts,
     todayOrders,
@@ -140,7 +168,12 @@ async function dashboard(merchantId, role) {
     todayPointsOrders,
     todayCashOrders,
     goodsCount,
-    fee
+    fee,
+    catalogReady: ready.catalogReady,
+    homeEligible: ready.homeEligible,
+    platformPayReady: ready.platformPayReady,
+    wxApplyState: (merchant && merchant.wxApplyState) || '',
+    wxSubMchId: (merchant && merchant.wxSubMchId) || ''
   }
 }
 
