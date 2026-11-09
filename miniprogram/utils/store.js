@@ -216,6 +216,19 @@ async function silentWeChatLogin() {
  * 2) 用户主动退出过 → 不静默登录，留在登录页
  * 3) 否则 token 失效/无会话 → 静默微信登录（已绑手机号则直接进首页）
  */
+function clearLocalAuth() {
+  setToken('')
+  write(KEYS.session, null)
+}
+
+function isAuthDeadError(msg) {
+  return /登录已失效|未登录|401|用户不存在|商户不存在|请重新登录/i.test(String(msg || ''))
+}
+
+function isNetworkishError(msg) {
+  return /timeout|超时|fail|网络|ERR_|502|503|冷启动|服务启动/i.test(String(msg || ''))
+}
+
 async function bootstrapSession() {
   if (isLoggedIn()) {
     try {
@@ -223,13 +236,16 @@ async function bootstrapSession() {
       return { ok: true, session, source: 'token' }
     } catch (e) {
       const msg = String((e && e.message) || '')
-      if (!/登录已失效|未登录|401/.test(msg)) {
+      if (isAuthDeadError(msg)) {
+        // 清库后旧 JWT / 本地会话失效：清掉并允许静默重建，不记「手动退出」
+        clearLocalAuth()
+      } else if (isNetworkishError(msg)) {
         // 网络/冷启动失败时保留本地会话，避免误踢
         return { ok: true, session: getSession(), source: 'cache' }
+      } else {
+        // 未知错误也清掉脏会话，避免卡在「用户不存在」
+        clearLocalAuth()
       }
-      // 仅清会话，不记「手动退出」，允许后续静默恢复
-      setToken('')
-      write(KEYS.session, null)
     }
   }
   if (isManualLogout()) {
@@ -274,14 +290,36 @@ async function refreshProfile() {
 }
 
 function logout() {
-  setToken('')
-  write(KEYS.session, null)
+  clearLocalAuth()
   markManualLogout()
   // 取消进行中的启动静默登录，避免退出后又被 bootPromise 写回会话
   try {
     const app = getApp()
     if (app && app.globalData) app.globalData.bootPromise = null
   } catch (_) {}
+}
+
+/** 主动点「登录」：丢掉游客标记与脏会话，进入登录页（不记手动退出，允许授权后建新用户） */
+function beginLoginFlow(query = '') {
+  try {
+    wx.removeStorageSync('wy_guest_browse')
+  } catch (_) {}
+  try {
+    const app = getApp()
+    if (app && app.globalData) {
+      app.globalData.preferGuest = false
+      app.globalData.bootPromise = null
+    }
+  } catch (_) {}
+  // 失效会话清掉，避免登录页 resume 用旧 token 报「用户不存在」又被踢走
+  clearLocalAuth()
+  clearManualLogout()
+  const q = query ? (String(query).startsWith('?') ? query : `?${query}`) : ''
+  const url = `/pages/login/login${q}`
+  wx.navigateTo({
+    url,
+    fail: () => wx.reLaunch({ url })
+  })
 }
 
 function requireRole(roles) {
@@ -617,6 +655,8 @@ function setConsumerPoints(n) {
 module.exports = {
   ROLE_HOME,
   ROLE_LABEL,
+  clearLocalAuth,
+  beginLoginFlow,
   MERCHANT_ROLES,
   isMerchantRole,
   displayRoleOf,

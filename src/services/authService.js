@@ -387,7 +387,8 @@ async function getProfile(auth) {
         { id: auth.userId }
       )
     }
-    if (!rows.length) throw new HttpError(404, '用户不存在')
+    // 清库/删用户后旧 JWT 仍可能有效：用 401 让端上清会话并重新登录，而不是卡在「用户不存在」
+    if (!rows.length) throw new HttpError(401, '登录已失效，请重新登录')
     const u = rows[0]
     const base = {
       userId: u.id,
@@ -418,7 +419,7 @@ async function getProfile(auth) {
      FROM merchants WHERE id = :id`,
     { id: auth.merchantId }
   )
-  if (!rows.length) throw new HttpError(404, '商户不存在')
+  if (!rows.length) throw new HttpError(401, '登录已失效，请重新登录')
   const m = rows[0]
   const { pickCoverFromLicenses } = require('../utils/mediaPick')
   const coverUrl = m.cover_url || pickCoverFromLicenses(m.materials_json) || ''

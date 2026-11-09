@@ -83,7 +83,14 @@ Page({
     wx.switchTab({ url: '/pages/cross/cross' })
   },
   goLogin() {
-    wx.navigateTo({ url: '/pages/login/login' })
+    if (store.beginLoginFlow) {
+      store.beginLoginFlow()
+      return
+    }
+    wx.navigateTo({
+      url: '/pages/login/login',
+      fail: () => wx.reLaunch({ url: '/pages/login/login' })
+    })
   },
   goHome() {
     wx.switchTab({ url: '/pages/index/index' })

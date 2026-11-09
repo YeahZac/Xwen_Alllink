@@ -168,20 +168,20 @@ Page({
     this._resuming = true
     this.setData({ resuming: true })
     try {
-      const app = getApp()
-      let boot = null
-      if (app && app.globalData && app.globalData.bootPromise) {
-        boot = await app.globalData.bootPromise
-        app.globalData.bootPromise = null
-      } else {
-        boot = await store.bootstrapSession()
-      }
+      // 主动进登录页时强制重新校验，不用启动期带脏会话的 bootPromise
+      const boot = await store.bootstrapSession()
+      try {
+        const app = getApp()
+        if (app && app.globalData) app.globalData.bootPromise = null
+      } catch (_) {}
       // 用户已点「先逛逛」：禁止再路由回登录/首页登录流
       if (this._guestLeaving || (store.preferGuestBrowse && store.preferGuestBrowse())) return
       if (boot && boot.manualLogout) return
       if (!boot || !boot.ok) return
       // 需要手机号：留在本页，由用户主动点登录；绝不自动弹授权
       if (boot.session && boot.session.needPhone) return
+      // 无手机号的半会话也不自动跳走
+      if (boot.session && !boot.session.phone) return
       store.routeAfterLogin()
     } catch (_) {
       /* 留在登录页，可点先逛逛 */

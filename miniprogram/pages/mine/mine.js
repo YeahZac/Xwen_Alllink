@@ -64,6 +64,27 @@ Page({
         genderText: gender ? GENDER_OPTIONS[gender] : ''
       })
     } catch (e) {
+      const msg = String((e && e.message) || '')
+      // 清库后旧会话：回到未登录态，避免一直 toast「用户不存在」
+      if (/登录已失效|用户不存在|请重新登录|401/i.test(msg)) {
+        try {
+          store.clearLocalAuth && store.clearLocalAuth()
+        } catch (_) {
+          store.logout()
+        }
+        this.setData({
+          loggedIn: false,
+          name: '',
+          roleLabel: '',
+          points: 0,
+          orderCount: 0,
+          coverUrl: '',
+          phone: '',
+          gender: 0,
+          genderText: ''
+        })
+        return
+      }
       const s = store.getSession() || {}
       const gender = Number(s.gender) || 0
       this.setData({
@@ -77,12 +98,14 @@ Page({
     }
   },
   goLogin() {
-    try {
-      wx.removeStorageSync('wy_guest_browse')
-      const app = getApp()
-      if (app && app.globalData) app.globalData.preferGuest = false
-    } catch (_) {}
-    wx.navigateTo({ url: '/pages/login/login' })
+    if (store.beginLoginFlow) {
+      store.beginLoginFlow()
+      return
+    }
+    wx.navigateTo({
+      url: '/pages/login/login',
+      fail: () => wx.reLaunch({ url: '/pages/login/login' })
+    })
   },
   requireLogin() {
     if (store.isLoggedIn()) return true
