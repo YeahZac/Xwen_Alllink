@@ -3,7 +3,7 @@
 .page.apply {
   min-height: 100vh;
   background: #ededed;
-  padding: 24rpx 0 calc(48rpx + env(safe-area-inset-bottom));
+  padding: 0 0 calc(160rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 
@@ -288,9 +288,17 @@
   color: #999;
 }
 
-/* 底部按钮 */
+/* 底部固定操作区（微信常见模式） */
 .foot-bar {
-  padding: 32rpx 32rpx 8rpx;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  padding: 20rpx 32rpx calc(20rpx + env(safe-area-inset-bottom));
+  background: #fff;
+  box-shadow: 0 -1rpx 0 #e5e5e5;
+  box-sizing: border-box;
 }
 
 .foot-bar--row {
@@ -332,8 +340,8 @@
 }
 
 .link-row {
-  margin-top: 8rpx;
-  padding: 24rpx;
+  margin: 24rpx 0 8rpx;
+  padding: 16rpx;
   text-align: center;
   font-size: 26rpx;
   color: #576b95;
