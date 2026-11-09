@@ -94,7 +94,22 @@ async function getAccessToken() {
     )}&secret=${encodeURIComponent(secret)}`
   )
   if (!data.access_token) {
-    throw new HttpError(502, data.errmsg || '获取微信凭证失败')
+    const errMsg = String(data.errmsg || '')
+    const code = Number(data.errcode) || 0
+    // 40125 invalid appsecret：全局配置错误，所有商户生成小程序码都会失败
+    if (code === 40125 || /invalid appsecret/i.test(errMsg)) {
+      throw new HttpError(
+        502,
+        '微信 AppSecret 无效或已重置（errcode 40125）。请到小程序后台「开发→开发管理→开发设置」复制 AppSecret，更新云托管环境变量 WX_APP_SECRET（或 WX_APPSECRET）后重启服务；此问题与具体门店无关，所有商户点餐码/收款码都会失败。'
+      )
+    }
+    if (code === 40013 || /invalid appid/i.test(errMsg)) {
+      throw new HttpError(
+        502,
+        '微信 AppID 无效。请核对云托管 WX_APPID 是否与当前小程序一致后重启服务。'
+      )
+    }
+    throw new HttpError(502, errMsg || '获取微信凭证失败')
   }
   tokenCache = {
     token: data.access_token,
