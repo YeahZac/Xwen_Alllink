@@ -71,7 +71,9 @@ function cuisineOf(item) {
 
 Page({
   data: {
-    headerTop: 92,
+    headerTop: 48,
+    navBarHeight: 32,
+    navRightGap: 96,
     userName: '',
     stalls: [],
     crossStores: [],
@@ -93,16 +95,26 @@ Page({
   onLoad() {
     const sys = wx.getSystemInfoSync()
     const statusBarHeight = sys.statusBarHeight || 44
-    let headerTop = statusBarHeight + 48
+    // 定位行与右上角胶囊垂直居中：顶距=胶囊 top，行高=胶囊 height，右侧留白避开胶囊
+    let headerTop = statusBarHeight
+    let navBarHeight = 32
+    let navRightGap = 96
     try {
       const capsule = wx.getMenuButtonBoundingClientRect()
-      if (capsule && capsule.bottom) headerTop = capsule.bottom + 8
+      if (capsule && capsule.height) {
+        headerTop = Math.max(0, capsule.top)
+        navBarHeight = capsule.height
+        const winW = sys.windowWidth || sys.screenWidth || 375
+        navRightGap = Math.max(88, Math.ceil(winW - capsule.left) + 8)
+      }
     } catch (_) {}
     // 默认沙井：文案 + 磁盘/内存缓存立刻上屏，绝不卡 GPS
     location.ensureDefaultLoc()
     const pre = homePrefetch.getPayload()
     const patch = {
       headerTop,
+      navBarHeight,
+      navRightGap,
       locationText: location.displayDistrictName(location.getEffective()),
       locating: false
     }

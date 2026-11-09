@@ -4,6 +4,7 @@ const { parsePaging, pageResult } = require('../utils/paging')
 const { enrichScreen } = require('./screenSim')
 const { orderNo, shortCode } = require('../utils/id')
 const { assertCanOnSale, assertGoodsCanOnSale, evaluateMerchantReady } = require('./merchantReady')
+const { pickCoverFromLicenses, resolveMerchantCover, parseMaybeJson } = require('../utils/mediaPick')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链', consumer: 'C端用户' }
 const PLATFORM_ROLE_LABEL = { partner: '合伙人', founder: '创始人', lead: '负责人' }
@@ -181,9 +182,10 @@ async function trackVisit(body = {}) {
   return { ok: true }
 }
 
-function mapMerchantIdentity(m, pickCoverFromLicenses, parseMaybeJson) {
-  const materials = parseMaybeJson(m.materials) || m.materials || {}
-  const coverUrl = m.coverUrl || pickCoverFromLicenses(materials) || ''
+function mapMerchantIdentity(m, _pickCoverFromLicenses, parseMaybeJsonFn) {
+  const parse = parseMaybeJsonFn || parseMaybeJson
+  const materials = parse(m.materials) || m.materials || {}
+  const coverUrl = resolveMerchantCover(m.coverUrl, materials)
   return {
     id: m.merchantId,
     identity: m.identity,
@@ -488,8 +490,7 @@ async function getStoreDetail(merchantId) {
     { id: merchantId }
   )
 
-  const { pickCoverFromLicenses } = require('../utils/mediaPick')
-  const coverUrl = m.cover_url || pickCoverFromLicenses(materials) || ''
+  const coverUrl = resolveMerchantCover(m.cover_url, materials)
   const bizOwnerAdminId = m.biz_owner_admin_id != null ? Number(m.biz_owner_admin_id) : null
   const ready = evaluateMerchantReady(m)
   return {
@@ -509,6 +510,7 @@ async function getStoreDetail(merchantId) {
     longitude: m.longitude,
     bizType: m.biz_type || '',
     coverUrl,
+    storePhotoUrl: pickCoverFromLicenses(materials) || '',
     status: m.status,
     poolBalance: m.pool_balance,
     materials: materials || {},

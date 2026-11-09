@@ -336,7 +336,8 @@ function requireRole(roles) {
 function resumePendingPay() {
   const scan = require('./scan')
   const pending = scan.getPendingPay()
-  if (!pending || !pending.stallId) return false
+  // 必须显式 resume（登录回跳）；扫码残留不得在下次进小程序时再拉回收款页
+  if (!pending || !pending.stallId || pending.resume !== true) return false
   const pages = getCurrentPages() || []
   const prev = pages.length >= 2 ? pages[pages.length - 2] : null
   const prevRoute = String((prev && prev.route) || '')

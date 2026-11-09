@@ -28,19 +28,21 @@ const ROLE_DEFAULT = {
 const REMOTE_MOCK = /placehold|picsum|unsplash|dummyimage|via\.placeholder/i
 
 function isLegacyCloudCover(url) {
-  // 旧批 admin/cover、admin/banner 模拟图，需替换
-  return /tcb\.qcloud\.la\/admin\/(cover|banner)\//i.test(String(url || ''))
+  // 旧批 admin/cover、admin/banner、mp-static 平台演示图，需替换为商户场景照
+  return /tcb\.qcloud\.la\/admin\/(cover|banner|mp-static)\//i.test(String(url || '')) ||
+    /\/admin\/(cover|banner|mp-static)\//i.test(String(url || ''))
 }
 
 function isTrustedUpload(url) {
   const s = String(url || '').trim()
   if (!s) return false
+  if (isLegacyCloudCover(s) || REMOTE_MOCK.test(s)) return false
   if (s.indexOf('/uploads/') === 0) return true
   if (s.indexOf('/static/') === 0) return true
   if (/^cloud:\/\//i.test(s)) return true
-  if (cdn.isOurCdn(s)) return true
-  // 云托管 COS / 腾讯云对象存储上的真实上传
-  if (/tcb\.qcloud\.la|myqcloud\.com|\.cos\.|file\.myqcloud/i.test(s)) return true
+  // 商户真实上传：license / goods / merchant 等，不含 mp-static 演示包
+  if (/tcb\.qcloud\.la\/admin\/(license|goods|merchant|apply|uploads)\//i.test(s)) return true
+  if (/myqcloud\.com|\.cos\.|file\.myqcloud/i.test(s) && !/\/admin\/mp-static\//i.test(s)) return true
   // 其它 http(s) 一律视为业务上传图，禁止再被素材包覆盖
   if (/^https?:\/\//i.test(s) && !REMOTE_MOCK.test(s) && !isLegacyCloudCover(s)) return true
   return false

@@ -86,7 +86,8 @@ Page({
     const tokenOk = !!store.getToken()
     const isConsumer = session.role === 'consumer' && !!session.userId && tokenOk
     const pending = scan.getPendingPay()
-    const fromScan = (q && q.from === 'scanpay') || !!(pending && pending.stallId)
+    const fromScan =
+      (q && q.from === 'scanpay') || !!(pending && pending.stallId && pending.resume === true)
     const pages = getCurrentPages() || []
     let pendingHint = ''
     if (pending && pending.stallId) {
@@ -212,7 +213,7 @@ Page({
       return
     }
     const pending = scan.getPendingPay()
-    if (pending && pending.stallId) {
+    if (pending && pending.stallId && pending.resume === true) {
       wx.navigateBack({
         fail: () => wx.reLaunch({ url: scan.scanPayUrl(pending.stallId, pending.amount) })
       })

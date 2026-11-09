@@ -48,6 +48,7 @@
           </view>
           <view class="dish__main">
             <text class="dish__name ellipsis-1">{{g.name}}</text>
+            <text class="dish__sku muted" wx:if="{{g.sku}}">SKU {{g.sku}}</text>
             <text class="dish__desc muted ellipsis-1">
               {{g.desc || '现做'}} · 可得 {{g.pointsGrant}} 积分
             </text>

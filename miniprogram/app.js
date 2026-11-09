@@ -74,14 +74,16 @@ App({
       path === 'pages/index/index' ||
       path.indexOf('pages/scan-pay/scan-pay') === 0
     if (!allowPayHijack) return
+    // 必须是扫码类 scene，或 path/query 明确带摊位，才进入收款；避免「最近使用」残留
     const stallId = scan.extractFromLaunch(opt || {})
-    if (!stallId) return
+    const fromScan = scan.isScanLaunchScene(opt && opt.scene) || !!stallId
+    if (!stallId || !fromScan) return
     const pending = scan.getPendingPay() || {}
     const same = String(pending.stallId || '') === String(stallId)
     scan.savePendingPay({
       stallId,
-      amount: same ? pending.amount : '',
-      resume: true
+      amount: same && pending.resume ? pending.amount : '',
+      resume: false
     })
     if (path.indexOf('scan-pay') < 0) {
       this._openScanPay = true
@@ -90,6 +92,19 @@ App({
   onShow(opt) {
     captureInviteFromLaunch(opt)
     const showPath = String((opt && opt.path) || '').replace(/^\//, '')
+    const stallId = scan.extractFromLaunch(opt || {})
+    const fromScan = scan.isScanLaunchScene(opt && opt.scene) || !!stallId
+
+    // 非扫码再次打开却停在收款页（微信会恢复上次页面）→ 回首页
+    if (showPath.indexOf('pages/scan-pay/scan-pay') === 0 && !fromScan && !this._openScanPay) {
+      const pending = scan.getPendingPay()
+      if (!pending || pending.resume !== true) {
+        scan.clearPendingPay()
+        wx.switchTab({ url: '/pages/index/index' })
+        return
+      }
+    }
+
     const allowPayHijack =
       !showPath ||
       showPath === 'pages/index/index' ||

@@ -67,16 +67,27 @@ function isSeedOrEmptyCover(url) {
   return /\/admin\/mp-static\/|\/admin\/(cover|banner)\//i.test(s)
 }
 
+/**
+ * 对外展示封面：摊位/门店场景照优先；cover_url 若是 mp-static 演示图则丢弃。
+ */
+function resolveMerchantCover(coverUrl, materials) {
+  const picked = pickCoverFromLicenses(materials)
+  if (picked) return picked
+  const cur = String(coverUrl || '').trim()
+  if (cur && !isSeedOrEmptyCover(cur)) return cur
+  return ''
+}
+
 /** 列表行：优先真实店招；演示封面可被 materials 店招覆盖 */
 function enrichCoverRow(row, coverKey = 'coverImage', materialsKey = 'materialsJson') {
   if (!row) return row
-  const cur = row[coverKey] || row.coverUrl || ''
-  const picked = pickCoverFromLicenses(row[materialsKey] || row.materials)
-  if (picked && (isSeedOrEmptyCover(cur) || !cur)) {
-    row[coverKey] = picked
-    row.coverUrl = picked
-    row.coverImage = picked
-  } else if (cur) {
+  const mats = row[materialsKey] || row.materials
+  const resolved = resolveMerchantCover(row[coverKey] || row.coverUrl || '', mats)
+  if (resolved) {
+    row[coverKey] = resolved
+    row.coverUrl = resolved
+    row.coverImage = resolved
+  } else if (row.coverUrl || row.coverImage) {
     if (!row.coverImage && row.coverUrl) row.coverImage = row.coverUrl
     if (!row.coverUrl && row.coverImage) row.coverUrl = row.coverImage
   }
@@ -88,5 +99,7 @@ module.exports = {
   parseMaybeJson,
   licenseUrl,
   pickCoverFromLicenses,
+  resolveMerchantCover,
+  isSeedOrEmptyCover,
   enrichCoverRow
 }

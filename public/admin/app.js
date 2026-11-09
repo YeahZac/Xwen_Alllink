@@ -1332,7 +1332,8 @@ async function showStoreDetail(id, listReload) {
             </div>`
          : '<p class="muted">当前角色仅可浏览，需门店编辑权限才能改资料与商品</p>'
      }
-     <h4>门店封面</h4>${thumb(d.coverUrl, 'thumb lg')}
+     <h4>摊位/门店场景照（首页与详情主图）</h4>${thumb(d.storePhotoUrl || d.coverUrl, 'thumb lg')}
+     ${d.coverUrl && d.storePhotoUrl && d.coverUrl !== d.storePhotoUrl ? `<p class="muted">另存封面字段（可忽略）：</p>${thumb(d.coverUrl)}` : ''}
      <h4>营业证照 / 门店资料</h4>${matHtml}
      <h4>门店商品（${goods.length}）</h4>${goodsHtml}`,
     null,

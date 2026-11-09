@@ -100,6 +100,9 @@ Page({
   },
   onBack() {
     if (this.data.paying) return
+    try {
+      scan.clearPendingPay()
+    } catch (_) {}
     const pages = getCurrentPages() || []
     if (pages.length > 1) {
       wx.navigateBack({ fail: () => this.goHome() })
@@ -148,9 +151,14 @@ Page({
       })
     }
   },
-  persist() {
+  persist(forLoginResume) {
     if (!this.data.stallId || this.data.phase === 'success') return
-    scan.savePendingPay({ stallId: this.data.stallId, amount: this.data.amountText, resume: true })
+    // 仅「去登录」时 resume=true；停留收款页只暂存金额，不劫持下次打开
+    scan.savePendingPay({
+      stallId: this.data.stallId,
+      amount: this.data.amountText,
+      resume: !!forLoginResume
+    })
   },
   refreshAmount() {
     const amountText = this.data.amountText
@@ -219,7 +227,7 @@ Page({
     this.goLogin()
   },
   goLogin() {
-    this.persist()
+    this.persist(true)
     wx.navigateTo({ url: '/pages/login/login?from=scanpay' })
   },
   onPay() {
@@ -309,6 +317,9 @@ Page({
     wx.switchTab({ url: '/pages/cross/cross' })
   },
   goHome() {
+    try {
+      scan.clearPendingPay()
+    } catch (_) {}
     wx.switchTab({ url: '/pages/index/index' })
   }
 })

@@ -52,7 +52,8 @@ function savePendingPay(payload) {
   const next = {
     stallId: String((payload && payload.stallId) || '').trim(),
     amount: String((payload && payload.amount) || '').trim(),
-    resume: payload && payload.resume === false ? false : true,
+    // 仅登录回跳需要 resume=true；普通扫码落地不要在下次冷启动再劫持进收款页
+    resume: !!(payload && payload.resume === true),
     ts: Date.now()
   }
   if (!next.stallId) return null
@@ -60,6 +61,13 @@ function savePendingPay(payload) {
     wx.setStorageSync(PENDING_KEY, next)
   } catch (_) {}
   return next
+}
+
+/** 是否来自扫小程序码/二维码等入口（用于区分「再次打开」与「扫码进入」） */
+function isScanLaunchScene(scene) {
+  const n = Number(scene)
+  // 1011/1012/1013 扫二维码；1047/1048/1049 小程序码；1124 扫一扫相册等
+  return [1011, 1012, 1013, 1047, 1048, 1049, 1124].indexOf(n) >= 0
 }
 
 function getPendingPay() {
@@ -97,5 +105,6 @@ module.exports = {
   savePendingPay,
   getPendingPay,
   clearPendingPay,
-  scanPayUrl
+  scanPayUrl,
+  isScanLaunchScene
 }

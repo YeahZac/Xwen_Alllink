@@ -2,31 +2,20 @@
   THESIS: 商场枢纽本地生活首页 — 拒绝旧暖橙卡片堆与朱印装饰。
   OWN-WORLD: 白顶栏 + 浅灰胶囊搜索 + 五金刚 + Banner + 积分条 + 点评式单列店卡；主色克制红 #FF4D4F。
   STORY: 定位搜店 → 入口与营销 → 附近好店评分/优惠/距离 → 去点餐或兑换。
-  FIRST VIEWPORT: 品牌/扫码/定位 → 搜索 → Banner → 五入口 → 积分福利 → 附近好店店卡。
+  FIRST VIEWPORT: 定位(与胶囊垂直居中) → 搜索 → Banner → 四入口(含扫码) → 积分福利 → 附近好店。
   FORM: 品类标准 mall-hub · seed canon · craft bar 点评+美团+京东 · key c37bde05.
   FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 -->
 <view class="mall-page page--flush">
   <view class="counter-head" style="padding-top: {{headerTop}}px;">
-    <view class="counter-head__top">
+    <view
+      class="counter-head__top"
+      style="height: {{navBarHeight}}px; padding-right: {{navRightGap}}px;"
+    >
       <view class="loc-chip loc-chip--lead" bindtap="onRelocate">
         <view class="loc-chip__pin"></view>
         <text class="loc-chip__t ellipsis-1">{{locationText}}</text>
         <text class="loc-chip__gps">{{locating ? '正在获取定位' : '定位'}}</text>
-      </view>
-      <view class="counter-brand counter-brand--center">
-        <view class="counter-brand__text">
-          <text class="counter-brand__name">万业互联云</text>
-        </view>
-      </view>
-      <view class="counter-brand__scan" bindtap="onScan" hover-class="counter-brand__scan--active">
-        <view class="scan-ico">
-          <view class="scan-ico__corner scan-ico__corner--tl"></view>
-          <view class="scan-ico__corner scan-ico__corner--tr"></view>
-          <view class="scan-ico__corner scan-ico__corner--bl"></view>
-          <view class="scan-ico__corner scan-ico__corner--br"></view>
-          <view class="scan-ico__beam"></view>
-        </view>
       </view>
     </view>
 
@@ -61,9 +50,17 @@
         <image class="entry__img" src="/assets/icons/home-entry/entry-invite.png" mode="aspectFit" />
         <text class="entry__t">邀请</text>
       </view>
-      <view class="entry" bindtap="goSupplyNeed">
-        <image class="entry__img" src="/assets/icons/home-entry/entry-need.png" mode="aspectFit" />
-        <text class="entry__t">需求</text>
+      <view class="entry" bindtap="onScan" hover-class="entry--active">
+        <view class="entry__scan">
+          <view class="scan-ico scan-ico--entry">
+            <view class="scan-ico__corner scan-ico__corner--tl"></view>
+            <view class="scan-ico__corner scan-ico__corner--tr"></view>
+            <view class="scan-ico__corner scan-ico__corner--bl"></view>
+            <view class="scan-ico__corner scan-ico__corner--br"></view>
+            <view class="scan-ico__beam"></view>
+          </view>
+        </view>
+        <text class="entry__t">扫码</text>
       </view>
     </view>
 
@@ -104,7 +101,7 @@
 
     <view wx:elif="{{!displayList.length}}" class="empty-state empty-state--feed">
       <text class="empty-state__title">{{loadHint ? '暂时加载不到门店' : (category === 'all' ? '当前城市暂无门店' : '该分类暂无门店')}}</text>
-      <text class="empty-state__desc">{{loadHint || '试试切换分类，点右上角「定位」，或清空搜索后再试'}}</text>
+      <text class="empty-state__desc">{{loadHint || '试试切换分类，点左上角「定位」，或清空搜索后再试'}}</text>
     </view>
 
     <block wx:else>
