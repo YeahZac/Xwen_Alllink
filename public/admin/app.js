@@ -29,6 +29,20 @@ const NAV_GROUPS = [
     ]
   },
   {
+    key: 'content',
+    name: '内容与运营',
+    icon: 'grid',
+    items: [
+      { id: 'goods_sku', label: 'SKU管理' },
+      { id: 'goods', label: '门店商品' },
+      { id: 'goods_categories', label: '商品类目' },
+      { id: 'banners', label: 'Banner 运营' },
+      { id: 'needs', label: '供应需求' },
+      { id: 'complaints', label: '投诉工单' }
+      // 平台配置暂时隐藏
+    ]
+  },
+  {
     key: 'users_stores',
     name: '用户与门店',
     icon: 'store',
@@ -53,20 +67,6 @@ const NAV_GROUPS = [
       { id: 'partner_purchases', label: '合伙人采购单' },
       { id: 'referrals', label: '推荐记录' },
       { id: 'op_logs', label: '操作日志' }
-    ]
-  },
-  {
-    key: 'content',
-    name: '内容与运营',
-    icon: 'grid',
-    items: [
-      { id: 'goods_sku', label: 'SKU管理' },
-      { id: 'goods', label: '门店商品' },
-      { id: 'goods_categories', label: '商品类目' },
-      { id: 'banners', label: 'Banner 运营' },
-      { id: 'needs', label: '供应需求' },
-      { id: 'complaints', label: '投诉工单' }
-      // 平台配置暂时隐藏
     ]
   },
   {
@@ -98,7 +98,8 @@ const NAV_ICONS = {
 }
 
 const ALL_NAV = NAV_GROUPS.flatMap((g) => g.items)
-const NAV_COLLAPSE_KEY = 'xwen_admin_nav_collapse_v2'
+/** v3：侧栏手风琴（同时只展开一个大类） */
+const NAV_COLLAPSE_KEY = 'xwen_admin_nav_collapse_v3'
 
 function isSuper() {
   const p = state.profile || {}
@@ -258,15 +259,22 @@ function groupBadgeCount(items) {
 function renderNav() {
   const nav = $('nav')
   const collapse = loadNavCollapse()
+  const visibleGroups = NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((n) => canView(n.id))
+  })).filter((g) => g.items.length)
+
+  // 手风琴：优先展开当前页所在大类；否则只保留一个手动展开的大类
+  let openKey = visibleGroups.find((g) => g.items.some((n) => n.id === state.page))?.key || ''
+  if (!openKey) {
+    openKey = visibleGroups.find((g) => collapse[g.key] === false)?.key || ''
+  }
+
   const html = []
-  for (const g of NAV_GROUPS) {
-    const items = g.items.filter((n) => canView(n.id))
-    if (!items.length) continue
-    const collapsed = collapse[g.key] !== false
-    const activeInGroup = items.some((n) => n.id === state.page)
-    // 默认收起；当前页所在分组保持展开，便于看到选中项
-    const isCollapsed = activeInGroup ? false : collapsed
-    const groupPending = groupBadgeCount(items)
+  for (const g of visibleGroups) {
+    const activeInGroup = g.items.some((n) => n.id === state.page)
+    const isCollapsed = g.key !== openKey
+    const groupPending = groupBadgeCount(g.items)
     html.push(`<div class="nav-group ${isCollapsed ? 'is-collapsed' : ''} ${
       activeInGroup ? 'is-active' : ''
     }" data-group="${esc(g.key)}">
@@ -285,7 +293,7 @@ function renderNav() {
         <span class="nav-group__chev">▾</span>
       </button>
       <div class="nav-group__body">
-        ${items
+        ${g.items
           .map(
             (n) =>
               `<button type="button" class="nav-item ${state.page === n.id ? 'on' : ''}" data-page="${n.id}"><span class="nav-item__label">${esc(
@@ -305,13 +313,21 @@ function renderNav() {
       const key = btn.dataset.toggleGroup
       const box = nav.querySelector(`.nav-group[data-group="${key}"]`)
       if (!box) return
-      const next = !box.classList.contains('is-collapsed')
-      box.classList.toggle('is-collapsed', next)
-      const map = loadNavCollapse()
-      map[key] = next
+      const willExpand = box.classList.contains('is-collapsed')
+      const map = defaultNavCollapseMap()
+      nav.querySelectorAll('.nav-group').forEach((el) => {
+        const k = el.getAttribute('data-group')
+        if (!k) return
+        if (k === key) {
+          el.classList.toggle('is-collapsed', !willExpand)
+          map[k] = !willExpand
+        } else {
+          el.classList.add('is-collapsed')
+          map[k] = true
+        }
+      })
       saveNavCollapse(map)
-      if (!next) {
-        // 展开后滚到分组底部，避免末项被侧栏裁切却看不见滚动条
+      if (willExpand) {
         requestAnimationFrame(() => {
           box.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
         })
