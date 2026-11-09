@@ -1,0 +1,62 @@
+<view class="page m-home page--flush">
+  <page-nav title="收款进件" tone="solid" show-home="{{true}}" home-url="/merchant/home/home" />
+  <view class="m-home-shell" wx:if="{{!loading}}">
+    <view class="wx-card">
+      <text class="wx-card__title">{{shopName}}</text>
+      <text class="wx-card__state">{{stateLabel}}</text>
+      <text class="wx-card__desc" wx:if="{{stateDesc}}">{{stateDesc}}</text>
+      <text class="wx-card__meta" wx:if="{{subMchId}}">二级商户号 {{subMchId}}</text>
+      <text class="wx-card__meta" wx:else>尚未生成二级商户号</text>
+      <text class="wx-card__meta">平台分账比例 {{ratePercent}}%</text>
+    </view>
+
+    <view class="wx-card" wx:if="{{signUrl}}">
+      <text class="wx-card__title">待签约</text>
+      <text class="wx-card__desc">请使用超级管理员实名微信号打开下方链接完成签约（微信强制步骤）。</text>
+      <view class="btn-gradient" bindtap="onCopySign">复制签约链接</view>
+    </view>
+
+    <view class="wx-card">
+      <text class="wx-card__title">资料完备度</text>
+      <view class="wx-row"><text>身份证人像面</text><text>{{mats.hasIdCardFront ? '已备' : '缺失'}}</text></view>
+      <view class="wx-row"><text>身份证国徽面</text><text>{{mats.hasIdCardBack ? '已备' : '缺失'}}</text></view>
+      <view class="wx-row"><text>经营场景照</text><text>{{mats.hasStorePhoto ? '已备' : '缺失'}}</text></view>
+      <view class="wx-row"><text>营业执照</text><text>{{mats.hasBusinessLicense ? '已备' : '小微可不传'}}</text></view>
+      <view class="wx-row"><text>结算卡</text><text>{{mats.bankAccountNoMasked || '未填'}}</text></view>
+    </view>
+
+    <view class="wx-card">
+      <text class="wx-card__title">补全结算信息</text>
+      <text class="wx-card__desc">入驻时未填或需更正时，可在此补全；提交进件由运营台一键推送微信，无需登录商户平台。</text>
+      <view class="field">
+        <text class="field__label">开户银行</text>
+        <input class="field__input" placeholder="如 工商银行" value="{{form.bankName}}" data-k="bankName" bindinput="onField" />
+      </view>
+      <view class="field">
+        <text class="field__label">银行卡号</text>
+        <input class="field__input" placeholder="本人结算卡" value="{{form.bankAccountNo}}" data-k="bankAccountNo" bindinput="onField" />
+      </view>
+      <view class="field">
+        <text class="field__label">开户名</text>
+        <input class="field__input" placeholder="与身份证姓名一致" value="{{form.bankAccountName}}" data-k="bankAccountName" bindinput="onField" />
+      </view>
+      <view class="field">
+        <text class="field__label">身份证号</text>
+        <input class="field__input" placeholder="经营者身份证号" value="{{form.idCardNumber}}" data-k="idCardNumber" bindinput="onField" />
+      </view>
+      <view class="field">
+        <text class="field__label">证件有效期起</text>
+        <input class="field__input" placeholder="YYYY-MM-DD" value="{{form.idCardValidBegin}}" data-k="idCardValidBegin" bindinput="onField" />
+      </view>
+      <view class="field">
+        <text class="field__label">证件有效期止</text>
+        <input class="field__input" placeholder="YYYY-MM-DD 或 长期" value="{{form.idCardValidEnd}}" data-k="idCardValidEnd" bindinput="onField" />
+      </view>
+      <view class="btn-gradient" bindtap="onSave">保存结算资料</view>
+      <view class="btn-outline-primary" style="margin-top:12px" bindtap="onRefresh">刷新状态</view>
+    </view>
+  </view>
+  <view class="m-home-shell" wx:else>
+    <text class="wx-card__desc">加载中…</text>
+  </view>
+</view>

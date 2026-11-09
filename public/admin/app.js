@@ -48,6 +48,7 @@ const NAV_GROUPS = [
       { id: 'orders', label: '订单中心' },
       { id: 'points', label: '积分与额度' },
       { id: 'settlements', label: '结算抽成' },
+      { id: 'wx_sub_merchants', label: '二级商户进件' },
       { id: 'withdraws', label: '提现审核' },
       { id: 'partner_purchases', label: '合伙人采购单' },
       { id: 'referrals', label: '推荐记录' },
@@ -355,6 +356,7 @@ function go(page) {
     orders: renderOrders,
     points: renderPoints,
     settlements: renderSettlements,
+    wx_sub_merchants: renderWxSubMerchants,
     banners: renderBanners,
     configs: renderConfigs,
     withdraws: renderWithdraws,
@@ -2718,6 +2720,188 @@ async function renderPoints() {
         }
       )
     }
+  }
+  await load()
+}
+
+async function renderWxSubMerchants() {
+  const editable = canEdit('wx_sub_merchants')
+  content().innerHTML = `
+    <div class="toolbar">
+      <input id="fQ" placeholder="搜索名称/编号/手机/商户号" style="min-width:180px" />
+      <select id="fRole">
+        <option value="">全部角色</option>
+        <option value="stall">地摊</option>
+        <option value="cross">异业</option>
+        <option value="supply">供应链</option>
+      </select>
+      <select id="fState">
+        <option value="">全部状态</option>
+        <option value="CHECKING">资料校验中</option>
+        <option value="AUDITING">审核中</option>
+        <option value="NEED_SIGN">待签约</option>
+        <option value="REJECTED">已驳回</option>
+        <option value="FINISH">已完成</option>
+        <option value="ACCOUNT_NEED_VERIFY">待账户验证</option>
+      </select>
+      <button class="btn" id="btnReload">刷新</button>
+      ${editable ? '<button class="btn" id="btnSyncAll">批量同步状态</button>' : ''}
+      <button class="btn" id="btnPayCfg">支付配置检查</button>
+    </div>
+    <p class="muted">电商收付通二级商户进件：资料齐全后可一键提交微信，无需登录商户平台。签约链接需商户超管用微信打开完成（微信强制）。平台分账比例上限 30%。</p>
+    <div id="list"></div>`
+  const load = async () => {
+    const q = encodeURIComponent(($('fQ').value || '').trim())
+    const role = $('fRole').value
+    const state = $('fState').value
+    const qs = [`limit=200`]
+    if (q) qs.push(`q=${q}`)
+    if (role) qs.push(`role=${role}`)
+    if (state) qs.push(`state=${state}`)
+    const rows = await api(`/admin/wx-sub-merchants?${qs.join('&')}`)
+    $('list').innerHTML = table(
+      ['ID', '门店', '角色', '进件状态', '二级商户号', '分账%', '同步时间', '操作'],
+      rows
+        .map(
+          (m) => `<tr>
+        <td>${m.id}</td>
+        <td>${esc(m.name)}<div class="muted"><code>${esc(m.merchantNo || '')}</code></div></td>
+        <td>${esc(m.role)}</td>
+        <td>${esc(m.stateLabel)}${m.wxApplyStateDesc ? `<div class="muted">${esc(m.wxApplyStateDesc)}</div>` : ''}</td>
+        <td><code>${esc(m.wxSubMchId || '—')}</code></td>
+        <td>${m.profitSharePercent ?? 0}%</td>
+        <td>${fmtTime(m.wxApplySyncedAt)}</td>
+        <td class="actions">
+          <button class="btn sm" data-detail="${m.id}">详情</button>
+          ${
+            editable
+              ? `<button class="btn sm primary" data-submit="${m.id}">提交进件</button>
+                 <button class="btn sm" data-sync="${m.id}">同步</button>
+                 <button class="btn sm" data-rate="${m.id}" data-pct="${m.profitSharePercent ?? 10}">比例</button>
+                 <button class="btn sm" data-sub="${m.id}" data-val="${esc(m.wxSubMchId || '')}">商户号</button>`
+              : `<button class="btn sm" data-sync="${m.id}">同步</button>`
+          }
+        </td></tr>`
+        )
+        .join('')
+    )
+    $('list').querySelectorAll('[data-detail]').forEach((b) => {
+      b.onclick = async () => {
+        const d = await api(`/admin/wx-sub-merchants/${b.dataset.detail}`)
+        const mats = d.materials || {}
+        openModal(
+          `二级商户 · ${d.name}`,
+          `<p>状态 <b>${esc(d.stateLabel)}</b> · ${esc(d.wxApplyStateDesc || '')}</p>
+           <p>二级商户号 <code>${esc(d.wxSubMchId || '未生成')}</code> · 申请单 ${esc(
+             d.wxApplymentId || '—'
+           )} · 业务号 <code>${esc(d.wxOutRequestNo || '—')}</code></p>
+           <p>主体类型 ${esc(d.organizationType)} · 分账 ${d.profitSharePercent}% · 支付配置 ${
+             d.wxPayReady ? '就绪' : '未就绪'
+           }</p>
+           ${d.wxSignUrl ? `<p>签约链接 <a href="${esc(d.wxSignUrl)}" target="_blank" rel="noopener">打开签约</a>（需超管用微信打开）</p>` : ''}
+           <h4>资料完备度</h4>
+           <ul>
+             <li>身份证人像面：${mats.hasIdCardFront ? '有' : '缺'}</li>
+             <li>身份证国徽面：${mats.hasIdCardBack ? '有' : '缺'}</li>
+             <li>经营场景照：${mats.hasStorePhoto ? '有' : '缺'}</li>
+             <li>营业执照：${mats.hasBusinessLicense ? '有' : '（小微可不传）'}</li>
+             <li>证件 ${esc(mats.idCardName || '')} ${esc(mats.idCardNumberMasked || '')} ${esc(
+               mats.idCardValidBegin || ''
+             )}~${esc(mats.idCardValidEnd || '')}</li>
+             <li>结算卡 ${esc(mats.bankName || '')} ${esc(mats.bankAccountNoMasked || '')} ${esc(
+               mats.bankAccountName || ''
+             )}</li>
+           </ul>
+           <h4>进件历史</h4>
+           <pre>${esc(JSON.stringify(d.applyments || [], null, 2))}</pre>`,
+          null,
+          true
+        )
+      }
+    })
+    $('list').querySelectorAll('[data-submit]').forEach((b) => {
+      b.onclick = async () => {
+        if (!confirm('确认将该门店资料提交至微信电商收付通进件？敏感字段将自动加密上传。')) return
+        try {
+          await api(`/admin/wx-sub-merchants/${b.dataset.submit}/submit`, {
+            method: 'POST',
+            body: JSON.stringify({})
+          })
+          alert('已提交微信进件')
+          load()
+        } catch (e) {
+          alert(e.message || '提交失败')
+        }
+      }
+    })
+    $('list').querySelectorAll('[data-sync]').forEach((b) => {
+      b.onclick = async () => {
+        try {
+          await api(`/admin/wx-sub-merchants/${b.dataset.sync}/sync`, { method: 'POST', body: '{}' })
+          alert('状态已同步')
+          load()
+        } catch (e) {
+          alert(e.message || '同步失败')
+        }
+      }
+    })
+    $('list').querySelectorAll('[data-rate]').forEach((b) => {
+      b.onclick = () => {
+        openModal(
+          '设置平台分账比例',
+          field('ratePct', '分账比例（%）', b.dataset.pct || '10', 'number') +
+            `<p class="muted">0～30，支付成功后按此比例自动分账给平台商户号</p>`,
+          async () => {
+            await api(`/admin/wx-sub-merchants/${b.dataset.rate}/profit-share-rate`, {
+              method: 'PATCH',
+              body: JSON.stringify({ rate: Number(formVal('ratePct')) })
+            })
+            load()
+          }
+        )
+      }
+    })
+    $('list').querySelectorAll('[data-sub]').forEach((b) => {
+      b.onclick = () => {
+        openModal(
+          '手工录入二级商户号',
+          field('subMchId', 'wx_sub_mch_id', b.dataset.val || '') +
+            `<p class="muted">仅用于已在微信侧完成进件、需回填本系统的场景</p>`,
+          async () => {
+            await api(`/admin/wx-sub-merchants/${b.dataset.sub}/sub-mch-id`, {
+              method: 'PATCH',
+              body: JSON.stringify({ subMchId: formVal('subMchId') })
+            })
+            load()
+          }
+        )
+      }
+    })
+  }
+  $('btnReload').onclick = load
+  $('fRole').onchange = load
+  $('fState').onchange = load
+  $('fQ').onkeydown = (e) => {
+    if (e.key === 'Enter') load()
+  }
+  if ($('btnSyncAll')) {
+    $('btnSyncAll').onclick = async () => {
+      const r = await api('/admin/wx-sub-merchants/sync-pending', {
+        method: 'POST',
+        body: JSON.stringify({ limit: 30 })
+      })
+      alert(`已同步 ${r.synced || 0} 条`)
+      load()
+    }
+  }
+  $('btnPayCfg').onclick = async () => {
+    const c = await api('/wxpay/config-check')
+    openModal(
+      '微信支付配置',
+      `<pre>${esc(JSON.stringify(c, null, 2))}</pre>`,
+      null,
+      true
+    )
   }
   await load()
 }

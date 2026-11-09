@@ -691,6 +691,23 @@ async function createScanPayOrder({ userId, merchantId, amount }) {
   }
 }
 
+function scheduleProfitShare(orderRow, transactionId, fin) {
+  if (!orderRow || !transactionId || (fin && fin.alreadyPaid)) return
+  const amountYuan =
+    orderRow.cash_paid != null ? orderRow.cash_paid : orderRow.total_amount
+  setImmediate(() => {
+    const subMerchantService = require('./subMerchantService')
+    subMerchantService
+      .maybeAutoProfitShare({
+        merchantId: orderRow.merchant_id,
+        orderNo: orderRow.order_no,
+        transactionId,
+        amountYuan
+      })
+      .catch((e) => console.warn('[wxpay] auto profit share', e.message))
+  })
+}
+
 async function handleWxPayNotify(headers, rawBody) {
   const parsed = await wxService.parsePayNotify({ headers, rawBody })
   if (parsed.tradeState && parsed.tradeState !== 'SUCCESS') {
@@ -698,7 +715,7 @@ async function handleWxPayNotify(headers, rawBody) {
   }
   const ono = parsed.outTradeNo
   if (!ono) throw new HttpError(400, '回调缺少商户订单号')
-  return withTransaction(async (conn) => {
+  const result = await withTransaction(async (conn) => {
     const [rows] = await conn.execute('SELECT * FROM consumer_orders WHERE order_no=? FOR UPDATE', [ono])
     if (!rows.length) {
       // 可能是异业/采购单，暂只处理 C 端地摊单
@@ -707,8 +724,13 @@ async function handleWxPayNotify(headers, rawBody) {
     const fin = await finalizePaidConsumerOrder(conn, rows[0], {
       transactionId: parsed.transactionId
     })
-    return { ok: true, ...fin, transactionId: parsed.transactionId }
+    return { ok: true, ...fin, transactionId: parsed.transactionId, _order: rows[0] }
   })
+  if (result && result.ok) {
+    scheduleProfitShare(result._order, parsed.transactionId, result)
+    delete result._order
+  }
+  return result
 }
 
 /** 小程序支付成功后主动对账入账（防回调延迟） */
@@ -747,7 +769,7 @@ async function syncConsumerPay(orderNo, userId) {
     // 宽松：仍尝试入账标记需人工核对——改为拒绝，避免未付入账
     throw new HttpError(400, '暂未查到支付成功，请稍后再试或等待支付回调')
   }
-  return withTransaction(async (conn) => {
+  const paid = await withTransaction(async (conn) => {
     const [locked] = await conn.execute('SELECT * FROM consumer_orders WHERE order_no=? FOR UPDATE', [ono])
     const fin = await finalizePaidConsumerOrder(conn, locked[0], { transactionId })
     return {
@@ -757,9 +779,13 @@ async function syncConsumerPay(orderNo, userId) {
       pointsAllocated: fin.pointsAllocated,
       pointsBalance: fin.pointsBalance,
       shortage: fin.shortage,
-      alreadyPaid: fin.alreadyPaid
+      alreadyPaid: fin.alreadyPaid,
+      _order: locked[0]
     }
   })
+  scheduleProfitShare(paid._order, transactionId, paid)
+  delete paid._order
+  return paid
 }
 
 /** 出餐完成：划拨积分 + 触发首单推荐奖（BRD §4.3 / §4.5） */

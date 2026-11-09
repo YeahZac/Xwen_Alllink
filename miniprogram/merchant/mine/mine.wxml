@@ -18,6 +18,10 @@
         <text class="menu-tile__title">资产账户</text>
         <text class="menu-tile__sub">货款与提现</text>
       </view>
+      <view class="menu-tile" bindtap="go" data-url="/merchant/wx-sub/wx-sub">
+        <text class="menu-tile__title">收款进件</text>
+        <text class="menu-tile__sub">二级商户状态与结算卡</text>
+      </view>
       <view class="menu-tile" bindtap="goIdentity">
         <text class="menu-tile__title">切换身份</text>
         <text class="menu-tile__sub">消费者 / 合伙人 / 创始人</text>

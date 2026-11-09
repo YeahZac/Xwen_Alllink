@@ -1,0 +1,66 @@
+.wx-card {
+  margin: 0 0 12px;
+  padding: 16px;
+  background: var(--color-surface, #fff);
+  border-radius: 12px;
+}
+
+.wx-card__title {
+  display: block;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2329;
+  margin-bottom: 6px;
+}
+
+.wx-card__state {
+  display: block;
+  font-size: 20px;
+  font-weight: 800;
+  color: #ff4d4f;
+  margin-bottom: 4px;
+}
+
+.wx-card__desc {
+  display: block;
+  font-size: 13px;
+  color: #8f959e;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.wx-card__meta {
+  display: block;
+  font-size: 13px;
+  color: #646a73;
+  margin-top: 4px;
+}
+
+.wx-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+  color: #1f2329;
+}
+
+.field {
+  margin-bottom: 12px;
+}
+
+.field__label {
+  display: block;
+  font-size: 13px;
+  color: #646a73;
+  margin-bottom: 4px;
+}
+
+.field__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  background: #f7f4f0;
+  border-radius: 8px;
+  font-size: 14px;
+}

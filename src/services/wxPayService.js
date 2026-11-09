@@ -361,6 +361,157 @@ function notifyUrlForDisplay() {
   return payConfig().notifyUrl
 }
 
+/** 敏感字段：微信支付公钥 RSA-OAEP(SHA1) */
+function encryptSensitive(plain) {
+  const c = payConfig()
+  if (!c.wechatPubKey) {
+    throw new HttpError(503, '未配置微信支付公钥，无法加密进件敏感字段')
+  }
+  const text = String(plain == null ? '' : plain)
+  return crypto
+    .publicEncrypt(
+      {
+        key: c.wechatPubKey,
+        padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+        oaepHash: 'sha1'
+      },
+      Buffer.from(text, 'utf8')
+    )
+    .toString('base64')
+}
+
+function sha256Hex(buf) {
+  return crypto.createHash('sha256').update(buf).digest('hex')
+}
+
+/** 图片上传 → MediaID（电商进件证照必用） */
+async function uploadMerchantMedia(buffer, filename = 'image.jpg') {
+  if (!buffer || !buffer.length) throw new HttpError(400, '空图片')
+  const c = payConfig()
+  if (!wxPayConfigured()) throw new HttpError(503, '微信支付未配置')
+  const name = String(filename || 'image.jpg').replace(/[^\w.\-]/g, '_')
+  const meta = JSON.stringify({ filename: name, sha256: sha256Hex(buffer) })
+  const boundary = `----wanye${Date.now()}${Math.random().toString(16).slice(2)}`
+  const parts = []
+  parts.push(
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="meta"\r\nContent-Type: application/json\r\n\r\n${meta}\r\n`
+    )
+  )
+  parts.push(
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: image/jpeg\r\n\r\n`
+    )
+  )
+  parts.push(Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer))
+  parts.push(Buffer.from(`\r\n--${boundary}--\r\n`))
+  const body = Buffer.concat(parts)
+  const apiPath = '/v3/merchant/media/upload'
+  const auth = authorizationHeader('POST', apiPath, meta)
+  const headers = {
+    Accept: 'application/json',
+    Authorization: auth,
+    'Content-Type': `multipart/form-data; boundary=${boundary}`,
+    'Content-Length': body.length,
+    'User-Agent': 'wanye-alllink-wxpay/1.0'
+  }
+  if (c.wechatPubKeyId) headers['Wechatpay-Serial'] = c.wechatPubKeyId
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        protocol: 'https:',
+        hostname: 'api.mch.weixin.qq.com',
+        path: apiPath,
+        method: 'POST',
+        headers,
+        timeout: 30000
+      },
+      (res) => {
+        const chunks = []
+        res.on('data', (d) => chunks.push(d))
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf8')
+          let json = {}
+          try {
+            json = text ? JSON.parse(text) : {}
+          } catch (_) {
+            json = { raw: text }
+          }
+          if (res.statusCode >= 200 && res.statusCode < 300 && json.media_id) {
+            resolve(json.media_id)
+            return
+          }
+          const msg = (json && (json.message || json.code)) || `上传媒体失败 HTTP ${res.statusCode}`
+          const err = new HttpError(502, String(msg))
+          err.wx = json
+          reject(err)
+        })
+      }
+    )
+    req.on('error', reject)
+    req.on('timeout', () => {
+      req.destroy()
+      reject(new HttpError(504, '上传媒体超时'))
+    })
+    req.write(body)
+    req.end()
+  })
+}
+
+async function submitEcommerceApplyment(body) {
+  const res = await requestWxPay('POST', '/v3/ecommerce/applyments/', body)
+  return res.data
+}
+
+async function queryEcommerceApplymentById(applymentId) {
+  const id = encodeURIComponent(String(applymentId))
+  const res = await requestWxPay('GET', `/v3/ecommerce/applyments/${id}`, null)
+  return res.data
+}
+
+async function queryEcommerceApplymentByOutNo(outRequestNo) {
+  const no = encodeURIComponent(String(outRequestNo))
+  const res = await requestWxPay('GET', `/v3/ecommerce/applyments/out-request-no/${no}`, null)
+  return res.data
+}
+
+async function addProfitSharingReceiver({ type, account, name, relationType } = {}) {
+  const c = payConfig()
+  const body = {
+    appid: c.appId,
+    type: type || 'MERCHANT_ID',
+    account: String(account || ''),
+    relation_type: relationType || 'PLATFORM'
+  }
+  if (name) {
+    if (body.type === 'PERSONAL_OPENID') body.name = encryptSensitive(name)
+    else body.name = name
+  }
+  const res = await requestWxPay('POST', '/v3/ecommerce/profitsharing/receivers/add', body)
+  return res.data
+}
+
+async function createProfitSharingOrder({
+  subMchid,
+  transactionId,
+  outOrderNo,
+  receivers,
+  finish = true
+} = {}) {
+  const c = payConfig()
+  const body = {
+    appid: c.appId,
+    sub_mchid: String(subMchid),
+    transaction_id: String(transactionId),
+    out_order_no: String(outOrderNo).slice(0, 64),
+    receivers: receivers || [],
+    finish: !!finish
+  }
+  const res = await requestWxPay('POST', '/v3/ecommerce/profitsharing/orders', body)
+  return res.data
+}
+
 module.exports = {
   wxPayConfigured,
   payConfig,
@@ -368,5 +519,13 @@ module.exports = {
   parsePayNotify,
   queryOrderByOutTradeNo,
   notifyUrlForDisplay,
-  yuanToFen
+  yuanToFen,
+  encryptSensitive,
+  uploadMerchantMedia,
+  submitEcommerceApplyment,
+  queryEcommerceApplymentById,
+  queryEcommerceApplymentByOutNo,
+  addProfitSharingReceiver,
+  createProfitSharingOrder,
+  requestWxPay
 }

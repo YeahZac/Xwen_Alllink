@@ -275,6 +275,9 @@ const api = {
   setMerchantOpen: (open) =>
     request({ path: '/merchant/profile/status', method: 'POST', data: { open: open ? 1 : 0 } }),
   merchantFeeStatus: () => request({ path: '/merchant/fees/status' }),
+  merchantWxSubStatus: () => request({ path: '/merchant/wx-sub/status' }),
+  merchantWxSubSettlement: (body) =>
+    request({ path: '/merchant/wx-sub/settlement', method: 'PATCH', data: body || {} }),
 
   // 合伙人
   submitPartnerApply: (body) =>

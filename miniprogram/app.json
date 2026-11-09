@@ -46,7 +46,8 @@
     "merchant/customers/customers",
     "merchant/needs/needs",
     "merchant/points-pool/points-pool",
-    "merchant/supply-list/supply-list"
+    "merchant/supply-list/supply-list",
+    "merchant/wx-sub/wx-sub"
   ],
   "window": {
     "navigationBarTitleText": "万业互联云",

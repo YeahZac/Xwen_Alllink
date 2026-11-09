@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "收款进件",
+  "usingComponents": {
+    "page-nav": "/components/page-nav/page-nav",
+    "role-tabbar": "/components/role-tabbar/role-tabbar"
+  }
+}

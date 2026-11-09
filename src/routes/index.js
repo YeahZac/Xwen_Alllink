@@ -22,6 +22,7 @@ const feeService = require('../services/feeService')
 const referralService = require('../services/referralService')
 const partnerService = require('../services/partnerService')
 const founderService = require('../services/founderService')
+const subMerchantService = require('../services/subMerchantService')
 
 const router = express.Router()
 const adminOnly = [authRequired, requireRoles('admin')]
@@ -1784,6 +1785,158 @@ router.get('/wxpay/config-check', ...adminOnly, async (_req, res, next) => {
     next(e)
   }
 })
+
+/** —— 二级商户进件 / 分账比例 —— */
+router.get(
+  '/admin/wx-sub-merchants',
+  ...adminOnly,
+  requirePage('wx_sub_merchants'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await subMerchantService.listSubMerchants({
+            q: req.query.q,
+            state: req.query.state,
+            role: req.query.role,
+            limit: req.query.limit
+          })
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get(
+  '/admin/wx-sub-merchants/:id',
+  ...adminOnly,
+  requirePage('wx_sub_merchants'),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await subMerchantService.getSubMerchantDetail(Number(req.params.id))))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/admin/wx-sub-merchants/:id/submit',
+  ...adminOnly,
+  requirePage('wx_sub_merchants', { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await subMerchantService.submitApplyment(Number(req.params.id), req.body || {})))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/admin/wx-sub-merchants/:id/sync',
+  ...adminOnly,
+  requirePage('wx_sub_merchants'),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await subMerchantService.syncApplymentStatus(Number(req.params.id))))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/admin/wx-sub-merchants/sync-pending',
+  ...adminOnly,
+  requirePage('wx_sub_merchants', { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await subMerchantService.syncPendingApplyments({ limit: req.body?.limit })))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.patch(
+  '/admin/wx-sub-merchants/:id/profit-share-rate',
+  ...adminOnly,
+  requirePage('wx_sub_merchants', { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(await subMerchantService.setProfitShareRate(Number(req.params.id), req.body?.rate))
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.patch(
+  '/admin/wx-sub-merchants/:id/sub-mch-id',
+  ...adminOnly,
+  requirePage('wx_sub_merchants', { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await subMerchantService.setSubMchIdManual(
+            Number(req.params.id),
+            req.body?.subMchId ?? req.body?.wxSubMchId
+          )
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.patch(
+  '/admin/wx-sub-merchants/:id/settlement',
+  ...adminOnly,
+  requirePage('wx_sub_merchants', { edit: true }),
+  async (req, res, next) => {
+    try {
+      res.json(ok(await subMerchantService.updateSettlementDraft(Number(req.params.id), req.body || {})))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+/** 商家端：进件状态 / 补结算资料 */
+router.get(
+  '/merchant/wx-sub/status',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      if (!req.auth.merchantId) throw new HttpError(400, '未绑定门店')
+      res.json(ok(await subMerchantService.getMerchantSelfWxStatus(req.auth.merchantId)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.patch(
+  '/merchant/wx-sub/settlement',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      if (!req.auth.merchantId) throw new HttpError(400, '未绑定门店')
+      res.json(ok(await subMerchantService.merchantUpdateSettlement(req.auth.merchantId, req.body || {})))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
 
 router.post(
   '/orders/cross/redeem',
