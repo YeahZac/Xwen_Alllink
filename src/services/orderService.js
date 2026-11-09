@@ -377,6 +377,56 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
     })
   }
 
+  const merchants = await query('SELECT name FROM merchants WHERE id=:id', { id: merchantId })
+  const shopName = merchants[0] ? merchants[0].name : '地摊点餐'
+  const openid = await getUserOpenid(userId)
+  const subMchId = await getMerchantSubMchId(merchantId)
+
+  async function finalizeAsSimulated(reason) {
+    return withTransaction(async (conn) => {
+      const payMeta = wxService.buildPayResult({
+        orderNo: ono,
+        cashAmount: cashPaid,
+        simulated: true,
+        message: reason || '微信支付暂不可用，已按模拟支付入账'
+      })
+      const orderId = await insertConsumerOrder(conn, { payChannel: payMeta.payChannel })
+      await insertStallOrderItems(conn, orderId, lines)
+      const [orows] = await conn.execute('SELECT * FROM consumer_orders WHERE id=? FOR UPDATE', [orderId])
+      const fin = await finalizePaidConsumerOrder(conn, orows[0], {})
+      try {
+        await conn.execute(`UPDATE consumer_orders SET order_status='preparing' WHERE id=?`, [orderId])
+      } catch (_) {}
+      return {
+        orderId,
+        orderNo: ono,
+        totalAmount,
+        cashPaid,
+        pointsSpend,
+        offsetCash: offset,
+        pointsWant,
+        pointsAllocated: Number(fin.pointsAllocated) || Number(pointsWant) || 0,
+        pointsBalance: fin.pointsBalance,
+        status: 'preparing',
+        payStatus: 'paid',
+        commission: fin.commission,
+        merchantNet: fin.merchantNet,
+        ...payMeta
+      }
+    })
+  }
+
+  // 服务商商户号不能走直收；无二级商户时：模拟入账或明确报错，避免脏 unpaid 单
+  if (!String(subMchId || '').trim()) {
+    if (config.allowPaySimulate) {
+      return finalizeAsSimulated('门店未进件二级商户，已按模拟微信支付入账')
+    }
+    throw new HttpError(
+      400,
+      '门店尚未完成微信收款进件（缺少二级商户号），暂无法在线支付。请联系运营完成进件，或在联调环境开启 ALLOW_PAY_SIMULATE=1'
+    )
+  }
+
   const created = await withTransaction(async (conn) => {
     const orderId = await insertConsumerOrder(conn, { payChannel: 'wxpay' })
     await insertStallOrderItems(conn, orderId, lines)
@@ -392,10 +442,6 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
     return { orderId }
   })
 
-  const merchants = await query('SELECT name FROM merchants WHERE id=:id', { id: merchantId })
-  const shopName = merchants[0] ? merchants[0].name : '地摊点餐'
-  const openid = await getUserOpenid(userId)
-  const subMchId = await getMerchantSubMchId(merchantId)
   let prepay
   try {
     prepay = await wxService.createJsapiPayForOrder({
@@ -407,6 +453,8 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
       attach: `menu:${merchantId}`
     })
   } catch (e) {
+    const msg = String((e && e.message) || '')
+    const needSub = /sub_mch|二级商户|受理机构/i.test(msg)
     await withTransaction(async (conn) => {
       const [rows] = await conn.execute(
         `SELECT * FROM consumer_orders WHERE order_no=? AND pay_status='unpaid' FOR UPDATE`,
@@ -428,6 +476,10 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
         })
       }
     }).catch((err) => console.warn('[order] rollback prepay fail', err.message))
+
+    if (needSub && config.allowPaySimulate) {
+      return finalizeAsSimulated('微信支付需二级商户号，已按模拟支付入账')
+    }
     throw e
   }
 

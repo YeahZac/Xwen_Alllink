@@ -60,21 +60,25 @@ function pickCoverFromLicenses(licenses) {
   return ''
 }
 
-/** 列表行：cover 为空时从 materials 回填 */
+function isSeedOrEmptyCover(url) {
+  const s = String(url || '').trim()
+  if (!s) return true
+  // 平台演示素材 / 旧模拟封面，不应压过商户上传的店招
+  return /\/admin\/mp-static\/|\/admin\/(cover|banner)\//i.test(s)
+}
+
+/** 列表行：优先真实店招；演示封面可被 materials 店招覆盖 */
 function enrichCoverRow(row, coverKey = 'coverImage', materialsKey = 'materialsJson') {
   if (!row) return row
   const cur = row[coverKey] || row.coverUrl || ''
-  if (cur) {
-    if (!row.coverImage && row.coverUrl) row.coverImage = row.coverUrl
-    if (!row.coverUrl && row.coverImage) row.coverUrl = row.coverImage
-    delete row[materialsKey]
-    return row
-  }
   const picked = pickCoverFromLicenses(row[materialsKey] || row.materials)
-  if (picked) {
+  if (picked && (isSeedOrEmptyCover(cur) || !cur)) {
     row[coverKey] = picked
     row.coverUrl = picked
     row.coverImage = picked
+  } else if (cur) {
+    if (!row.coverImage && row.coverUrl) row.coverImage = row.coverUrl
+    if (!row.coverUrl && row.coverImage) row.coverUrl = row.coverImage
   }
   delete row[materialsKey]
   return row
