@@ -24,12 +24,17 @@ Page({
         : `当前门店 ID ${s.merchantId || '-'} · 仅管理本店商品`
       if (s.role === 'stall') {
         title = '本店点餐商品'
-        list = (rows || []).map((g) => ({
-          ...g,
-          coverImage: g.imageUrl || '',
-          line: `¥${g.price} · 划拨 ${g.pointsGrant} 积分 · 销量 ${g.sales || 0}`,
-          status: g.onSale ? '在售' : '下架'
-        }))
+        list = (rows || []).map((g) => {
+          const optN = Number(g.optionGroupCount || 0)
+          return {
+            ...g,
+            coverImage: g.imageUrl || '',
+            line: `¥${g.price} · 划拨 ${g.pointsGrant || 0} 积分 · ${
+              optN > 0 ? `规格${optN}组` : '未配规格'
+            } · 销量 ${g.sales || 0}`,
+            status: g.onSale ? '在售' : '下架'
+          }
+        })
       } else if (s.role === 'cross') {
         title = '本店兑换商品'
         list = (rows || []).map((g) => ({
@@ -175,50 +180,13 @@ Page({
       }
     })
   },
-  async onOptions(e) {
+  onOptions(e) {
     const id = e.currentTarget.dataset.id
     const g = this.data.list.find((x) => String(x.id) === String(id))
     if (!g) return
-    try {
-      wx.showLoading({ title: '加载规格' })
-      const groups = await api.merchantGoodsOptions(id)
-      wx.hideLoading()
-      const summary = (groups || [])
-        .map((gr) => `${gr.name}：${(gr.options || []).map((o) => o.name).join(' / ') || '空'}`)
-        .join('\n')
-      wx.showModal({
-        title: `${g.name} · 规格`,
-        content: summary || '尚未配置规格。可一键写入默认「口味」组（微辣/中辣/特辣）。',
-        confirmText: groups && groups.length ? '知道了' : '写入默认',
-        cancelText: '关闭',
-        success: async (r) => {
-          if (!r.confirm || (groups && groups.length)) return
-          try {
-            await api.saveMerchantGoodsOptions(id, [
-              {
-                name: '口味',
-                type: 'flavor',
-                required: true,
-                multiSelect: false,
-                minSelect: 1,
-                maxSelect: 1,
-                options: [
-                  { name: '微辣', priceDelta: 0, isDefault: 1 },
-                  { name: '中辣', priceDelta: 0 },
-                  { name: '特辣', priceDelta: 1 }
-                ]
-              }
-            ])
-            wx.showToast({ title: '规格已写入', icon: 'success' })
-          } catch (err) {
-            wx.showToast({ title: err.message || '保存失败', icon: 'none' })
-          }
-        }
-      })
-    } catch (err) {
-      wx.hideLoading()
-      wx.showToast({ title: err.message || '加载失败', icon: 'none' })
-    }
+    wx.navigateTo({
+      url: `/merchant/goods-options/goods-options?id=${id}&name=${encodeURIComponent(g.name || '')}`
+    })
   },
   saveGoods(g, patch) {
     return api.saveMerchantGoods({

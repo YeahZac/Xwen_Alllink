@@ -58,6 +58,16 @@
         <text class="field__label">允许积分抵现 + 微信支付</text>
         <text class="chip {{form.mixEnabled ? 'chip--soft' : 'chip--off'}}">{{form.mixEnabled ? '已开启' : '关闭'}}</text>
       </view>
+      <view class="field row-between" bindtap="toggle" data-key="allowRemark">
+        <text class="field__label">点餐允许填写备注</text>
+        <text class="chip {{form.allowRemark ? 'chip--soft' : 'chip--off'}}">{{form.allowRemark ? '已开启' : '关闭'}}</text>
+      </view>
+      <button
+        wx:if="{{goodsId}}"
+        class="btn-ghost opts-entry"
+        bindtap="onEditOptions"
+      >配置口味 / 分量 / 配料（SKU 规格）</button>
+      <text wx:else class="muted opts-hint">请先保存商品，再配置点餐规格</text>
     </block>
 
     <block wx:if="{{role === 'cross'}}">

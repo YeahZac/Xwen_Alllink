@@ -236,8 +236,10 @@ async function listGoods(merchantId, role) {
     try {
       return await query(
         `SELECT id, name, price, points_grant AS pointsGrant, category, unit, stock, on_sale AS onSale,
-                mix_enabled AS mixEnabled, image_url AS imageUrl, sku_code AS sku, sales_count AS sales,
-                desc_text AS description
+                mix_enabled AS mixEnabled, IFNULL(allow_remark,1) AS allowRemark,
+                image_url AS imageUrl, sku_code AS sku, sales_count AS sales,
+                desc_text AS description,
+                (SELECT COUNT(*) FROM stall_goods_option_groups og WHERE og.goods_id = stall_goods.id) AS optionGroupCount
          FROM stall_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
         { id: mid }
       )
@@ -245,7 +247,8 @@ async function listGoods(merchantId, role) {
       if (e && e.code !== 'ER_BAD_FIELD_ERROR') throw e
       return query(
         `SELECT id, name, price, points_grant AS pointsGrant, category, stock, on_sale AS onSale,
-                image_url AS imageUrl, sku_code AS sku, sales_count AS sales, desc_text AS description
+                image_url AS imageUrl, sku_code AS sku, sales_count AS sales, desc_text AS description,
+                1 AS allowRemark, 0 AS optionGroupCount
          FROM stall_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
         { id: mid }
       )

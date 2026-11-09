@@ -1,0 +1,95 @@
+<view class="page opts">
+  <view class="m-page-head">
+    <text class="m-page-head__title">{{goodsName}} · 点餐规格</text>
+    <text class="m-page-head__desc">配置口味/分量/配料名称与加价，保存后 C 端点餐弹层立即生效。单价 = 商品基础价 + 所选加价。</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty-state">
+    <text class="empty-state__title">加载规格中</text>
+  </view>
+
+  <block wx:else>
+    <view class="tpl-row">
+      <button class="btn-ghost sm" size="mini" bindtap="onTplMeal">正餐模板</button>
+      <button class="btn-ghost sm" size="mini" bindtap="onTplDrink">饮品模板</button>
+      <button class="btn-ghost sm danger" size="mini" bindtap="onClear">清空</button>
+    </view>
+
+    <view wx:if="{{!groups.length}}" class="empty-state surface">
+      <text class="empty-state__title">尚未配置规格</text>
+      <text class="empty-state__desc">可套用模板，或手动添加规格组</text>
+    </view>
+
+    <view wx:for="{{groups}}" wx:key="_key" wx:for-index="gi" class="group surface">
+      <view class="group__head">
+        <input
+          class="group__name"
+          value="{{item.name}}"
+          data-gi="{{gi}}"
+          bindinput="onGroupName"
+          placeholder="组名：口味/分量/配料"
+        />
+        <picker range="{{typeLabels}}" value="{{item.typeIndex}}" data-gi="{{gi}}" bindchange="onGroupType">
+          <view class="group__type">{{typeLabels[item.typeIndex]}}</view>
+        </picker>
+      </view>
+      <view class="group__flags">
+        <text class="flag {{item.required ? 'flag--on' : ''}}" data-gi="{{gi}}" bindtap="onToggleRequired">
+          {{item.required ? '必选' : '可选'}}
+        </text>
+        <text class="flag {{item.multiSelect ? 'flag--on' : ''}}" data-gi="{{gi}}" bindtap="onToggleMulti">
+          {{item.multiSelect ? '可多选' : '单选'}}
+        </text>
+        <text class="flag flag--danger" data-gi="{{gi}}" bindtap="onDelGroup">删除组</text>
+      </view>
+
+      <view wx:for="{{item.options}}" wx:for-item="opt" wx:for-index="oi" wx:key="_key" class="opt">
+        <input
+          class="opt__name"
+          value="{{opt.name}}"
+          data-gi="{{gi}}"
+          data-oi="{{oi}}"
+          bindinput="onOptName"
+          placeholder="选项名，如微辣"
+        />
+        <view class="opt__row">
+          <view class="opt__field">
+            <text class="opt__lab">加价¥</text>
+            <input
+              class="opt__num"
+              type="text"
+              value="{{opt.priceDelta}}"
+              data-gi="{{gi}}"
+              data-oi="{{oi}}"
+              bindinput="onOptPrice"
+              placeholder="可负，如 -1"
+            />
+          </view>
+          <view class="opt__field">
+            <text class="opt__lab">积分</text>
+            <input
+              class="opt__num"
+              type="number"
+              value="{{opt.pointsDelta}}"
+              data-gi="{{gi}}"
+              data-oi="{{oi}}"
+              bindinput="onOptPoints"
+            />
+          </view>
+          <text
+            class="flag {{opt.isDefault ? 'flag--on' : ''}}"
+            data-gi="{{gi}}"
+            data-oi="{{oi}}"
+            bindtap="onOptDefault"
+          >默认</text>
+          <text class="flag flag--danger" data-gi="{{gi}}" data-oi="{{oi}}" bindtap="onDelOption">删</text>
+        </view>
+      </view>
+
+      <button class="btn-ghost sm" size="mini" data-gi="{{gi}}" bindtap="onAddOption">+ 选项</button>
+    </view>
+
+    <button class="btn-ghost add-group" bindtap="onAddGroup">+ 规格组</button>
+    <button class="btn-primary" bindtap="onSave" loading="{{saving}}" disabled="{{saving}}">保存规格</button>
+  </block>
+</view>

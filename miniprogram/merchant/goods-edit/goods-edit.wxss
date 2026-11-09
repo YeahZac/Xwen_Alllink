@@ -75,3 +75,14 @@
   line-height: 1;
   font-weight: 300;
 }
+
+.opts-entry {
+  margin-top: var(--space-md);
+}
+
+.opts-hint {
+  display: block;
+  margin-top: var(--space-sm);
+  font-size: var(--font-tiny);
+  color: var(--color-text-secondary);
+}

@@ -146,8 +146,8 @@ async function saveGoodsOptionGroups(goodsId, groups) {
           [
             groupId,
             String(o.name).trim(),
-            Number(o.priceDelta) || 0,
-            Number(o.pointsDelta) || 0,
+            Number.isFinite(Number(o.priceDelta)) ? Number(o.priceDelta) : 0,
+            Number.isFinite(Number(o.pointsDelta)) ? Number(o.pointsDelta) : 0,
             o.isDefault ? 1 : 0,
             Number(o.sortOrder) || j + 1
           ]

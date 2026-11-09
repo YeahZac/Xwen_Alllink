@@ -44,6 +44,7 @@
     "merchant/mine/mine",
     "merchant/assets/assets",
     "merchant/goods-edit/goods-edit",
+    "merchant/goods-options/goods-options",
     "merchant/customers/customers",
     "merchant/needs/needs",
     "merchant/points-pool/points-pool",

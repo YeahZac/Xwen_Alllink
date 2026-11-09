@@ -1,0 +1,109 @@
+.opts .m-page-head {
+  margin-bottom: 16rpx;
+}
+
+.tpl-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-bottom: 20rpx;
+}
+
+.group {
+  padding: 24rpx;
+  margin-bottom: 20rpx;
+}
+
+.group__head {
+  display: flex;
+  gap: 16rpx;
+  align-items: center;
+}
+
+.group__name {
+  flex: 1;
+  min-width: 0;
+  background: #f7f4f0;
+  border-radius: 12rpx;
+  padding: 16rpx 20rpx;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.group__type {
+  padding: 16rpx 20rpx;
+  background: rgba(255, 77, 79, 0.08);
+  color: #ff4d4f;
+  border-radius: 999rpx;
+  font-size: 24rpx;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.group__flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin: 16rpx 0 8rpx;
+}
+
+.flag {
+  font-size: 22rpx;
+  padding: 8rpx 16rpx;
+  border-radius: 999rpx;
+  background: rgba(0, 0, 0, 0.05);
+  color: #666;
+}
+
+.flag--on {
+  background: rgba(255, 77, 79, 0.12);
+  color: #ff4d4f;
+  font-weight: 700;
+}
+
+.flag--danger {
+  color: #ff4d4f;
+}
+
+.opt {
+  padding: 16rpx 0;
+  border-top: 1rpx solid rgba(0, 0, 0, 0.06);
+}
+
+.opt__name {
+  background: #f7f4f0;
+  border-radius: 12rpx;
+  padding: 14rpx 18rpx;
+  font-size: 26rpx;
+  margin-bottom: 12rpx;
+}
+
+.opt__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.opt__field {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  background: #f7f4f0;
+  border-radius: 12rpx;
+  padding: 8rpx 12rpx;
+}
+
+.opt__lab {
+  font-size: 22rpx;
+  color: #888;
+}
+
+.opt__num {
+  width: 120rpx;
+  font-size: 26rpx;
+}
+
+.add-group {
+  margin: 8rpx 0 24rpx;
+}

@@ -30,7 +30,8 @@ Page({
       stock: '9999',
       onSale: 1,
       mixEnabled: 1,
-      allowMix: 1
+      allowMix: 1,
+      allowRemark: 1
     }
   },
   async onLoad(q) {
@@ -68,13 +69,24 @@ Page({
           stock: g.stock != null ? String(g.stock) : form.stock,
           onSale: g.onSale === 0 ? 0 : 1,
           mixEnabled: g.mixEnabled === 0 ? 0 : 1,
-          allowMix: g.allowMix === 0 ? 0 : 1
+          allowMix: g.allowMix === 0 ? 0 : 1,
+          allowRemark: g.allowRemark === 0 ? 0 : 1
         }
       })
     } catch (e) {
       wx.hideLoading()
       wx.showToast({ title: e.message || '加载失败', icon: 'none' })
     }
+  },
+  onEditOptions() {
+    const id = this.data.goodsId
+    if (!id) {
+      wx.showToast({ title: '请先保存商品', icon: 'none' })
+      return
+    }
+    wx.navigateTo({
+      url: `/merchant/goods-options/goods-options?id=${id}&name=${encodeURIComponent(this.data.form.name || '')}`
+    })
   },
   onField(e) {
     const key = e.currentTarget.dataset.key
@@ -133,7 +145,8 @@ Page({
       onSale: f.onSale ? 1 : 0,
       status: f.onSale ? 1 : 0,
       mixEnabled: f.mixEnabled ? 1 : 0,
-      allowMix: f.allowMix ? 1 : 0
+      allowMix: f.allowMix ? 1 : 0,
+      allowRemark: f.allowRemark ? 1 : 0
     }
     if (role === 'stall') {
       body.price = Number(f.price)
