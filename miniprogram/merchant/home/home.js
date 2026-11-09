@@ -178,35 +178,55 @@ Page({
   onQr() {
     this.onOrderQr()
   },
+  async previewAndSaveQr(kind) {
+    try {
+      wx.showLoading({ title: '生成小程序码', mask: true })
+      const data = await api.merchantStoreQrcode(kind, false)
+      wx.hideLoading()
+      const url = data.qrcodeUrl
+      if (!url) throw new Error('未返回二维码')
+      wx.previewImage({ urls: [url], current: url })
+      wx.showActionSheet({
+        itemList: ['保存到相册', '复制页面路径'],
+        success: async (r) => {
+          if (r.tapIndex === 1) {
+            wx.setClipboardData({ data: data.path || '' })
+            return
+          }
+          try {
+            const dl = await new Promise((resolve, reject) => {
+              wx.downloadFile({
+                url,
+                success: resolve,
+                fail: reject
+              })
+            })
+            await new Promise((resolve, reject) => {
+              wx.saveImageToPhotosAlbum({
+                filePath: dl.tempFilePath,
+                success: resolve,
+                fail: reject
+              })
+            })
+            wx.showToast({ title: '已保存相册', icon: 'success' })
+          } catch (e) {
+            wx.showToast({
+              title: e.errMsg && /auth deny|authorize/i.test(e.errMsg) ? '请允许保存到相册' : e.message || '保存失败',
+              icon: 'none'
+            })
+          }
+        }
+      })
+    } catch (e) {
+      wx.hideLoading()
+      wx.showToast({ title: e.message || '生成失败', icon: 'none' })
+    }
+  },
   onOrderQr() {
-    const merchantId = store.getSession().merchantId
-    const role = this.data.role
-    const pagePath =
-      role === 'cross'
-        ? `/pages/cross-detail/cross-detail?id=${merchantId}`
-        : `/pages/stall-menu/stall-menu?id=${merchantId}`
-    wx.showModal({
-      title: '点餐码',
-      content: `顾客用微信扫码后直接进入本店下单支付。\n路径：${pagePath}\n\n正式码需调用微信 getwxacodeunlimit 生成小程序码图片（可后续在商户端一键下载）。`,
-      confirmText: '复制路径',
-      cancelText: '关闭',
-      success: (result) => {
-        if (result.confirm) wx.setClipboardData({ data: pagePath })
-      }
-    })
+    this.previewAndSaveQr('menu')
   },
   onPayQr() {
-    const merchantId = store.getSession().merchantId
-    const pagePath = `/pages/scan-pay/scan-pay?id=${merchantId}`
-    wx.showModal({
-      title: '支付码 · 待服务商开通',
-      content: `顾客扫码后输入金额付款到本店。\n路径：${pagePath}\n\n当前：业务路径已通，但真实微信支付（进店主钱包 + 平台抽成）需完成服务商入驻与二级商户号绑定后才能上线；现阶段为模拟入账。`,
-      confirmText: '复制路径',
-      cancelText: '关闭',
-      success: (result) => {
-        if (result.confirm) wx.setClipboardData({ data: pagePath })
-      }
-    })
+    this.previewAndSaveQr('pay')
   },
   async onSwitchConsumer() {
     wx.showLoading({ title: '切换中', mask: true })

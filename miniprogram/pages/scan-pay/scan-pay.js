@@ -72,7 +72,8 @@ Page({
   onLoad(query) {
     this._payLock = false
     this.setData({ headerTop: headerOffset() })
-    const qid = String((query && (query.id || query.stallId || query.mid)) || '').trim()
+    const scene = require('../../utils/scene')
+    const qid = scene.merchantIdFromQuery(query)
     const pending = scan.getPendingPay()
     const stallId = qid || (pending && pending.stallId) || ''
     let amountText = String((query && query.amount) || '').trim()

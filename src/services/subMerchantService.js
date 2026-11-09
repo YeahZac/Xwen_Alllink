@@ -265,6 +265,69 @@ async function getSubMerchantDetail(id) {
   }
 }
 
+/**
+ * 进件资料是否齐备（不上传媒体，仅本地校验）
+ * @returns {{ ready: boolean, missing: string[], organizationType: string }}
+ */
+function materialsReadyForApplyment(merchantOrRow, materialsIn, settlementIn) {
+  const merchant = merchantOrRow || {}
+  const materials = materialsIn || materialsOf(merchant)
+  const settlement = settlementIn || settlementOf(merchant)
+  const orgType = resolveOrgType(merchant, { ...materials, ...settlement })
+  const missing = []
+  const idName = String(materials.idCardName || merchant.legal_person || '').trim()
+  const idNo = String(materials.idCardNumber || '').trim().toUpperCase()
+  const idBegin = String(materials.idCardValidBegin || '').trim()
+  const idEnd = String(materials.idCardValidEnd || '').trim()
+  const phone = String(merchant.contact_phone || materials.contactPhone || '').trim()
+  const bankNo = String(materials.bankAccountNo || settlement.bankAccountNo || '').replace(/\s/g, '')
+  const bankName = String(materials.bankName || settlement.bankName || '').trim()
+  if (!idName) missing.push('身份证姓名')
+  if (!/^\d{17}[\dX]$/.test(idNo)) missing.push('身份证号码')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(idBegin)) missing.push('证件有效期起')
+  if (!(idEnd === '长期' || /^\d{4}-\d{2}-\d{2}$/.test(idEnd))) missing.push('证件有效期止')
+  if (!phone) missing.push('联系手机')
+  if (!bankNo) missing.push('结算银行卡号')
+  if (!bankName) missing.push('开户银行')
+  if (!licenseUrl(materials.idCardFront)) missing.push('身份证人像面')
+  if (!licenseUrl(materials.idCardBack)) missing.push('身份证国徽面')
+  if (!licenseUrl(materials.storePhoto || materials.stallPhoto || merchant.cover_url)) {
+    missing.push('经营场景照')
+  }
+  if (orgType !== '2401' && orgType !== '2500') {
+    if (!licenseUrl(materials.businessLicense)) missing.push('营业执照')
+    if (!String(merchant.credit_code || materials.creditCode || '').trim()) {
+      missing.push('统一社会信用代码')
+    }
+  }
+  return { ready: missing.length === 0, missing, organizationType: orgType }
+}
+
+/** 审核通过后异步自动进件（不阻塞审核事务） */
+async function maybeAutoSubmitAfterApprove(merchantId) {
+  const enabled = String(await getConfig('wx_applyment_auto_submit', '1')) === '1'
+  if (!enabled) return { skipped: true, reason: 'config_off' }
+  if (!wxPayService.wxPayConfigured()) return { skipped: true, reason: 'wxpay_unconfigured' }
+  const m = await loadMerchant(merchantId)
+  if (m.wx_sub_mch_id) return { skipped: true, reason: 'already_sub_mch' }
+  const check = materialsReadyForApplyment(m)
+  if (!check.ready) {
+    return { skipped: true, reason: 'materials_incomplete', missing: check.missing }
+  }
+  try {
+    const detail = await submitApplyment(merchantId, {})
+    return {
+      ok: true,
+      state: detail.wxApplyState,
+      applymentId: detail.wxApplymentId,
+      organizationType: check.organizationType
+    }
+  } catch (e) {
+    console.warn('[subMerchant] auto submit after approve', merchantId, e.message)
+    return { ok: false, error: e.message, missing: check.missing }
+  }
+}
+
 async function buildApplymentBody(merchant, materials, settlement, { outRequestNo, media } = {}) {
   const orgType = resolveOrgType(merchant, { ...materials, ...settlement })
   const idName = String(materials.idCardName || merchant.legal_person || '').trim()
@@ -830,5 +893,7 @@ module.exports = {
   updateSettlementDraft,
   getMerchantSelfWxStatus,
   merchantUpdateSettlement,
-  maybeAutoProfitShare
+  maybeAutoProfitShare,
+  materialsReadyForApplyment,
+  maybeAutoSubmitAfterApprove
 }

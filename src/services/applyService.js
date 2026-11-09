@@ -4,6 +4,7 @@ const { orderNo, shortCode } = require('../utils/id')
 const { parsePaging, pageResult } = require('../utils/paging')
 const cityService = require('./cityService')
 const referralService = require('./referralService')
+const { getConfig } = require('./configService')
 const { parseMaybeJson, pickCoverFromLicenses } = require('../utils/mediaPick')
 
 const ROLE_LICENSE_RULES = {
@@ -185,25 +186,93 @@ async function submitApply(body) {
       }
     )
   }
-  return {
+  const base = {
     applyNo,
     status: 'pending',
     statusText: '审核中',
     referrerCode: referrer.code,
     remark:
       body.role === 'stall'
-        ? '已提交（无证个人经营者路径），预计1-3个工作日核验身份与摊位；通过后将通知商户邀请码'
+        ? '已提交（无证个人经营者路径），资料齐全将自动审核；也可由运营台人工复核'
         : '预计1-3个工作日审核，通过后将通知商户邀请码'
   }
+
+  // 可选自动审核（默认开，角色白名单默认仅 stall）
+  try {
+    const auto = await maybeAutoApproveByApplyNo(applyNo, body.role)
+    if (auto && auto.approved) {
+      return {
+        ...base,
+        status: 'approved',
+        statusText: '已通过',
+        merchantId: auto.merchantId,
+        inviteCode: auto.inviteCode,
+        autoApproved: true,
+        wxApplyment: auto.wxApplyment || null,
+        remark: '资料校验通过，已自动审核入驻'
+      }
+    }
+    if (auto && auto.skipped) base.autoApproveSkipped = auto.reason
+  } catch (e) {
+    console.warn('[apply] auto-approve', e.message)
+    base.autoApproveError = e.message
+  }
+  return base
 }
 
-async function queryByPhone(phone) {
+async function findApplyIdByNo(applyNo) {
+  const rows = await query(
+    'SELECT id FROM merchant_applications WHERE apply_no=:no LIMIT 1',
+    { no: String(applyNo || '') }
+  )
+  return rows.length ? Number(rows[0].id) : 0
+}
+
+async function maybeAutoApproveByApplyNo(applyNo, role) {
+  const enabled = String(await getConfig('apply_auto_approve', '1')) === '1'
+  if (!enabled) return { skipped: true, reason: 'config_off' }
+  const rolesRaw = String(await getConfig('apply_auto_approve_roles', 'stall'))
+  const allow = rolesRaw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (allow.length && !allow.includes(String(role))) {
+    return { skipped: true, reason: 'role_not_allowed' }
+  }
+  const applyId = await findApplyIdByNo(applyNo)
+  if (!applyId) return { skipped: true, reason: 'apply_not_found' }
+  const approved = await approveApply(applyId, {
+    reviewerId: 0,
+    reviewerName: 'system-auto',
+    remark: '自动审核通过'
+  })
+  // 事务外异步进件，避免拖慢入驻响应
+  let wxApplyment = null
+  if (approved && approved.merchantId) {
+    setImmediate(() => {
+      const subMerchantService = require('./subMerchantService')
+      subMerchantService
+        .maybeAutoSubmitAfterApprove(approved.merchantId)
+        .then((r) => console.log('[apply] auto 进件', approved.merchantId, r))
+        .catch((e) => console.warn('[apply] auto 进件', e.message))
+    })
+    wxApplyment = { queued: true }
+  }
+  return { approved: true, ...approved, wxApplyment }
+}
+
+async function queryByPhone(phone, { applyNo } = {}) {
+  const p = String(phone || '').trim()
+  if (!/^1\d{10}$/.test(p)) throw new HttpError(400, '手机号无效')
+  const ano = String(applyNo || '').trim()
+  // 防刷：必须同时提供申请单号，避免仅凭手机号枚举
+  if (!ano) throw new HttpError(400, '请提供申请单号 applyNo')
   const rows = await query(
     `SELECT apply_no, role, shop_name, status, reject_reason, created_at, merchant_id
      FROM merchant_applications
-     WHERE contact_phone = :phone
+     WHERE contact_phone = :phone AND apply_no = :ano
      ORDER BY id DESC LIMIT 1`,
-    { phone }
+    { phone: p, ano }
   )
   if (!rows.length) throw new HttpError(404, '未找到申请记录')
   return mapStatusRow(rows[0])
@@ -525,7 +594,7 @@ async function approveApply(applyId, { reviewerId, reviewerName, remark } = {}) 
       reviewerName
     })
 
-    return {
+    const result = {
       merchantId,
       inviteCode,
       merchantNo,
@@ -534,6 +603,17 @@ async function approveApply(applyId, { reviewerId, reviewerName, remark } = {}) 
       referralReward: rewarded && rewarded.reward ? rewarded.reward : 0,
       reopened: fromStatus === 'rejected'
     }
+    // 人工审核通过后同样排队自动进件（资料不齐则跳过，可运营台补提）
+    if (merchantId && String(reviewerName || '') !== 'system-auto') {
+      setImmediate(() => {
+        const subMerchantService = require('./subMerchantService')
+        subMerchantService
+          .maybeAutoSubmitAfterApprove(merchantId)
+          .then((r) => console.log('[apply] post-approve 进件', merchantId, r))
+          .catch((e) => console.warn('[apply] post-approve 进件', e.message))
+      })
+    }
+    return result
   })
 }
 

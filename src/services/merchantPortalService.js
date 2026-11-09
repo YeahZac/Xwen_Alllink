@@ -435,6 +435,80 @@ async function getCrossStoreDetail(id) {
   return s
 }
 
+/**
+ * 生成/缓存门店点餐码、收款码（微信 getwxacodeunlimit）
+ * kind: menu | pay
+ */
+async function getOrCreateStoreQrcode(merchantId, { kind = 'menu', force = false } = {}) {
+  const wxService = require('./wxService')
+  const storageService = require('./storageService')
+
+  const mid = Number(merchantId)
+  if (!mid) throw new HttpError(400, '缺少门店')
+  const k = kind === 'pay' ? 'pay' : 'menu'
+  let rows
+  try {
+    rows = await query(
+      `SELECT id, role, name, menu_qrcode_url AS menuUrl, pay_qrcode_url AS payUrl
+       FROM merchants WHERE id=:id AND deleted_at IS NULL LIMIT 1`,
+      { id: mid }
+    )
+  } catch (e) {
+    if (/Unknown column.*menu_qrcode|Unknown column.*pay_qrcode/i.test(String(e.message || ''))) {
+      throw new HttpError(503, '请先执行 sql/37_flow_automation.sql')
+    }
+    throw e
+  }
+  if (!rows.length) throw new HttpError(404, '门店不存在')
+  const m = rows[0]
+  const cached = k === 'pay' ? String(m.payUrl || '').trim() : String(m.menuUrl || '').trim()
+  const page =
+    k === 'pay'
+      ? 'pages/scan-pay/scan-pay'
+      : m.role === 'cross'
+        ? 'pages/cross-detail/cross-detail'
+        : 'pages/stall-menu/stall-menu'
+  const pathHint = `/${page}?id=${mid}`
+  if (cached && !force) {
+    return {
+      kind: k,
+      merchantId: mid,
+      shopName: m.name,
+      page,
+      path: pathHint,
+      scene: `id=${mid}`,
+      qrcodeUrl: cached,
+      cached: true
+    }
+  }
+  const scene = `id=${mid}`.slice(0, 32)
+  const png = await wxService.getUnlimitedQrCode({ scene, page })
+  const uploaded = await storageService.uploadBuffer({
+    buffer: png,
+    mime: 'image/png',
+    originalName: `store-${k}-${mid}.png`,
+    bizType: 'store_qr',
+    skipOptimize: true
+  })
+  const url = uploaded.fileUrl || uploaded.url || ''
+  if (!url) throw new HttpError(502, '门店码上传失败')
+  if (k === 'pay') {
+    await query('UPDATE merchants SET pay_qrcode_url=:u WHERE id=:id', { u: url, id: mid })
+  } else {
+    await query('UPDATE merchants SET menu_qrcode_url=:u WHERE id=:id', { u: url, id: mid })
+  }
+  return {
+    kind: k,
+    merchantId: mid,
+    shopName: m.name,
+    page,
+    path: pathHint,
+    scene,
+    qrcodeUrl: url,
+    cached: false
+  }
+}
+
 module.exports = {
   ROLE_LABEL,
   dashboard,
@@ -450,5 +524,6 @@ module.exports = {
   listCustomers,
   listFlow,
   listSupplyMerchants,
-  getCrossStoreDetail
+  getCrossStoreDetail,
+  getOrCreateStoreQrcode
 }

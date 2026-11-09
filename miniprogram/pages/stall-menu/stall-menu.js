@@ -67,13 +67,14 @@ Page({
     loading: true
   },
   async onLoad(query) {
-    if (query && query.from === 'scan' && query.id) {
-      wx.redirectTo({ url: scan.scanPayUrl(query.id) })
+    const scene = require('../../utils/scene')
+    const stallId = scene.merchantIdFromQuery(query)
+    if (query && query.from === 'scan' && stallId) {
+      wx.redirectTo({ url: scan.scanPayUrl(stallId) })
       return
     }
     // 允许游客先看菜单；加购时再登录（soft），避免 reLaunch 丢掉门店 id
     if (!store.ensureConsumerOrRedirect({ allowGuest: true, soft: true })) return
-    const stallId = query.id
     if (!stallId) {
       wx.showToast({ title: '缺少门店', icon: 'none' })
       setTimeout(() => wx.navigateBack({ fail: () => wx.switchTab({ url: '/pages/index/index' }) }), 500)

@@ -13,14 +13,16 @@ Page({
   },
   async onLoad(q) {
     if (!store.ensureConsumerOrRedirect()) return
-    if (!q.id) {
+    const scene = require('../../utils/scene')
+    const id = scene.merchantIdFromQuery(q)
+    if (!id) {
       wx.showToast({ title: '缺少门店信息', icon: 'none' })
       setTimeout(() => wx.navigateBack({ fail: () => wx.switchTab({ url: '/pages/cross/cross' }) }), 500)
       return
     }
     try {
       wx.showLoading({ title: '加载中' })
-      const s = await api.crossStore(q.id)
+      const s = await api.crossStore(id)
       wx.hideLoading()
       this.setData({
         store: {
@@ -31,7 +33,7 @@ Page({
         items: (s.items || []).map((it) => this.withMix(it, store.getConsumerPoints()))
       })
       wx.setNavigationBarTitle({ title: s.name || '异业门店' })
-      api.trackVisit({ roleScope: 'consumer', pageKey: 'cross', merchantId: Number(q.id) }).catch(() => {})
+      api.trackVisit({ roleScope: 'consumer', pageKey: 'cross', merchantId: Number(id) }).catch(() => {})
     } catch (e) {
       wx.hideLoading()
       wx.showToast({ title: e.message || '加载失败', icon: 'none' })

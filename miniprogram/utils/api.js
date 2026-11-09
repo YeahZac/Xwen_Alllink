@@ -215,8 +215,13 @@ const api = {
   submitApply: (body) =>
     request({ path: '/apply/submit', method: 'POST', auth: false, data: body }),
 
-  applyStatus: (phone) =>
-    request({ path: `/apply/status?phone=${encodeURIComponent(phone)}`, auth: false }),
+  applyStatus: (phone, applyNo) =>
+    request({
+      path: `/apply/status?phone=${encodeURIComponent(phone || '')}&applyNo=${encodeURIComponent(
+        applyNo || ''
+      )}`,
+      auth: false
+    }),
 
   applyStatusMine: () => request({ path: '/apply/status/mine' }),
 
@@ -278,6 +283,12 @@ const api = {
   merchantWxSubStatus: () => request({ path: '/merchant/wx-sub/status' }),
   merchantWxSubSettlement: (body) =>
     request({ path: '/merchant/wx-sub/settlement', method: 'PATCH', data: body || {} }),
+  merchantStoreQrcode: (kind = 'menu', force = false) =>
+    request({
+      path: `/merchant/store-qrcode?kind=${encodeURIComponent(kind || 'menu')}${
+        force ? '&force=1' : ''
+      }`
+    }),
 
   // 合伙人
   submitPartnerApply: (body) =>

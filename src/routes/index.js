@@ -301,7 +301,9 @@ router.post('/apply/submit', async (req, res, next) => {
 
 router.get('/apply/status', async (req, res, next) => {
   try {
-    res.json(ok(await applyService.queryByPhone(req.query.phone)))
+    res.json(
+      ok(await applyService.queryByPhone(req.query.phone, { applyNo: req.query.applyNo }))
+    )
   } catch (e) {
     next(e)
   }
@@ -1910,6 +1912,27 @@ router.patch(
 )
 
 /** 商家端：进件状态 / 补结算资料 */
+router.get(
+  '/merchant/store-qrcode',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      if (!req.auth.merchantId) throw new HttpError(400, '未绑定门店')
+      res.json(
+        ok(
+          await merchantPortalService.getOrCreateStoreQrcode(req.auth.merchantId, {
+            kind: req.query.kind || 'menu',
+            force: req.query.force === '1' || req.query.force === 'true'
+          })
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
 router.get(
   '/merchant/wx-sub/status',
   authRequired,
