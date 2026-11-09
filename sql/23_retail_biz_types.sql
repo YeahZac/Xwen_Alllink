@@ -2,16 +2,7 @@
 -- 重要：禁止再批量改写真实入驻商户的 name / cover / address。
 -- 演示店名回写已造成「海川众核科技」被改成「甜森蛋糕」等问题；见 sql/43_restore_apply_merchant_identity.sql
 
--- 仅确保常见零售类目存在；不删除运营自定义类目
-INSERT INTO `goods_categories` (`role`, `name`, `sort_order`, `status`) VALUES
-('stall', '餐饮', 10, 1),
-('stall', '百货商店', 20, 1),
-('cross', '餐饮', 10, 1),
-('cross', '百货商店', 20, 1),
-('supply', '粮油', 10, 1),
-('supply', '生鲜', 20, 1)
-ON DUPLICATE KEY UPDATE
-  `sort_order` = VALUES(`sort_order`);
+-- 商品类目改由运营台维护，禁止在迁移里反复 INSERT 演示类目
 
 -- 仅给「尚未有 biz_type」的商户补默认品类，不覆盖已有值
 UPDATE `merchants`

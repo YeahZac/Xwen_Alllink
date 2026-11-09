@@ -2492,7 +2492,7 @@ async function renderGoods() {
 
 async function renderGoodsCategories() {
   const editable = canEdit('goods_categories')
-  const pageState = { page: 1, pageSize: 20 }
+  const pageState = { page: 1, pageSize: 50 }
   content().innerHTML = `
     <div class="toolbar">
       <select id="catRole">
@@ -2504,7 +2504,7 @@ async function renderGoodsCategories() {
       <button class="btn" id="btnReload">刷新</button>
       ${editable ? '<button class="btn primary" id="btnAdd">新建类目</button>' : ''}
     </div>
-    <div class="muted" style="margin:8px 0 12px">类目按<strong>角色</strong>配置（地摊/异业/供应链）。小程序「分类」页展示<strong>全部启用类目</strong>（含封面），点击后再进入该类目下的关联商家列表；封面在编辑里上传。</div>
+    <div class="muted" style="margin:8px 0 12px">类目按<strong>角色</strong>配置（地摊/异业/供应链）。小程序只展示本页启用中的类目。服务启动时<strong>不会再自动灌演示类目</strong>；请勿依赖种子数据。</div>
     <div id="list"></div>`
   const load = async () => {
     const role = $('catRole').value

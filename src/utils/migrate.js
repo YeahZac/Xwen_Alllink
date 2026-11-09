@@ -252,6 +252,11 @@ async function ensureSchema() {
     console.warn('[schema] goods categories trim', e.message)
   }
   try {
+    await runSqlStatements('45_purge_seed_categories.sql', 'purge seed goods categories')
+  } catch (e) {
+    console.warn('[schema] purge seed categories', e.message)
+  }
+  try {
     await addColumn(
       'admin_accounts',
       'user_id',
