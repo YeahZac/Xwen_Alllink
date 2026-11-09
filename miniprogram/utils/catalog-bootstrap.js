@@ -10,7 +10,6 @@ function stamp(row) {
     initial: (row.name || '').slice(0, 1),
     coverImage: coverPack.resolveCover(row),
     open: 1,
-    rating: 4.8,
     bootstrap: true
   }
 }

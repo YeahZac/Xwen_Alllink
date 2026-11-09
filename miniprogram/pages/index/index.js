@@ -55,8 +55,7 @@ const RETAIL_CATS = [
 
 const CATEGORY_MAP = {
   stall: RETAIL_CATS,
-  cross: RETAIL_CATS,
-  supply: RETAIL_CATS
+  store: RETAIL_CATS
 }
 
 function cuisineOf(item) {
@@ -88,7 +87,8 @@ Page({
     locating: false,
     category: 'all',
     categories: CATEGORY_MAP.stall,
-    sort: 'distance'
+    sort: 'distance',
+    feedTitle: '附近地摊'
   },
   onLoad() {
     const sys = wx.getSystemInfoSync()
@@ -166,8 +166,8 @@ Page({
     }
 
     this.reload({ preferCache: true })
-    // 仅已授权时后台校正真实位置；未授权继续用沙井默认
-    this.ensureLocationSoft()
+    // 默认沙井数据先出数；同时主动申请定位（未授权会弹系统框）
+    this.ensureLocationOnEnter()
       .then((needReload) => {
         if (needReload) {
           homePrefetch.refreshWithQuery(this.geoQuery())
@@ -176,11 +176,17 @@ Page({
       })
       .catch(() => {})
   },
-  /** 首进不强制要定位权限；已授权才静默同步真实位置 */
-  async ensureLocationSoft() {
+  /**
+   * 默认定位保证首屏有数；进入首页即请求真实位置。
+   * - 未询问：直接 getLocation → 系统弹窗
+   * - 已授权：静默校正
+   * - 已拒绝：保留默认，不强弹（用户可点「定位」）
+   */
+  async ensureLocationOnEnter() {
+    location.ensureDefaultLoc()
+    this.syncLocationText()
     if (location.isFresh(location.getSaved())) {
       this.setData({ locating: false })
-      this.syncLocationText()
       return false
     }
     let auth
@@ -189,13 +195,13 @@ Page({
     } catch (_) {
       auth = undefined
     }
-    // 未询问 / 已拒绝：保持沙井默认，等用户点「定位」再授权
-    if (auth !== true) {
+    if (auth === false) {
       this.setData({ locating: false })
       this.syncLocationText()
       return false
     }
-    return this.ensureLocation({ force: false })
+    // undefined=未询问 → force 拉起授权弹窗；true=已授权静默
+    return this.ensureLocation({ force: auth !== true })
   },
   geoQuery() {
     return location.queryFromSaved()
@@ -276,6 +282,7 @@ Page({
       points,
       cashValue: Number(cashRaw).toFixed(2),
       displayList,
+      feedTitle: tab === 'store' ? '附近门店' : '附近地摊',
       loading: false,
       loadHint: displayList.length
         ? ''
@@ -473,104 +480,71 @@ Page({
     const sort = (ctx && ctx.sort != null ? ctx.sort : this.data.sort) || 'distance'
     const stalls = (ctx && ctx.stalls) || this.data.stalls || []
     const crossStores = (ctx && ctx.crossStores) || this.data.crossStores || []
-    const supplyMerchants = (ctx && ctx.supplyMerchants) || this.data.supplyMerchants || []
     let list = []
-    if (tab === 'stall') {
-      list = stalls.map((s) => {
-        const used = new Set()
-        const priceText = `月售 ${s.sales || 0}`
-        used.add(priceText)
-        const hint = s.address || s.city || ''
-        used.add(hint)
-        return {
-          ...s,
-          itemType: 'stall',
-          initial: s.initial || (s.name || '摊').slice(0, 1),
-          coverImage: coverPack.resolveCover({
+    // 兼容旧缓存 tab=cross
+    const mode = tab === 'cross' || tab === 'store' ? 'store' : 'stall'
+    if (mode === 'stall') {
+      list = stalls
+        .filter((s) => Number(s.open == null ? 1 : s.open) === 1)
+        .map((s) => {
+          const used = new Set()
+          const hint = s.address || s.city || ''
+          used.add(hint)
+          return {
             ...s,
-            role: 'stall',
             itemType: 'stall',
-            bizType: s.bizType || s.category || s.tag
-          }),
-          badge: s.open === false ? '休息中' : cuisineOf(s),
-          rating: Number(s.rating || 4.8).toFixed(1),
-          descLine: firstUnique([s.desc, s.category, cuisineOf(s)], used),
-          distanceText: firstUnique([isDistanceText(s.distance) ? s.distance : ''], used),
-          priceText,
-          dealLine: '消费得积分 · 可兑鲜花蛋糕百货',
-          tags: uniqueTags(s.tags || s.tag, [cuisineOf(s)], used),
-          hint,
-          cuisine: cuisineOf(s),
-          salesNum: Number(s.sales || 0),
-          ratingNum: Number(s.rating || 4.8),
-          distanceKm: s.distanceKm == null ? null : Number(s.distanceKm),
-          cta: '去点餐'
-        }
-      })
-    } else if (tab === 'cross') {
-      list = crossStores.map((s) => {
-        const used = new Set()
-        const priceText = '积分可兑'
-        used.add(priceText)
-        const hint = s.address || s.city || ''
-        used.add(hint)
-        return {
-          ...s,
-          itemType: 'cross',
-          initial: s.initial || (s.name || '异').slice(0, 1),
-          coverImage: coverPack.resolveCover({
-            ...s,
-            role: 'cross',
-            itemType: 'cross',
-            bizType: s.bizType || s.category || s.tag
-          }),
-          badge: cuisineOf(s),
-          rating: Number(s.rating || 4.7).toFixed(1),
-          descLine: firstUnique([s.category, cuisineOf(s)], used),
-          distanceText: firstUnique([isDistanceText(s.distance) ? s.distance : ''], used),
-          priceText,
-          dealLine: '积分抵现 · 不够可补现金',
-          tags: uniqueTags(s.tags || s.category, [cuisineOf(s), '可兑'], used),
-          hint,
-          cuisine: cuisineOf(s),
-          salesNum: Number(s.sales || 0),
-          ratingNum: Number(s.rating || 4.7),
-          distanceKm: s.distanceKm == null ? null : Number(s.distanceKm),
-          cta: '去兑换'
-        }
-      })
+            initial: s.initial || (s.name || '摊').slice(0, 1),
+            coverImage: coverPack.resolveCover({
+              ...s,
+              role: 'stall',
+              itemType: 'stall',
+              bizType: s.bizType || s.category || s.tag
+            }),
+            badge: cuisineOf(s),
+            rating: '',
+            descLine: firstUnique([s.desc, s.category, cuisineOf(s)], used),
+            distanceText: firstUnique([isDistanceText(s.distance) ? s.distance : ''], used),
+            priceText: '',
+            dealLine: '消费得积分 · 可兑鲜花蛋糕百货',
+            tags: uniqueTags(s.tags || s.tag, [cuisineOf(s), '地摊'], used),
+            hint,
+            cuisine: cuisineOf(s),
+            distanceKm: s.distanceKm == null ? null : Number(s.distanceKm),
+            cta: '去点餐'
+          }
+        })
     } else {
-      list = supplyMerchants.map((s) => {
-        const used = new Set()
-        const priceText = `在售 ${s.goodsCount || 0} SKU`
-        used.add(priceText)
-        const hint = s.address || s.city || ''
-        used.add(hint)
-        return {
-          ...s,
-          itemType: 'supply',
-          initial: s.initial || (s.name || '供').slice(0, 1),
-          coverImage: coverPack.resolveCover({
+      // 门店 = 营业中的异业门店（role=cross）
+      list = crossStores
+        .filter((s) => (s.role || 'cross') === 'cross')
+        .filter((s) => Number(s.open == null ? 1 : s.open) === 1)
+        .map((s) => {
+          const used = new Set()
+          const hint = s.address || s.city || ''
+          used.add(hint)
+          return {
             ...s,
-            role: 'supply',
-            itemType: 'supply',
-            bizType: s.bizType || s.category || s.tag
-          }),
-          badge: cuisineOf(s),
-          rating: '',
-          descLine: firstUnique([cuisineOf(s) + '供货', s.city], used),
-          distanceText: firstUnique([isDistanceText(s.distance) ? s.distance : ''], used),
-          priceText,
-          dealLine: '批发配送 · 可提交采购需求',
-          tags: uniqueTags(s.tags, [cuisineOf(s), '供货'], used),
-          hint,
-          cuisine: cuisineOf(s),
-          salesNum: Number(s.goodsCount || 0),
-          ratingNum: 0,
-          distanceKm: s.distanceKm == null ? null : Number(s.distanceKm),
-          cta: '提需求'
-        }
-      })
+            itemType: 'cross',
+            initial: s.initial || (s.name || '店').slice(0, 1),
+            coverImage: coverPack.resolveCover({
+              ...s,
+              role: 'cross',
+              itemType: 'cross',
+              bizType: s.bizType || s.category || s.tag
+            }),
+            badge: cuisineOf(s),
+            rating: '',
+            descLine: firstUnique([s.category, cuisineOf(s)], used),
+            distanceText: firstUnique([isDistanceText(s.distance) ? s.distance : ''], used),
+            priceText: '',
+            dealLine: '积分抵现 · 不够可补现金',
+            tags: uniqueTags(s.tags || s.category, [cuisineOf(s), '门店'], used),
+            hint,
+            cuisine: cuisineOf(s),
+            distanceKm: s.distanceKm == null ? null : Number(s.distanceKm),
+            cta: '进店'
+          }
+        })
     }
     if (category && category !== 'all') {
       list = list.filter((s) => s.cuisine === category)
@@ -582,8 +556,6 @@ Page({
       })
     }
     list = list.slice().sort((a, b) => {
-      if (sort === 'rating') return (b.ratingNum || 0) - (a.ratingNum || 0)
-      if (sort === 'sales') return (b.salesNum || 0) - (a.salesNum || 0)
       const da = a.distanceKm == null || Number.isNaN(a.distanceKm) ? Number.POSITIVE_INFINITY : a.distanceKm
       const db = b.distanceKm == null || Number.isNaN(b.distanceKm) ? Number.POSITIVE_INFINITY : b.distanceKm
       return da - db
@@ -591,23 +563,31 @@ Page({
     return list
   },
   buildDisplayList(tab) {
-    this.setData({ displayList: this.computeDisplayList(tab) })
+    const mode = tab === 'cross' ? 'store' : tab
+    this.setData({
+      displayList: this.computeDisplayList(mode),
+      feedTitle: mode === 'store' ? '附近门店' : '附近地摊'
+    })
   },
   onSort(e) {
     const sort = e.currentTarget.dataset.sort
     if (!sort || sort === this.data.sort) return
+    // 仅保留距离排序
+    if (sort !== 'distance') return
     this.setData({ sort })
     this.buildDisplayList(this.data.tab)
   },
   onTab(e) {
     const tab = e.currentTarget.dataset.tab
     if (!tab || tab === this.data.tab) return
+    const mode = tab === 'cross' ? 'store' : tab
     this.setData({
-      tab,
+      tab: mode,
       category: 'all',
-      categories: CATEGORY_MAP[tab] || CATEGORY_MAP.stall
+      categories: CATEGORY_MAP[mode] || CATEGORY_MAP.stall,
+      feedTitle: mode === 'store' ? '附近门店' : '附近地摊'
     })
-    this.buildDisplayList(tab)
+    this.buildDisplayList(mode)
   },
   onCategory(e) {
     const id = e.currentTarget.dataset.id

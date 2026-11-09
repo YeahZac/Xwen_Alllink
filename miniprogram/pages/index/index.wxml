@@ -78,17 +78,14 @@
 
     <view class="feed">
       <view class="feed__top">
-        <text class="feed__title">{{tab === 'stall' ? '附近好店' : tab === 'cross' ? '附近可兑门店' : '附近供货商'}}</text>
+        <text class="feed__title">{{feedTitle}}</text>
         <view class="sort-row">
           <text class="sort {{sort === 'distance' ? 'sort--on' : ''}}" bindtap="onSort" data-sort="distance">距离</text>
-          <text class="sort {{sort === 'rating' ? 'sort--on' : ''}}" bindtap="onSort" data-sort="rating">好评</text>
-          <text class="sort {{sort === 'sales' ? 'sort--on' : ''}}" bindtap="onSort" data-sort="sales">月售</text>
         </view>
       </view>
       <view class="sec-tabs">
-        <view class="sec-tab {{tab === 'stall' ? 'sec-tab--on' : ''}}" bindtap="onTab" data-tab="stall">点餐</view>
-        <view class="sec-tab {{tab === 'cross' ? 'sec-tab--on' : ''}}" bindtap="onTab" data-tab="cross">兑换</view>
-        <view class="sec-tab {{tab === 'supply' ? 'sec-tab--on' : ''}}" bindtap="onTab" data-tab="supply">供货</view>
+        <view class="sec-tab {{tab === 'stall' ? 'sec-tab--on' : ''}}" bindtap="onTab" data-tab="stall">地摊</view>
+        <view class="sec-tab {{tab === 'store' || tab === 'cross' ? 'sec-tab--on' : ''}}" bindtap="onTab" data-tab="store">门店</view>
       </view>
       <scroll-view class="cat-rail" scroll-x show-scrollbar="{{false}}">
         <view
@@ -136,8 +133,6 @@
             <text class="shop-card__tag" wx:if="{{item.badge}}">{{item.badge}}</text>
           </view>
           <view class="shop-card__stats">
-            <text class="shop-card__star" wx:if="{{item.rating}}">★ {{item.rating}}</text>
-            <text class="shop-card__meta" wx:if="{{item.priceText}}">{{item.priceText}}</text>
             <text class="shop-card__meta" wx:if="{{item.distanceText}}">{{item.distanceText}}</text>
           </view>
           <text class="shop-card__desc ellipsis-1">{{item.descLine}}</text>

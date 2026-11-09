@@ -1,6 +1,6 @@
 /**
- * 门店封面：云端实景图；无图/旧模拟图时按店名关键词匹配。
- * 本地仅留 cover-loading 占位。
+ * 门店封面：优先使用门店自己上传的 cover_url；
+ * 仅在无图 / 占位 / 旧模拟图时，才按店名关键词回退到平台素材。
  */
 const cdn = require('./cdn')
 
@@ -28,8 +28,22 @@ const ROLE_DEFAULT = {
 const REMOTE_MOCK = /placehold|picsum|unsplash|dummyimage|via\.placeholder/i
 
 function isLegacyCloudCover(url) {
-  // 旧批 admin/cover、admin/banner，需换成本轮 mp-static 实景
+  // 旧批 admin/cover、admin/banner 模拟图，需替换
   return /tcb\.qcloud\.la\/admin\/(cover|banner)\//i.test(String(url || ''))
+}
+
+function isTrustedUpload(url) {
+  const s = String(url || '').trim()
+  if (!s) return false
+  if (s.indexOf('/uploads/') === 0) return true
+  if (s.indexOf('/static/') === 0) return true
+  if (/^cloud:\/\//i.test(s)) return true
+  if (cdn.isOurCdn(s)) return true
+  // 云托管 COS / 腾讯云对象存储上的真实上传
+  if (/tcb\.qcloud\.la|myqcloud\.com|\.cos\.|file\.myqcloud/i.test(s)) return true
+  // 其它 http(s) 一律视为业务上传图，禁止再被素材包覆盖
+  if (/^https?:\/\//i.test(s) && !REMOTE_MOCK.test(s) && !isLegacyCloudCover(s)) return true
+  return false
 }
 
 function pickByName(name, role, bizType) {
@@ -54,16 +68,13 @@ function pickByName(name, role, bizType) {
 function needsCoverReplace(url) {
   const s = String(url || '').trim()
   if (!s) return true
-  if (s.indexOf('/assets/placeholders/') === 0) return false
-  if (cdn.isOurCdn(s)) return false
-  if (isLegacyCloudCover(s)) return true
-  if (s.indexOf('/uploads/') === 0) return false
-  if (/^cloud:\/\//i.test(s)) return false
   if (REMOTE_MOCK.test(s)) return true
-  if (/license|idCard|businessLicense|foodLicense/i.test(s)) return true
+  if (isLegacyCloudCover(s)) return true
+  // 本地旧 assets/covers 包图仍替换
   if (/\/assets\/covers\//i.test(s)) return true
-  if (/^https?:\/\//i.test(s)) return true
-  return false
+  if (isTrustedUpload(s)) return false
+  if (s.indexOf('/assets/placeholders/') === 0) return false
+  return true
 }
 
 function resolveCover(item) {
@@ -92,5 +103,6 @@ module.exports = {
   resolveCover,
   withCover,
   withCoverList,
-  needsCoverReplace
+  needsCoverReplace,
+  isTrustedUpload
 }

@@ -54,10 +54,8 @@ async function listNearbyStalls(opts = {}) {
             m.cover_hue AS coverHue, m.cover_url AS coverImage, m.materials_json AS materialsJson,
             m.status,
             LEFT(m.name,1) AS initial,
-            IFNULL((SELECT SUM(sales_count) FROM stall_goods g WHERE g.merchant_id=m.id AND g.deleted_at IS NULL),0) AS sales,
             CASE WHEN m.status=1 THEN 1 ELSE 0 END AS open,
             IFNULL(NULLIF(m.biz_type,''), '餐饮') AS tag,
-            4.8 AS rating,
             m.address AS \`desc\`,
             IFNULL(NULLIF(m.biz_type,''), '餐饮') AS category
      FROM merchants m
@@ -82,9 +80,10 @@ async function listCrossStores(opts = {}) {
     opts.includeStall === 1
   const roleSql = includeStall ? `m.role IN ('cross', 'stall')` : `m.role='cross'`
   const stores = await query(
-    `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude, m.role,
+    `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude, m.role, m.status,
             m.cover_hue AS coverHue, m.cover_url AS coverImage, m.materials_json AS materialsJson,
             LEFT(m.name,1) AS initial,
+            CASE WHEN m.status=1 THEN 1 ELSE 0 END AS open,
             IFNULL(
               NULLIF(m.biz_type,''),
               CASE WHEN m.role='stall' THEN '餐饮' ELSE '百货商店' END
