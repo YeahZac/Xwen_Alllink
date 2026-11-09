@@ -418,10 +418,10 @@ async function buildApplymentBody(merchant, materials, settlement, { outRequestN
   }
   if (bank.bank_name) body.account_info.bank_name = bank.bank_name
 
-  const appId = wxPayService.payConfig().appId
-  if (appId) body.sales_scene_info.mini_program_sub_appid = appId
-
+  // 微信规定：小微(2401)/个人卖家(2500) 不支持「商家小程序AppID」，勿传 mini_program_sub_appid
   if (orgType !== '2401' && orgType !== '2500') {
+    const appId = wxPayService.payConfig().appId
+    if (appId) body.sales_scene_info.mini_program_sub_appid = appId
     if (!media.businessLicense) throw new HttpError(400, '个体/企业主体需上传营业执照')
     const licenseNo = String(merchant.credit_code || materials.creditCode || '').trim()
     if (!licenseNo) throw new HttpError(400, '缺少统一社会信用代码')
