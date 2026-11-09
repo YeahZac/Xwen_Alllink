@@ -103,13 +103,42 @@ async function submitApply(body) {
   await cityService.ensureOpen(city)
   const referrer = await resolveReferrer(body.referrerCode)
   const applicantUserId = Number(body.applicantUserId || body.userId) || 0
-  const pending = await query(
-    `SELECT id FROM merchant_applications
-     WHERE contact_phone = :phone AND status = 'pending' LIMIT 1`,
-    { phone: body.contactPhone }
-  )
-  if (pending.length) {
-    throw new HttpError(400, '该手机号已有审核中的申请，请勿重复提交')
+  const phone = String(body.contactPhone || '').trim()
+
+  // 一人一地摊：存在未删除的地摊门店则不可再申请（删除后门店可重提）
+  if (body.role === 'stall') {
+    const activeStall = await query(
+      `SELECT id, name FROM merchants
+       WHERE role='stall' AND deleted_at IS NULL
+         AND (contact_phone=:phone ${applicantUserId ? 'OR owner_user_id=:uid' : ''})
+       ORDER BY id DESC LIMIT 1`,
+      applicantUserId ? { phone, uid: applicantUserId } : { phone }
+    )
+    if (activeStall.length) {
+      throw new HttpError(
+        400,
+        `您已有地摊门店「${activeStall[0].name}」，一人仅可经营一个地摊；如需重新入驻请联系平台在后台删除旧店后再申请`
+      )
+    }
+    const pendingStall = await query(
+      `SELECT id FROM merchant_applications
+       WHERE role='stall' AND status='pending'
+         AND (contact_phone=:phone ${applicantUserId ? 'OR applicant_user_id=:uid' : ''})
+       LIMIT 1`,
+      applicantUserId ? { phone, uid: applicantUserId } : { phone }
+    )
+    if (pendingStall.length) {
+      throw new HttpError(400, '您已有审核中的地摊入驻申请，请勿重复提交')
+    }
+  } else {
+    const pending = await query(
+      `SELECT id FROM merchant_applications
+       WHERE contact_phone = :phone AND status = 'pending' LIMIT 1`,
+      { phone }
+    )
+    if (pending.length) {
+      throw new HttpError(400, '该手机号已有审核中的申请，请勿重复提交')
+    }
   }
   // 停用(status=2) / 软删除 / 驳回 不拦截：允许重新提交商家申请
   const applyNo = orderNo('AP')

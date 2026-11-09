@@ -1096,7 +1096,12 @@ async function renderIdentities(role) {
     $('list').querySelectorAll('[data-del-store]').forEach((b) => {
       b.onclick = () =>
         runAction(async () => {
-          if (!confirmDanger('确认删除该门店？删除后不可在列表中恢复。')) return
+          if (
+            !confirmDanger(
+              '确认删除该门店？删除后列表中不再显示；关联商品将下架，入驻单改为可重提。小程序端可重新走入驻审核。'
+            )
+          )
+            return
           await api(`/admin/ops/stores/${b.dataset.delStore}`, { method: 'DELETE' })
           load()
         })
@@ -1190,6 +1195,7 @@ async function showStoreDetail(id, listReload) {
               <button type="button" class="btn primary sm" id="btnEditStore">编辑门店信息</button>
               <button type="button" class="btn sm" id="btnEditMats">编辑证照/封面</button>
               <button type="button" class="btn sm" id="btnAddGoods">新增商品</button>
+              <button type="button" class="btn danger sm" id="btnDelStore">删除门店</button>
             </div>`
          : '<p class="muted">当前角色仅可浏览，需门店编辑权限才能改资料与商品</p>'
      }
@@ -1272,6 +1278,22 @@ async function showStoreDetail(id, listReload) {
   })
 
   if (!editable) return
+
+  const btnDelStore = document.getElementById('btnDelStore')
+  if (btnDelStore) {
+    btnDelStore.onclick = () =>
+      runAction(async () => {
+        if (
+          !confirmDanger(
+            `确认删除门店「${d.name}」？删除后列表不再显示；商品下架，入驻单可重提。小程序可重新走入驻审核。`
+          )
+        )
+          return
+        await api(`/admin/ops/stores/${id}`, { method: 'DELETE' })
+        closeModal()
+        if (typeof listReload === 'function') listReload()
+      })
+  }
 
   const btnEdit = document.getElementById('btnEditStore')
   if (btnEdit) {
@@ -2847,7 +2869,8 @@ async function renderWxSubMerchants() {
               ? `<button class="btn sm primary" data-submit="${m.id}">提交进件</button>
                  <button class="btn sm" data-sync="${m.id}">同步</button>
                  <button class="btn sm" data-rate="${m.id}" data-pct="${m.profitSharePercent ?? 10}">比例</button>
-                 <button class="btn sm" data-sub="${m.id}" data-val="${esc(m.wxSubMchId || '')}">商户号</button>`
+                 <button class="btn sm" data-sub="${m.id}" data-val="${esc(m.wxSubMchId || '')}">商户号</button>
+                 <button class="btn danger sm" data-del-store="${m.id}" data-name="${esc(m.name || '')}">删除门店</button>`
               : `<button class="btn sm" data-sync="${m.id}">同步</button>`
           }
         </td></tr>`
@@ -2946,6 +2969,20 @@ async function renderWxSubMerchants() {
           }
         )
       }
+    })
+    $('list').querySelectorAll('[data-del-store]').forEach((b) => {
+      b.onclick = () =>
+        runAction(async () => {
+          const name = b.dataset.name || '该门店'
+          if (
+            !confirmDanger(
+              `确认删除门店「${name}」？将软删除门店及进件记录展示；商品下架，小程序可重新走入驻审核。`
+            )
+          )
+            return
+          await api(`/admin/ops/stores/${b.dataset.delStore}`, { method: 'DELETE' })
+          load()
+        })
     })
   }
   const resetWxLoad = () => {

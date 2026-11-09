@@ -594,6 +594,20 @@ async function createStore(body = {}) {
   const contactName = String(body.contactName || body.legalPerson || name).trim()
   const contactPhone = String(body.contactPhone || '').trim()
   if (!contactPhone) throw new HttpError(400, '请填写联系电话')
+  if (role === 'stall') {
+    const exist = await query(
+      `SELECT id, name FROM merchants
+       WHERE role='stall' AND deleted_at IS NULL AND contact_phone=:phone
+       ORDER BY id DESC LIMIT 1`,
+      { phone: contactPhone }
+    )
+    if (exist.length) {
+      throw new HttpError(
+        400,
+        `该手机号已有地摊门店「${exist[0].name}」，一人仅可经营一个地摊；请先删除旧店后再新建`
+      )
+    }
+  }
   const city = String(body.city || '').trim()
   if (!city) throw new HttpError(400, '请填写城市')
   const address = String(body.address || '').trim()
@@ -849,10 +863,44 @@ async function setMerchantStatus(id, status) {
 }
 
 async function softDeleteMerchant(id) {
-  const rows = await query('SELECT id FROM merchants WHERE id=:id AND deleted_at IS NULL', { id })
+  const mid = Number(id)
+  const rows = await query(
+    'SELECT id, role, name FROM merchants WHERE id=:id AND deleted_at IS NULL',
+    { id: mid }
+  )
   if (!rows.length) throw new HttpError(404, '门店不存在')
-  await query(`UPDATE merchants SET status=2, deleted_at=NOW() WHERE id=:id`, { id })
-  return { id: Number(id), deleted: true }
+  await query(`UPDATE merchants SET status=2, deleted_at=NOW() WHERE id=:id`, { id: mid })
+  // 下架商品，避免前台残留
+  const goodsTable =
+    rows[0].role === 'cross' ? 'cross_goods' : rows[0].role === 'supply' ? 'supply_goods' : 'stall_goods'
+  try {
+    await query(
+      `UPDATE ${goodsTable} SET deleted_at=NOW() WHERE merchant_id=:id AND deleted_at IS NULL`,
+      { id: mid }
+    )
+  } catch (_) {
+    /* 表或列缺失时忽略 */
+  }
+  // 关联入驻单改为驳回，便于小程序重新走入驻；保留审计日志
+  try {
+    await query(
+      `UPDATE merchant_applications
+       SET status='rejected',
+           reject_reason=IFNULL(NULLIF(reject_reason,''), '门店已由平台删除，可重新提交入驻'),
+           reviewed_at=NOW()
+       WHERE merchant_id=:id AND status IN ('approved','pending')`,
+      { id: mid }
+    )
+  } catch (_) {
+    /* 忽略 */
+  }
+  return {
+    id: mid,
+    deleted: true,
+    role: rows[0].role,
+    name: rows[0].name,
+    reapplyAllowed: true
+  }
 }
 
 async function updateMerchantMaterials(id, materials) {
