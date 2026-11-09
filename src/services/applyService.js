@@ -523,7 +523,7 @@ async function ensureStallPlaceholderGoods(conn, merchantId, role) {
     const [ins] = await conn.execute(
       `INSERT INTO stall_goods
         (merchant_id, name, sku_code, price, points_grant, category, unit, desc_text, stock, on_sale)
-       VALUES (?, '到店消费', ?, 0.01, 0, '收款', '次', '收款码占位商品，可改价或下架', 9999, 1)`,
+       VALUES (?, '到店消费', ?, 0.01, 0, '收款', '次', '收款码占位商品：二级商户进件完成后自动上架，也可手动改价', 9999, 0)`,
       [mid, `SCAN${mid}`]
     )
     return ins.insertId || null

@@ -3,6 +3,7 @@ const { HttpError } = require('../utils/response')
 const { parsePaging, pageResult } = require('../utils/paging')
 const { enrichScreen } = require('./screenSim')
 const { orderNo, shortCode } = require('../utils/id')
+const { assertCanOnSale, assertGoodsCanOnSale, evaluateMerchantReady } = require('./merchantReady')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链', consumer: 'C端用户' }
 const PLATFORM_ROLE_LABEL = { partner: '合伙人', founder: '创始人', lead: '负责人' }
@@ -490,6 +491,7 @@ async function getStoreDetail(merchantId) {
   const { pickCoverFromLicenses } = require('../utils/mediaPick')
   const coverUrl = m.cover_url || pickCoverFromLicenses(materials) || ''
   const bizOwnerAdminId = m.biz_owner_admin_id != null ? Number(m.biz_owner_admin_id) : null
+  const ready = evaluateMerchantReady(m)
   return {
     id: m.id,
     role: m.role,
@@ -513,6 +515,11 @@ async function getStoreDetail(merchantId) {
     bizOwnerAdminId,
     bizOwnerName: m.biz_owner_name || '',
     bizOwnerUsername: m.biz_owner_username || '',
+    wxSubMchId: m.wx_sub_mch_id || '',
+    wxApplyState: m.wx_apply_state || '',
+    catalogReady: ready.catalogReady,
+    homeEligible: ready.homeEligible,
+    platformPayReady: ready.platformPayReady,
     goods: (goods || []).map((g) => ({
       ...g,
       goodsType: m.role,
@@ -971,6 +978,7 @@ async function createSku(type, body = {}) {
   const sku = String(body.sku || '').trim() || null
   const img = body.imageUrl || null
   const onSale = body.onSale === 0 ? 0 : 1
+  if (onSale) await assertCanOnSale(merchantId)
   let insertId = 0
   if (role === 'stall') {
     const r = await query(
@@ -1130,6 +1138,7 @@ async function listSkus({ type, merchantId, shopName, includeDeleted, page, page
 }
 
 async function setGoodsOpen(type, id, open) {
+  if (open) await assertGoodsCanOnSale(type, id)
   const table = type === 'stall' ? 'stall_goods' : type === 'cross' ? 'cross_goods' : 'supply_goods'
   const col = type === 'supply' ? 'status' : 'on_sale'
   await query(`UPDATE ${table} SET ${col}=:v WHERE id=:id AND deleted_at IS NULL`, {
@@ -1149,6 +1158,8 @@ async function softDeleteGoods(type, id) {
 async function saveSku(type, body) {
   const table = type === 'stall' ? 'stall_goods' : type === 'cross' ? 'cross_goods' : 'supply_goods'
   if (!body.id) throw new HttpError(400, '缺少商品ID')
+  const onSale = body.onSale === 0 ? 0 : 1
+  if (onSale) await assertGoodsCanOnSale(type, body.id)
   if (type === 'stall') {
     await query(
       `UPDATE stall_goods SET name=:n, sku_code=:sku, price=:p, points_grant=:pg, stock=:s,
@@ -1162,7 +1173,7 @@ async function saveSku(type, body) {
         s: Number(body.stock) || 0,
         sales: Number(body.sales) || 0,
         img: body.imageUrl || null,
-        onSale: body.onSale === 0 ? 0 : 1
+        onSale
       }
     )
   } else if (type === 'cross') {
@@ -1178,7 +1189,7 @@ async function saveSku(type, body) {
         s: Number(body.stock) || 0,
         sales: Number(body.sales) || 0,
         img: body.imageUrl || null,
-        onSale: body.onSale === 0 ? 0 : 1
+        onSale
       }
     )
   } else {
@@ -1194,7 +1205,7 @@ async function saveSku(type, body) {
         pg: Number(body.pointsGrant) || 0,
         sales: Number(body.sales) || 0,
         img: body.imageUrl || null,
-        st: body.onSale === 0 ? 0 : 1
+        st: onSale
       }
     )
   }

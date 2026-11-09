@@ -672,6 +672,60 @@ function selectField(name, label, options, value = '') {
   return `<label>${esc(label)}<select name="${esc(name)}">${opts}</select></label>`
 }
 
+/** 门店上线标准流程说明（入驻审核 / 二级商户进件） */
+function merchantOnboardFlowGuide(page) {
+  const steps = [
+    {
+      key: 'apply',
+      title: '① 提交入驻',
+      text: '小程序商家入驻，或本后台「代客入驻」填写店名/城市/联系人等资料。'
+    },
+    {
+      key: 'review',
+      title: '② 商家入驻审核',
+      text: '核对证照与城市后点「通过」→ 生成门店档案（后台可见）。此时不上首页、不可上架收款商品。'
+    },
+    {
+      key: 'wx',
+      title: '③ 二级商户进件',
+      text: '补齐身份证/结算卡等 →「提交进件」→ 状态「待签约」时由经营者本人微信扫码签约 →「同步」至「已完成」且有二级商户号。'
+    },
+    {
+      key: 'pay',
+      title: '④ 支付配置就绪',
+      text: '进件「已完成」+ 平台支付配置就绪后，才允许上架 SKU。地摊「到店消费」占位商品会在进件完成后自动上架。'
+    },
+    {
+      key: 'sku',
+      title: '⑤ 配置并上架 SKU',
+      text: '到「商品 / SKU管理」为该店新建或上架商品。未进件完成时只能存草稿（下架），上架会被拦截。'
+    },
+    {
+      key: 'home',
+      title: '⑥ 小程序首页展示',
+      text: '同时满足：进件已完成、有二级商户号、至少 1 个上架商品 → 才会出现在首页/分类。'
+    }
+  ]
+  const focus =
+    page === 'applies' ? new Set(['apply', 'review']) : page === 'wx' ? new Set(['wx', 'pay', 'sku', 'home']) : new Set()
+  const foot =
+    page === 'applies'
+      ? '本页只负责 ①②。审核通过后请到「二级商户进件」继续 ③④，再到「商品/SKU」完成 ⑤⑥。'
+      : page === 'wx'
+        ? '本页负责 ③④。进件「已完成」且支付就绪后，去「商品/SKU」上架；有上架商品后才会进首页。已完成的门店无需再点「提交进件」。'
+        : '按序完成：入驻审核 → 二级商户进件 → 上架 SKU → 首页可见。'
+  return `<div class="flow-guide">
+    <h4>标准上线流程</h4>
+    <ol>${steps
+      .map(
+        (s) =>
+          `<li class="${focus.has(s.key) ? 'flow-focus' : ''}"><b>${esc(s.title)}</b> ${esc(s.text)}</li>`
+      )
+      .join('')}</ol>
+    <p class="flow-foot">${esc(foot)}</p>
+  </div>`
+}
+
 async function loadAdminAccountOptions({ includeEmpty = true } = {}) {
   let rows = []
   try {
@@ -1468,12 +1522,15 @@ async function showStoreDetail(id, listReload) {
       const isCross = d.role === 'cross'
       openModal(
         `新增商品 · ${d.name}`,
-        field('name', '品名', '') +
+        (d.catalogReady
+          ? ''
+          : '<p class="muted">该店尚未进件完成或支付未就绪：可先保存为下架草稿；上架将被拦截。</p>') +
+          field('name', '品名', '') +
           field('sku', 'SKU（可空自动生成）', '') +
           field('price', isCross ? '现金价' : '价格', '0', 'number') +
           (isCross ? field('pointsNeed', '所需积分', '0', 'number') : field('pointsGrant', '赠送积分额度', '0', 'number')) +
           field('stock', '库存', '100', 'number') +
-          selectOnOff('onSale', 1, { onLabel: '上架', offLabel: '下架' }) +
+          selectOnOff('onSale', d.catalogReady ? 1 : 0, { onLabel: '上架', offLabel: '下架' }) +
           mediaField('imageUrl', '商品图', '', 'goods'),
         async () => {
           await api(`/admin/ops/skus/${d.role}`, {
@@ -1515,6 +1572,7 @@ async function renderGoodsSku() {
       <input id="gShopName" placeholder="搜索店名" style="min-width:140px" />
       <button class="btn" id="btnReload">查询</button>
     </div>
+    <p class="muted">上架门槛：二级商户进件已完成 + 支付配置就绪后才能上架；上架商品后才会进入小程序首页/分类。</p>
     <div id="list"></div>`
 
   const refreshShops = async () => {
@@ -1715,7 +1773,7 @@ async function renderApplies() {
       <button class="btn" id="btnReload">刷新</button>
       ${editable ? '<button class="btn primary" id="btnProxyApply">代客入驻</button>' : ''}
     </div>
-    <p class="muted">门店唯一入口：小程序入驻或本页「代客入驻」→ 审核通过后进入地摊/异业/供应链列表，再维护 SKU 与收款。</p>
+    ${merchantOnboardFlowGuide('applies')}
     <div id="list"></div>`
   const load = async () => {
     const status = $('fStatus').value
@@ -2363,7 +2421,7 @@ async function renderGoods() {
       <button class="btn" id="btnReload">刷新</button>
       ${editable ? '<button class="btn primary" id="btnAdd">为所选门店新建</button>' : ''}
     </div>
-    <p class="muted">关系：门店（入驻通过）→ 本页维护该店商品 → 「全量SKU」可跨店检索；「商品类目」只按角色（地摊/异业/供应链）配置下拉项，不直接绑某一家店。</p>
+    <p class="muted">上架门槛：门店须二级商户进件「已完成」且平台支付就绪，才可上架；上架后才进首页。未就绪时可先建草稿（下架）。「全量SKU」可跨店检索；类目按角色配置，不直接绑店。</p>
     <div id="list"></div>`
 
   const refreshShops = async () => {
@@ -3166,7 +3224,8 @@ async function renderWxSubMerchants() {
       ${editable ? '<button class="btn" id="btnSyncAll">批量同步状态</button>' : ''}
       <button class="btn" id="btnPayCfg">支付配置检查</button>
     </div>
-    <p class="muted">电商收付通二级商户进件：资料齐全后可一键提交微信。签约链接需商户超管用微信打开完成（微信强制）。「比例」可调平台分账 0～30%。删店请到对应角色门店列表，本页不处理删除。</p>
+    ${merchantOnboardFlowGuide('wx')}
+    <p class="muted">签约二维码须经营者本人微信「扫一扫」（浏览器打开会失败）。「比例」可调平台分账 0～30%。删店请到角色门店列表。</p>
     <div id="list"></div>`
   const load = async () => {
     const q = ($('fQ').value || '').trim()
@@ -3198,7 +3257,11 @@ async function renderWxSubMerchants() {
           <button class="btn sm" data-detail="${m.id}">详情</button>
           ${
             editable
-              ? `<button class="btn sm primary" data-submit="${m.id}">提交进件</button>
+              ? `${
+                  m.wxApplyState === 'FINISH' && m.wxSubMchId
+                    ? '<span class="muted" style="margin-right:6px">进件完成</span>'
+                    : `<button class="btn sm primary" data-submit="${m.id}">提交进件</button>`
+                }
                  <button class="btn sm" data-sync="${m.id}">同步</button>
                  <button class="btn sm" data-rate="${m.id}" data-pct="${m.profitSharePercent ?? 10}">比例</button>
                  <button class="btn sm" data-sub="${m.id}" data-val="${esc(m.wxSubMchId || '')}">商户号</button>`
@@ -3219,9 +3282,16 @@ async function renderWxSubMerchants() {
            <p>二级商户号 <code>${esc(d.wxSubMchId || '未生成')}</code> · 申请单 ${esc(
              d.wxApplymentId || '—'
            )} · 业务号 <code>${esc(d.wxOutRequestNo || '—')}</code></p>
-           <p>主体类型 ${esc(d.organizationType)} · 分账 ${d.profitSharePercent}% · 支付配置 ${
-             d.wxPayReady ? '就绪' : '未就绪'
+           <p>主体类型 ${esc(d.organizationType)} · 分账 ${d.profitSharePercent}% · 门店进件 ${
+             d.merchantFinished ? '已完成' : '未完成'
+           } · 平台支付 ${d.platformPayReady ? '就绪' : '未就绪'} · 可上架SKU ${
+             d.catalogReady || d.wxPayReady ? '是' : '否'
            }</p>
+           ${
+             d.catalogReady || d.wxPayReady
+               ? '<p class="muted">下一步：到「商品 / SKU管理」上架商品；有上架商品后才会出现在小程序首页。</p>'
+               : '<p class="muted">下一步：完成进件签约并确认支付配置就绪后，才能上架 SKU 并展示到首页。</p>'
+           }
            ${
              d.wxSignUrl
                ? `<div class="sign-box" style="margin:12px 0;padding:12px;border:1px solid #eee;border-radius:8px;background:#fafafa">

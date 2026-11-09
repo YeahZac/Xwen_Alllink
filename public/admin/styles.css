@@ -66,6 +66,35 @@ input, select, textarea {
 }
 label { display: block; font-size: 13px; color: var(--muted); }
 .muted { color: var(--muted); }
+.flow-guide {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fff8f1, #fff);
+}
+.flow-guide h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--text);
+}
+.flow-guide ol {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.flow-guide li { margin: 0 0 6px; }
+.flow-guide li.flow-focus {
+  color: var(--text);
+}
+.flow-guide li.flow-focus b { color: var(--accent); }
+.flow-guide .flow-foot {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
 .err { color: var(--danger); min-height: 1.2em; }
 .tip { margin-top: 18px; font-size: 13px; }
 .tip a { color: var(--accent); }

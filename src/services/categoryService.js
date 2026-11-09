@@ -2,6 +2,7 @@ const { query } = require('../utils/db')
 const { HttpError } = require('../utils/response')
 const { applyGeo } = require('../utils/geo')
 const { enrichCoverRow } = require('../utils/mediaPick')
+const { HOME_VISIBLE_SQL: PAY_READY_SQL } = require('./merchantReady')
 
 const ROLE_LABEL = {
   stall: '地摊',
@@ -91,9 +92,6 @@ function merchantMatchesCategory(merchant, cat) {
   const keys = ['餐饮', '百货', '鲜花', '蛋糕', '粮油', '生鲜', '小吃', '烧烤', '饮品', '果切', '茶饮']
   return keys.some((k) => name.includes(k) && biz.includes(k))
 }
-
-const PAY_READY_SQL = `NULLIF(TRIM(IFNULL(m.wx_sub_mch_id,'')), '') IS NOT NULL
-       AND (m.wx_apply_state IS NULL OR m.wx_apply_state='' OR m.wx_apply_state='FINISH')`
 
 async function listMerchantsByCategory(categoryId, opts = {}) {
   const cat = await getCategoryById(categoryId)

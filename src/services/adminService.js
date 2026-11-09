@@ -5,6 +5,7 @@ const orderService = require('./orderService')
 const accountService = require('./accountService')
 const catalogService = require('./catalogService')
 const { getCashRate, pointsToCash, listConfigs, setConfig } = require('./configService')
+const { assertCanOnSale } = require('./merchantReady')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链' }
 
@@ -293,6 +294,7 @@ async function saveStallGoods(body) {
     mix: body.mixEnabled === 0 ? 0 : 1,
     allowRemark: body.allowRemark === 0 ? 0 : 1
   }
+  if (payload.onSale) await assertCanOnSale(merchantId)
   if (!Number.isFinite(payload.price) || payload.price < 0) {
     throw new HttpError(400, '请填写正确的售价')
   }
@@ -404,6 +406,7 @@ async function saveCrossGoods(body) {
     onSale: body.onSale === 0 ? 0 : 1,
     mix: body.allowMix === 0 ? 0 : 1
   }
+  if (payload.onSale) await assertCanOnSale(merchantId)
   if (payload.pn < 0 || payload.cp < 0) throw new HttpError(400, '请填写正确的积分价/现金价')
   if (payload.id) {
     try {
@@ -499,6 +502,7 @@ async function saveSupplyGoods(body) {
     sku: String(body.sku || '').trim() || null,
     status: body.status === 0 || body.onSale === 0 ? 0 : 1
   }
+  if (payload.status) await assertCanOnSale(merchantId)
   if (!Number.isFinite(payload.price) || payload.price < 0) {
     throw new HttpError(400, '请填写正确的供货价')
   }

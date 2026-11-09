@@ -13,6 +13,7 @@ const wxService = require('./wxService')
 const config = require('../config')
 const { applyGeo } = require('../utils/geo')
 const { enrichCoverRow } = require('../utils/mediaPick')
+const { HOME_VISIBLE_SQL: HOME_PAY_READY_SQL } = require('./merchantReady')
 
 function assertPaySimulateAllowed(cashAmount) {
   if (!(Number(cashAmount) > 0)) return
@@ -48,9 +49,7 @@ async function recordCommission(conn, { bizType, bizId, payerMerchantId, amountG
   return res.commission
 }
 
-/** 首页可见：已签约且具备二级商户号（可正常收款） */
-const HOME_PAY_READY_SQL = `NULLIF(TRIM(IFNULL(m.wx_sub_mch_id,'')), '') IS NOT NULL
-       AND (m.wx_apply_state IS NULL OR m.wx_apply_state='' OR m.wx_apply_state='FINISH')`
+/** 首页可见：二级商户进件完成 + 至少 1 个上架 SKU（见 merchantReady.HOME_VISIBLE_SQL） */
 
 async function listNearbyStalls(opts = {}) {
   let rows

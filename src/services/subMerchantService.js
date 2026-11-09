@@ -294,7 +294,17 @@ async function getSubMerchantDetail(id) {
     },
     settlement,
     applyments: applyRows,
-    wxPayReady: wxPayService.wxPayConfigured()
+    platformPayReady: wxPayService.wxPayConfigured(),
+    merchantFinished: Boolean(String(m.wx_sub_mch_id || '').trim()) &&
+      (!String(m.wx_apply_state || '').trim() || m.wx_apply_state === 'FINISH'),
+    wxPayReady:
+      wxPayService.wxPayConfigured() &&
+      Boolean(String(m.wx_sub_mch_id || '').trim()) &&
+      (!String(m.wx_apply_state || '').trim() || m.wx_apply_state === 'FINISH'),
+    catalogReady:
+      wxPayService.wxPayConfigured() &&
+      Boolean(String(m.wx_sub_mch_id || '').trim()) &&
+      (!String(m.wx_apply_state || '').trim() || m.wx_apply_state === 'FINISH')
   }
   // 官方要求：sign_url 转二维码，由超管用微信「扫一扫」打开；浏览器直接点开会「扫码失败」
   if (wxSignUrl) {
@@ -711,6 +721,12 @@ async function syncApplymentStatus(merchantId) {
       // 已添加过会报错，忽略
       console.warn('[subMerchant] add receiver', e.message)
     }
+    try {
+      const { activateStallPlaceholderOnFinish } = require('./merchantReady')
+      await activateStallPlaceholderOnFinish(merchantId)
+    } catch (e) {
+      console.warn('[subMerchant] activate placeholder', e.message)
+    }
   }
 
   return getSubMerchantDetail(merchantId)
@@ -774,6 +790,12 @@ async function setSubMchIdManual(merchantId, subMchId) {
       })
     } catch (e) {
       console.warn('[subMerchant] add receiver', e.message)
+    }
+    try {
+      const { activateStallPlaceholderOnFinish } = require('./merchantReady')
+      await activateStallPlaceholderOnFinish(merchantId)
+    } catch (e) {
+      console.warn('[subMerchant] activate placeholder', e.message)
     }
   }
   return getSubMerchantDetail(merchantId)
