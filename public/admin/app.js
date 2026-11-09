@@ -60,13 +60,13 @@ const NAV_GROUPS = [
     name: '内容与运营',
     icon: 'grid',
     items: [
-      { id: 'goods_sku', label: '全量SKU（按店）' },
-      { id: 'goods', label: '门店商品维护' },
-      { id: 'goods_categories', label: '商品类目（按角色）' },
+      { id: 'goods_sku', label: 'SKU管理' },
+      { id: 'goods', label: '门店商品' },
+      { id: 'goods_categories', label: '商品类目' },
       { id: 'banners', label: 'Banner 运营' },
       { id: 'needs', label: '供应需求' },
       { id: 'complaints', label: '投诉工单' }
-      // 平台配置暂时隐藏：需要时取消注释 { id: 'configs', label: '平台配置' }
+      // 平台配置暂时隐藏
     ]
   },
   {

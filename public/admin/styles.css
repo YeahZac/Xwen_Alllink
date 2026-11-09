@@ -113,19 +113,33 @@ label { display: block; font-size: 13px; color: var(--muted); }
   position: sticky;
   top: 0;
   height: 100vh;
+  max-height: 100vh;
+  overflow: hidden; /* 把滚动交给 .nav，避免整栏被视口裁成「半截」 */
 }
 .side-brand {
   padding: 8px 10px 16px;
   border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
 }
 .side-brand strong { display: block; font-size: 16px; color: var(--text); }
 .side-brand span { color: var(--muted); font-size: 12px; }
-.nav { display: flex; flex-direction: column; gap: 2px; flex: 1; overflow: auto; }
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-height: 0; /* flex 子项可收缩，否则 overflow 不生效、菜单被裁切 */
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 8px;
+}
+/* side-foot 主样式见下方，此处仅保证不挤占导航滚动区 */
 
 .nav-group {
   margin: 4px 2px;
   border-radius: 10px;
-  overflow: hidden;
+  /* 不用 overflow:hidden，避免展开子项/角标被裁掉半截 */
 }
 .nav-group__head {
   width: 100%;
@@ -143,6 +157,7 @@ label { display: block; font-size: 13px; color: var(--muted); }
   font-size: 13px;
   font-weight: 700;
   letter-spacing: .02em;
+  line-height: 1.35;
   text-align: left;
   transition: background .15s ease, color .15s ease;
 }
@@ -191,10 +206,13 @@ label { display: block; font-size: 13px; color: var(--muted); }
   background: transparent;
   border: none;
   color: var(--muted);
-  padding: 9px 12px 9px 18px;
+  padding: 10px 12px 10px 18px;
+  min-height: 40px;
   border-radius: 8px;
   cursor: pointer;
   font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -208,7 +226,13 @@ label { display: block; font-size: 13px; color: var(--muted); }
   border-left: 3px solid var(--accent);
   font-weight: 600;
 }
-.nav-item__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-item__label {
+  min-width: 0;
+  flex: 1;
+  white-space: normal;
+  word-break: break-all;
+  line-height: 1.35;
+}
 .nav-group__title {
   display: inline-flex;
   align-items: center;
@@ -310,6 +334,7 @@ label { display: block; font-size: 13px; color: var(--muted); }
 .perm-row input { width: auto; margin: 0; }
 
 .side-foot {
+  flex-shrink: 0;
   border-top: 1px solid var(--line);
   padding-top: 12px;
   display: flex;
