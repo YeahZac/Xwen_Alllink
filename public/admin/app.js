@@ -14,11 +14,13 @@ const NAV_GROUPS = [
   {
     key: 'insight',
     name: '经营总览',
+    icon: 'chart',
     items: [{ id: 'dashboard', label: '数据概览' }]
   },
   {
     key: 'onboard',
     name: '入驻与身份',
+    icon: 'badge',
     items: [
       { id: 'applies', label: '商家入驻审核' },
       { id: 'partner_ops', label: '合伙人申请/提现' },
@@ -29,6 +31,7 @@ const NAV_GROUPS = [
   {
     key: 'users_stores',
     name: '用户与门店',
+    icon: 'store',
     items: [
       { id: 'users_all', label: '用户总览' },
       { id: 'users_consumer', label: 'C端消费者' },
@@ -40,6 +43,7 @@ const NAV_GROUPS = [
   {
     key: 'trade',
     name: '交易与资金',
+    icon: 'wallet',
     items: [
       { id: 'orders', label: '订单中心' },
       { id: 'points', label: '积分与额度' },
@@ -53,6 +57,7 @@ const NAV_GROUPS = [
   {
     key: 'content',
     name: '内容与运营',
+    icon: 'grid',
     items: [
       { id: 'goods_sku', label: '商品SKU' },
       { id: 'goods', label: '商品目录' },
@@ -66,6 +71,7 @@ const NAV_GROUPS = [
   {
     key: 'system',
     name: '系统与权限',
+    icon: 'gear',
     items: [
       { id: 'referral_triggers', label: '推荐奖励设置' },
       { id: 'sys_roles', label: '角色权限' },
@@ -75,8 +81,23 @@ const NAV_GROUPS = [
   }
 ]
 
+const NAV_ICONS = {
+  chart:
+    '<svg class="nav-group__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  badge:
+    '<svg class="nav-group__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2.2 4.5 5 .7-3.6 3.5.9 5L12 14.8 7.5 16.7l.9-5L4.8 8.2l5-.7L12 3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+  store:
+    '<svg class="nav-group__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16v10H4V10zm1-6h14l1.5 6H3.5L5 4zm3 10h4v6H8v-6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+  wallet:
+    '<svg class="nav-group__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h15a3 3 0 013 3v8a3 3 0 01-3 3H5a2 2 0 01-2-2V7zm0 0V5a2 2 0 012-2h12M16 13h4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  grid:
+    '<svg class="nav-group__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>',
+  gear:
+    '<svg class="nav-group__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 100 7 3.5 3.5 0 000-7zM12 2v2.2M12 19.8V22M4.2 6.3l1.6 1.5M18.2 16.2l1.6 1.5M2 12h2.2M19.8 12H22M4.2 17.7l1.6-1.5M18.2 7.8l1.6-1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>'
+}
+
 const ALL_NAV = NAV_GROUPS.flatMap((g) => g.items)
-const NAV_COLLAPSE_KEY = 'xwen_admin_nav_collapse'
+const NAV_COLLAPSE_KEY = 'xwen_admin_nav_collapse_v2'
 
 function isSuper() {
   const p = state.profile || {}
@@ -189,11 +210,26 @@ async function showDash() {
   go(state.page)
 }
 
+function defaultNavCollapseMap() {
+  const map = {}
+  NAV_GROUPS.forEach((g) => {
+    map[g.key] = true
+  })
+  return map
+}
+
 function loadNavCollapse() {
   try {
-    return JSON.parse(localStorage.getItem(NAV_COLLAPSE_KEY) || '{}') || {}
+    const raw = localStorage.getItem(NAV_COLLAPSE_KEY)
+    const map = defaultNavCollapseMap()
+    if (raw == null) return map
+    const saved = JSON.parse(raw) || {}
+    Object.keys(saved).forEach((k) => {
+      map[k] = !!saved[k]
+    })
+    return map
   } catch (_) {
-    return {}
+    return defaultNavCollapseMap()
   }
 }
 
@@ -201,6 +237,10 @@ function saveNavCollapse(map) {
   try {
     localStorage.setItem(NAV_COLLAPSE_KEY, JSON.stringify(map || {}))
   } catch (_) {}
+}
+
+function navGroupIcon(iconKey) {
+  return NAV_ICONS[iconKey] || NAV_ICONS.grid
 }
 
 function navBadgeHtml(pageId) {
@@ -221,19 +261,26 @@ function renderNav() {
   for (const g of NAV_GROUPS) {
     const items = g.items.filter((n) => canView(n.id))
     if (!items.length) continue
-    const collapsed = !!collapse[g.key]
+    const collapsed = collapse[g.key] !== false
     const activeInGroup = items.some((n) => n.id === state.page)
-    const isCollapsed = collapsed && !activeInGroup
+    // 默认收起；当前页所在分组保持展开，便于看到选中项
+    const isCollapsed = activeInGroup ? false : collapsed
     const groupPending = groupBadgeCount(items)
-    html.push(`<div class="nav-group ${isCollapsed ? 'is-collapsed' : ''}" data-group="${esc(g.key)}">
-      <button type="button" class="nav-group__head" data-toggle-group="${esc(g.key)}">
-        <span class="nav-group__title">${esc(g.name)}${
-          groupPending
-            ? `<span class="nav-dot nav-dot--group" title="${groupPending} 条待处理">${
-                groupPending > 99 ? '99+' : groupPending
-              }</span>`
-            : ''
-        }</span>
+    html.push(`<div class="nav-group ${isCollapsed ? 'is-collapsed' : ''} ${
+      activeInGroup ? 'is-active' : ''
+    }" data-group="${esc(g.key)}">
+      <button type="button" class="nav-group__head ${activeInGroup ? 'on' : ''}" data-toggle-group="${esc(g.key)}">
+        <span class="nav-group__title">
+          ${navGroupIcon(g.icon)}
+          <span class="nav-group__name">${esc(g.name)}</span>
+          ${
+            groupPending
+              ? `<span class="nav-dot nav-dot--group" title="${groupPending} 条待处理">${
+                  groupPending > 99 ? '99+' : groupPending
+                }</span>`
+              : ''
+          }
+        </span>
         <span class="nav-group__chev">▾</span>
       </button>
       <div class="nav-group__body">
