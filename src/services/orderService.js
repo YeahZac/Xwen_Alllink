@@ -157,11 +157,50 @@ async function getStallMenu(merchantId) {
   return { stall: merchants[0], menu }
 }
 
-/** 创建点餐订单：积分抵现 + 剩余微信（未配商户号则模拟成功）；积分划拨推迟到出餐完成 */
+async function insertStallOrderItems(conn, orderId, lines) {
+  for (const l of lines) {
+    const displayName = l.optionsText ? `${l.name}（${l.optionsText}）` : l.name
+    try {
+      await conn.execute(
+        `INSERT INTO consumer_order_items
+          (order_id, goods_id, goods_name, price, points_grant, qty, options_json, options_text)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          orderId,
+          l.goodsId,
+          displayName,
+          l.price,
+          l.pointsGrant,
+          l.qty,
+          JSON.stringify(l.optionsJson || []),
+          l.optionsText || null
+        ]
+      )
+    } catch (e) {
+      if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('options_'))) {
+        await conn.execute(
+          `INSERT INTO consumer_order_items
+            (order_id, goods_id, goods_name, price, points_grant, qty)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [orderId, l.goodsId, displayName, l.price, l.pointsGrant, l.qty]
+        )
+      } else {
+        throw e
+      }
+    }
+    await conn.execute(`UPDATE stall_goods SET sales_count = IFNULL(sales_count,0) + ? WHERE id=?`, [
+      l.qty,
+      l.goodsId
+    ])
+  }
+}
+
+/** 创建点餐订单：积分抵现 + 剩余微信（未配商户号则模拟成功）；真实支付待回调入账 */
 async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0 }) {
   if (!items || !items.length) throw new HttpError(400, '购物车为空')
   await feeService.assertCanTransact(merchantId, { action: '接单' })
-  return withTransaction(async (conn) => {
+
+  const preview = await withTransaction(async (conn) => {
     let totalAmount = 0
     let pointsWant = 0
     const lines = []
@@ -178,10 +217,9 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
     }
     totalAmount = round2(totalAmount)
     const rate = await getCashRate()
-    const [urows] = await conn.execute(
-      'SELECT points_balance FROM users WHERE id=? FOR UPDATE',
-      [userId]
-    )
+    const [urows] = await conn.execute('SELECT points_balance FROM users WHERE id=? FOR UPDATE', [
+      userId
+    ])
     if (!urows.length) throw new HttpError(404, '用户不存在')
     const balance = Number(urows[0].points_balance) || 0
     const cap = Math.min(balance, cashToPoints(totalAmount, rate))
@@ -189,109 +227,278 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
     if (pointsSpend > cap) pointsSpend = cap
     const offset = round2(pointsToCash(pointsSpend, rate))
     const cashPaid = round2(Math.max(0, totalAmount - offset))
-    const ono = orderNo('O')
-    if (pointsSpend > 0) {
-      await pointsService.spendConsumerPoints(conn, {
-        userId,
-        points: pointsSpend,
-        title: '点餐积分抵现',
-        bizId: ono
+    return { totalAmount, pointsWant, pointsSpend, offset, cashPaid, lines, rate }
+  })
+
+  const { totalAmount, pointsWant, pointsSpend, offset, cashPaid, lines } = preview
+  const ono = orderNo('O')
+  const realPay = wxService.wxPayConfigured() && cashPaid > 0
+
+  if (!realPay) {
+    return withTransaction(async (conn) => {
+      const payMeta = wxService.buildPayResult({
+        orderNo: ono,
+        cashAmount: cashPaid,
+        simulated: true
       })
-    }
-    const payMeta = wxService.buildPayResult({
-      orderNo: ono,
-      cashAmount: cashPaid
+      let ins
+      try {
+        ;[ins] = await conn.execute(
+          `INSERT INTO consumer_orders
+            (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
+             points_spend, cash_paid, pay_channel, pay_status, order_status)
+           VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, 'unpaid', 'pending')`,
+          [ono, userId, merchantId, totalAmount, pointsWant, pointsSpend, cashPaid, payMeta.payChannel]
+        )
+      } catch (e) {
+        if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('points_spend'))) {
+          ;[ins] = await conn.execute(
+            `INSERT INTO consumer_orders
+              (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
+               pay_status, order_status)
+             VALUES (?, ?, ?, ?, ?, 0, 'unpaid', 'pending')`,
+            [ono, userId, merchantId, totalAmount, pointsWant]
+          )
+        } else throw e
+      }
+      const orderId = ins.insertId
+      await insertStallOrderItems(conn, orderId, lines)
+      const [orows] = await conn.execute('SELECT * FROM consumer_orders WHERE id=? FOR UPDATE', [orderId])
+      const fin = await finalizePaidConsumerOrder(conn, orows[0], {})
+      try {
+        await conn.execute(`UPDATE consumer_orders SET order_status='preparing' WHERE id=?`, [orderId])
+      } catch (_) {}
+      return {
+        orderId,
+        orderNo: ono,
+        totalAmount,
+        cashPaid,
+        pointsSpend,
+        offsetCash: offset,
+        pointsWant,
+        pointsAllocated: 0,
+        status: 'preparing',
+        commission: fin.commission,
+        merchantNet: fin.merchantNet,
+        ...payMeta
+      }
     })
+  }
+
+  const created = await withTransaction(async (conn) => {
     let ins
     try {
       ;[ins] = await conn.execute(
         `INSERT INTO consumer_orders
           (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
-           points_spend, cash_paid, pay_channel, pay_status, order_status, paid_at)
-         VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, 'paid', 'preparing', NOW())`,
-        [ono, userId, merchantId, totalAmount, pointsWant, pointsSpend, cashPaid, payMeta.payChannel]
+           points_spend, cash_paid, pay_channel, pay_status, order_status)
+         VALUES (?, ?, ?, ?, ?, 0, ?, ?, 'wxpay', 'unpaid', 'pending')`,
+        [ono, userId, merchantId, totalAmount, pointsWant, pointsSpend, cashPaid]
       )
     } catch (e) {
       if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('points_spend'))) {
         ;[ins] = await conn.execute(
           `INSERT INTO consumer_orders
             (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
-             pay_status, order_status, paid_at)
-           VALUES (?, ?, ?, ?, ?, 0, 'paid', 'preparing', NOW())`,
+             pay_status, order_status)
+           VALUES (?, ?, ?, ?, ?, 0, 'unpaid', 'pending')`,
           [ono, userId, merchantId, totalAmount, pointsWant]
         )
-      } else {
-        throw e
-      }
+      } else throw e
     }
     const orderId = ins.insertId
-    for (const l of lines) {
-      const displayName = l.optionsText ? `${l.name}（${l.optionsText}）` : l.name
-      try {
-        await conn.execute(
-          `INSERT INTO consumer_order_items
-            (order_id, goods_id, goods_name, price, points_grant, qty, options_json, options_text)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            orderId,
-            l.goodsId,
-            displayName,
-            l.price,
-            l.pointsGrant,
-            l.qty,
-            JSON.stringify(l.optionsJson || []),
-            l.optionsText || null
-          ]
-        )
-      } catch (e) {
-        // 未跑 08_stall_options.sql 时回退旧列
-        if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('options_'))) {
-          await conn.execute(
-            `INSERT INTO consumer_order_items
-              (order_id, goods_id, goods_name, price, points_grant, qty)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [orderId, l.goodsId, displayName, l.price, l.pointsGrant, l.qty]
-          )
-        } else {
-          throw e
-        }
-      }
-      await conn.execute(
-        `UPDATE stall_goods SET sales_count = IFNULL(sales_count,0) + ? WHERE id=?`,
-        [l.qty, l.goodsId]
-      )
-    }
-    const commission = await recordCommission(conn, {
-      bizType: 'stall',
-      bizId: ono,
-      payerMerchantId: merchantId,
-      amountGross: totalAmount
-    })
-    const net = Math.round((totalAmount - commission) * 100) / 100
-    await accountService.creditAccount(conn, {
-      merchantId,
-      accountType: 'cash_settlement',
-      amount: net,
-      bizType: 'stall_settle',
-      bizId: ono,
-      title: `点餐货款入账 · ${ono}`
-    })
-
-    return {
-      orderId,
-      orderNo: ono,
-      totalAmount,
-      cashPaid,
-      pointsSpend,
-      offsetCash: offset,
-      pointsWant,
-      pointsAllocated: 0,
-      status: 'preparing',
-      commission,
-      merchantNet: net,
-      ...payMeta
-    }
+    await insertStallOrderItems(conn, orderId, lines)
+    return { orderId }
   })
+
+  const merchants = await query('SELECT name FROM merchants WHERE id=:id', { id: merchantId })
+  const shopName = merchants[0] ? merchants[0].name : '地摊点餐'
+  const openid = await getUserOpenid(userId)
+  const subMchId = await getMerchantSubMchId(merchantId)
+  let prepay
+  try {
+    prepay = await wxService.createJsapiPayForOrder({
+      orderNo: ono,
+      description: `${shopName}·点餐`,
+      amountYuan: cashPaid,
+      openid,
+      subMchId,
+      attach: `menu:${merchantId}`
+    })
+  } catch (e) {
+    await query(`UPDATE consumer_orders SET order_status='cancelled' WHERE order_no=:ono AND pay_status='unpaid'`, {
+      ono
+    }).catch(() => {})
+    throw e
+  }
+
+  // 积分抵现延后到支付成功；先把待扣积分记在订单上
+  const payMeta = wxService.buildPayResult({
+    orderNo: ono,
+    cashAmount: cashPaid,
+    simulated: false,
+    payParams: prepay.payParams,
+    payChannel: 'wxpay',
+    message: prepay.mode === 'direct' ? '平台直收测试支付，请完成微信支付' : '请完成微信支付'
+  })
+
+  return {
+    orderId: created.orderId,
+    orderNo: ono,
+    totalAmount,
+    cashPaid,
+    pointsSpend,
+    offsetCash: offset,
+    pointsWant,
+    pointsAllocated: 0,
+    status: 'unpaid',
+    needConfirm: true,
+    payMode: prepay.mode,
+    subMchId: prepay.subMchId,
+    ...payMeta
+  }
+}
+
+async function getUserOpenid(userId) {
+  const rows = await query('SELECT openid FROM users WHERE id=:id LIMIT 1', { id: Number(userId) })
+  return rows.length ? String(rows[0].openid || '').trim() : ''
+}
+
+async function getMerchantSubMchId(merchantId) {
+  try {
+    const rows = await query(
+      'SELECT wx_sub_mch_id AS sub FROM merchants WHERE id=:id LIMIT 1',
+      { id: Number(merchantId) }
+    )
+    return rows.length ? String(rows[0].sub || '').trim() : ''
+  } catch (_) {
+    return ''
+  }
+}
+
+/** 支付成功后入账：积分划拨 + 抽成 + 货款 + 推荐（幂等） */
+async function finalizePaidConsumerOrder(conn, orderRow, { transactionId } = {}) {
+  const o = orderRow
+  if (o.pay_status === 'paid') {
+    return { alreadyPaid: true, orderId: o.id, orderNo: o.order_no }
+  }
+  const mid = Number(o.merchant_id)
+  const uid = Number(o.user_id)
+  const cash = round2(o.cash_paid != null ? o.cash_paid : o.total_amount)
+  const pointsWant = Number(o.points_want) || 0
+  const [mrows] = await conn.execute('SELECT name FROM merchants WHERE id=?', [mid])
+  const shopName = mrows[0] ? mrows[0].name : ''
+
+  const orderStatus =
+    String(o.order_no || '').startsWith('S') || String(o.order_status) === 'completed'
+      ? 'completed'
+      : o.order_status === 'preparing'
+        ? 'preparing'
+        : 'preparing'
+
+  const pointsSpend = Number(o.points_spend) || 0
+  if (pointsSpend > 0) {
+    await pointsService.spendConsumerPoints(conn, {
+      userId: uid,
+      points: pointsSpend,
+      title: '点餐积分抵现',
+      bizId: o.order_no
+    })
+  }
+
+  try {
+    await conn.execute(
+      `UPDATE consumer_orders
+       SET pay_status='paid', order_status=?, paid_at=NOW(),
+           wx_transaction_id=IFNULL(?, wx_transaction_id),
+           pay_channel=IFNULL(pay_channel, 'wxpay')
+       WHERE id=? AND pay_status='unpaid'`,
+      [orderStatus === 'completed' ? 'completed' : orderStatus, transactionId || null, o.id]
+    )
+  } catch (e) {
+    if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('pay_channel'))) {
+      await conn.execute(
+        `UPDATE consumer_orders
+         SET pay_status='paid', order_status=?, paid_at=NOW(),
+             wx_transaction_id=IFNULL(?, wx_transaction_id)
+         WHERE id=? AND pay_status='unpaid'`,
+        [orderStatus === 'completed' ? 'completed' : 'pending', transactionId || null, o.id]
+      )
+      if (orderStatus === 'completed') {
+        try {
+          await conn.execute(`UPDATE consumer_orders SET order_status='completed' WHERE id=?`, [o.id])
+        } catch (_) {}
+      }
+    } else if (e && String(e.message || '').includes("Invalid data for column 'order_status'")) {
+      await conn.execute(
+        `UPDATE consumer_orders
+         SET pay_status='paid', paid_at=NOW(), wx_transaction_id=IFNULL(?, wx_transaction_id)
+         WHERE id=? AND pay_status='unpaid'`,
+        [transactionId || null, o.id]
+      )
+    } else {
+      throw e
+    }
+  }
+
+  let allocated = Number(o.points_allocated) || 0
+  let shortage = 0
+  if (allocated === 0 && pointsWant > 0) {
+    const alloc = await pointsService.allocateToConsumer(conn, {
+      merchantId: mid,
+      userId: uid,
+      wantPoints: pointsWant,
+      shopName,
+      orderNo: o.order_no
+    })
+    allocated = alloc.allocated
+    shortage = alloc.shortage
+    try {
+      await conn.execute(
+        'UPDATE consumer_orders SET points_allocated=?, points_allocated_at=NOW() WHERE id=?',
+        [allocated, o.id]
+      )
+    } catch (e) {
+      if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('points_allocated_at'))) {
+        await conn.execute('UPDATE consumer_orders SET points_allocated=? WHERE id=?', [allocated, o.id])
+      } else throw e
+    }
+  }
+
+  const commission = await recordCommission(conn, {
+    bizType: 'stall',
+    bizId: o.order_no,
+    payerMerchantId: mid,
+    amountGross: Number(o.total_amount) || cash
+  })
+  const net = Math.round(((Number(o.total_amount) || cash) - commission) * 100) / 100
+  await accountService.creditAccount(conn, {
+    merchantId: mid,
+    accountType: 'cash_settlement',
+    amount: net,
+    bizType: String(o.order_no || '').startsWith('S') ? 'stall_settle' : 'stall_settle',
+    bizId: o.order_no,
+    title: `${String(o.order_no || '').startsWith('S') ? '到店消费' : '点餐'}入账 · ${o.order_no}`
+  })
+  await referralService.onConsumerOrderDone(conn, {
+    inviteeUserId: uid,
+    orderNo: o.order_no,
+    kind: 'stall'
+  })
+
+  const [urows] = await conn.execute('SELECT points_balance FROM users WHERE id=?', [uid])
+  return {
+    alreadyPaid: false,
+    orderId: o.id,
+    orderNo: o.order_no,
+    pointsAllocated: allocated,
+    shortage,
+    pointsBalance: urows.length ? Number(urows[0].points_balance) : allocated,
+    commission,
+    merchantNet: net,
+    shopName,
+    status: orderStatus === 'completed' ? 'completed' : 'preparing'
+  }
 }
 
 async function createScanPayOrder({ userId, merchantId, amount }) {
@@ -315,42 +522,100 @@ async function createScanPayOrder({ userId, merchantId, amount }) {
 
   await feeService.assertCanTransact(mid, { action: '接单' })
 
-  return withTransaction(async (conn) => {
-    const rate = await getCashRate()
-    const pointsWant = cashToPoints(cash, rate)
-    const ono = orderNo('S')
-    const payMeta = wxService.buildPayResult({
-      orderNo: ono,
-      cashAmount: cash
-    })
+  const realPay = wxService.wxPayConfigured()
+  const rate = await getCashRate()
+  const pointsWant = cashToPoints(cash, rate)
+  const ono = orderNo('S')
 
+  if (!realPay) {
+    return withTransaction(async (conn) => {
+      const payMeta = wxService.buildPayResult({ orderNo: ono, cashAmount: cash, simulated: true })
+      let ins
+      try {
+        ;[ins] = await conn.execute(
+          `INSERT INTO consumer_orders
+            (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
+             points_spend, cash_paid, pay_channel, pay_status, order_status)
+           VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, 'unpaid', 'pending')`,
+          [ono, uid, mid, cash, pointsWant, cash, payMeta.payChannel]
+        )
+      } catch (e) {
+        if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('points_spend'))) {
+          ;[ins] = await conn.execute(
+            `INSERT INTO consumer_orders
+              (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
+               pay_status, order_status)
+             VALUES (?, ?, ?, ?, ?, 0, 'unpaid', 'pending')`,
+            [ono, uid, mid, cash, pointsWant]
+          )
+        } else {
+          throw e
+        }
+      }
+      const orderId = ins.insertId
+      try {
+        await conn.execute(
+          `INSERT INTO consumer_order_items
+            (order_id, goods_id, goods_name, price, points_grant, qty)
+           VALUES (?, 0, '到店消费', ?, ?, 1)`,
+          [orderId, cash, pointsWant]
+        )
+      } catch (e) {
+        if (!(e && (e.code === 'ER_NO_REFERENCED_ROW_2' || e.code === 'ER_NO_REFERENCED_ROW'))) throw e
+        const [grows] = await conn.execute(
+          `SELECT id FROM stall_goods WHERE merchant_id=? AND deleted_at IS NULL LIMIT 1`,
+          [mid]
+        )
+        const gid = grows.length ? grows[0].id : 0
+        if (!gid) throw new HttpError(400, '该摊位暂未上架商品，无法完成收款')
+        await conn.execute(
+          `INSERT INTO consumer_order_items
+            (order_id, goods_id, goods_name, price, points_grant, qty)
+           VALUES (?, ?, '到店消费', ?, ?, 1)`,
+          [orderId, gid, cash, pointsWant]
+        )
+      }
+      const [orows] = await conn.execute('SELECT * FROM consumer_orders WHERE id=? FOR UPDATE', [orderId])
+      const fin = await finalizePaidConsumerOrder(conn, orows[0], {})
+      return {
+        orderId,
+        orderNo: ono,
+        totalAmount: cash,
+        cashPaid: cash,
+        pointsSpend: 0,
+        pointsWant,
+        pointsAllocated: fin.pointsAllocated,
+        pointsBalance: fin.pointsBalance,
+        shortage: fin.shortage,
+        shopName: m.name,
+        status: 'completed',
+        commission: fin.commission,
+        merchantNet: fin.merchantNet,
+        ...payMeta
+      }
+    })
+  }
+
+  // 真实支付：先落 unpaid，拉起 JSAPI，回调后再入账
+  const created = await withTransaction(async (conn) => {
     let ins
     try {
       ;[ins] = await conn.execute(
         `INSERT INTO consumer_orders
           (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
-           points_spend, cash_paid, pay_channel, pay_status, order_status, paid_at)
-         VALUES (?, ?, ?, ?, ?, 0, 0, ?, ?, 'paid', 'completed', NOW())`,
-        [ono, uid, mid, cash, pointsWant, cash, payMeta.payChannel]
+           points_spend, cash_paid, pay_channel, pay_status, order_status)
+         VALUES (?, ?, ?, ?, ?, 0, 0, ?, 'wxpay', 'unpaid', 'pending')`,
+        [ono, uid, mid, cash, pointsWant, cash]
       )
     } catch (e) {
       if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('points_spend'))) {
         ;[ins] = await conn.execute(
           `INSERT INTO consumer_orders
             (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
-             pay_status, order_status, paid_at)
-           VALUES (?, ?, ?, ?, ?, 0, 'paid', 'completed', NOW())`,
+             pay_status, order_status)
+           VALUES (?, ?, ?, ?, ?, 0, 'unpaid', 'pending')`,
           [ono, uid, mid, cash, pointsWant]
         )
-      } else if (e && String(e.message || '').includes("Invalid data for column 'order_status'")) {
-        ;[ins] = await conn.execute(
-          `INSERT INTO consumer_orders
-            (order_no, user_id, merchant_id, total_amount, points_want, points_allocated,
-             pay_status, order_status, paid_at)
-           VALUES (?, ?, ?, ?, ?, 0, 'paid', 'pending', NOW())`,
-          [ono, uid, mid, cash, pointsWant]
-        )
-        await conn.execute(`UPDATE consumer_orders SET order_status='completed' WHERE id=?`, [ins.insertId])
       } else {
         throw e
       }
@@ -378,67 +643,121 @@ async function createScanPayOrder({ userId, merchantId, amount }) {
         [orderId, gid, cash, pointsWant]
       )
     }
+    return { orderId }
+  })
 
-    const alloc = await pointsService.allocateToConsumer(conn, {
-      merchantId: mid,
-      userId: uid,
-      wantPoints: pointsWant,
-      shopName: m.name,
-      orderNo: ono
+  const openid = await getUserOpenid(uid)
+  const subMchId = await getMerchantSubMchId(mid)
+  let prepay
+  try {
+    prepay = await wxService.createJsapiPayForOrder({
+      orderNo: ono,
+      description: `${m.name || '地摊'}·到店消费`,
+      amountYuan: cash,
+      openid,
+      subMchId,
+      attach: `scan:${mid}`
     })
-    try {
-      await conn.execute(
-        'UPDATE consumer_orders SET points_allocated=?, points_allocated_at=NOW() WHERE id=?',
-        [alloc.allocated, orderId]
-      )
-    } catch (e) {
-      if (e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('points_allocated_at'))) {
-        await conn.execute('UPDATE consumer_orders SET points_allocated=? WHERE id=?', [
-          alloc.allocated,
-          orderId
-        ])
-      } else {
-        throw e
-      }
+  } catch (e) {
+    await query(`UPDATE consumer_orders SET order_status='cancelled' WHERE order_no=:ono AND pay_status='unpaid'`, {
+      ono
+    }).catch(() => {})
+    throw e
+  }
+
+  const payMeta = wxService.buildPayResult({
+    orderNo: ono,
+    cashAmount: cash,
+    simulated: false,
+    payParams: prepay.payParams,
+    payChannel: 'wxpay',
+    message: prepay.mode === 'direct' ? '平台直收测试支付，请完成微信支付' : '请完成微信支付'
+  })
+
+  return {
+    orderId: created.orderId,
+    orderNo: ono,
+    totalAmount: cash,
+    cashPaid: cash,
+    pointsSpend: 0,
+    pointsWant,
+    pointsAllocated: 0,
+    shopName: m.name,
+    status: 'unpaid',
+    payMode: prepay.mode,
+    subMchId: prepay.subMchId,
+    needConfirm: true,
+    ...payMeta
+  }
+}
+
+async function handleWxPayNotify(headers, rawBody) {
+  const parsed = await wxService.parsePayNotify({ headers, rawBody })
+  if (parsed.tradeState && parsed.tradeState !== 'SUCCESS') {
+    return { ignored: true, tradeState: parsed.tradeState }
+  }
+  const ono = parsed.outTradeNo
+  if (!ono) throw new HttpError(400, '回调缺少商户订单号')
+  return withTransaction(async (conn) => {
+    const [rows] = await conn.execute('SELECT * FROM consumer_orders WHERE order_no=? FOR UPDATE', [ono])
+    if (!rows.length) {
+      // 可能是异业/采购单，暂只处理 C 端地摊单
+      return { ignored: true, reason: 'order_not_found', orderNo: ono }
     }
+    const fin = await finalizePaidConsumerOrder(conn, rows[0], {
+      transactionId: parsed.transactionId
+    })
+    return { ok: true, ...fin, transactionId: parsed.transactionId }
+  })
+}
 
-    const commission = await recordCommission(conn, {
-      bizType: 'stall',
-      bizId: ono,
-      payerMerchantId: mid,
-      amountGross: cash
-    })
-    const net = Math.round((cash - commission) * 100) / 100
-    await accountService.creditAccount(conn, {
-      merchantId: mid,
-      accountType: 'cash_settlement',
-      amount: net,
-      bizType: 'stall_settle',
-      bizId: ono,
-      title: `到店消费入账 · ${ono}`
-    })
-    await referralService.onConsumerOrderDone(conn, {
-      inviteeUserId: uid,
-      orderNo: ono,
-      kind: 'stall'
-    })
-
-    const [urows] = await conn.execute('SELECT points_balance FROM users WHERE id=?', [uid])
+/** 小程序支付成功后主动对账入账（防回调延迟） */
+async function syncConsumerPay(orderNo, userId) {
+  const ono = String(orderNo || '').trim()
+  if (!ono) throw new HttpError(400, '缺少订单号')
+  const rows = await query('SELECT * FROM consumer_orders WHERE order_no=:ono LIMIT 1', { ono })
+  if (!rows.length) throw new HttpError(404, '订单不存在')
+  const o = rows[0]
+  if (userId && Number(o.user_id) !== Number(userId)) throw new HttpError(403, '无权操作该订单')
+  if (o.pay_status === 'paid') {
+    const [urows] = await query('SELECT points_balance FROM users WHERE id=:id', { id: o.user_id })
     return {
-      orderId,
       orderNo: ono,
-      totalAmount: cash,
-      cashPaid: cash,
-      pointsSpend: 0,
-      pointsWant,
-      pointsAllocated: alloc.allocated,
-      pointsBalance: urows.length ? Number(urows[0].points_balance) : alloc.allocated,
-      shortage: alloc.shortage,
-      shopName: m.name,
-      status: 'completed',
-      commission,
-      merchantNet: net,
-      ...payMeta
+      status: o.order_status,
+      payStatus: 'paid',
+      pointsAllocated: Number(o.points_allocated) || 0,
+      pointsBalance: urows.length ? Number(urows[0].points_balance) : 0,
+      alreadyPaid: true
+    }
+  }
+  const subMchId = await getMerchantSubMchId(o.merchant_id)
+  let wxOrder = null
+  try {
+    wxOrder = await wxService.queryWxOrder(ono, { subMchId })
+  } catch (e) {
+    console.warn('[wxpay] query order', e.message)
+  }
+  const tradeState = wxOrder && (wxOrder.trade_state || wxOrder.tradeState)
+  const transactionId = wxOrder && (wxOrder.transaction_id || wxOrder.transactionId)
+  if (tradeState && tradeState !== 'SUCCESS') {
+    throw new HttpError(400, `微信支付未完成（${tradeState}）`)
+  }
+  // 查单失败时：若小程序已成功拉起支付，仍允许仅在有 transaction 时入账；否则提示等回调
+  if (!tradeState && !transactionId) {
+    // 宽松：仍尝试入账标记需人工核对——改为拒绝，避免未付入账
+    throw new HttpError(400, '暂未查到支付成功，请稍后再试或等待支付回调')
+  }
+  return withTransaction(async (conn) => {
+    const [locked] = await conn.execute('SELECT * FROM consumer_orders WHERE order_no=? FOR UPDATE', [ono])
+    const fin = await finalizePaidConsumerOrder(conn, locked[0], { transactionId })
+    return {
+      orderNo: ono,
+      status: fin.status,
+      payStatus: 'paid',
+      pointsAllocated: fin.pointsAllocated,
+      pointsBalance: fin.pointsBalance,
+      shortage: fin.shortage,
+      alreadyPaid: fin.alreadyPaid
     }
   })
 }
@@ -1056,6 +1375,8 @@ module.exports = {
   createAndPayStallOrder,
   createScanPayOrder,
   completeStallOrder,
+  handleWxPayNotify,
+  syncConsumerPay,
   redeemCross,
   createPurchaseOrder,
   shipPurchaseOrder,

@@ -1,4 +1,6 @@
-require('dotenv').config({ override: false })
+const path = require('path')
+require('dotenv').config({ path: path.join(__dirname, '../../.env'), override: false })
+require('dotenv').config({ path: path.join(__dirname, '../../backend/.env'), override: false })
 
 /** 微信云托管模板变量 MYSQL_ADDRESS 形如 host:port */
 function parseMysqlAddress(raw) {

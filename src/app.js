@@ -26,7 +26,17 @@ const adminStatic = express.static(adminDir, {
 app.set('trust proxy', true)
 
 app.use(cors())
-app.use(express.json({ limit: '5mb' }))
+app.use(
+  express.json({
+    limit: '5mb',
+    verify(req, _res, buf) {
+      // 微信支付回调验签需要原始 body
+      if (req.originalUrl && String(req.originalUrl).includes('/wxpay/notify')) {
+        req.rawBody = buf
+      }
+    }
+  })
+)
 app.use(express.urlencoded({ extended: true }))
 
 function requestHost(req) {

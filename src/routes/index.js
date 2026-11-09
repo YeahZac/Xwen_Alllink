@@ -1728,6 +1728,63 @@ router.post(
   }
 )
 
+/** 微信支付结果通知（无需登录；验签在服务内完成） */
+router.post('/wxpay/notify', async (req, res) => {
+  try {
+    const raw =
+      req.rawBody ||
+      (Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body || {})))
+    const result = await orderService.handleWxPayNotify(req.headers, raw)
+    res.json({ code: 'SUCCESS', message: '成功', data: result })
+  } catch (e) {
+    console.error('[wxpay/notify]', e.message || e)
+    res.status(e.status || 500).json({ code: 'FAIL', message: e.message || '处理失败' })
+  }
+})
+
+/** 小程序支付成功后主动对账入账 */
+router.post(
+  '/orders/pay/sync',
+  authRequired,
+  requireRoles('consumer'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await orderService.syncConsumerPay(req.body?.orderNo || req.body?.outTradeNo, req.auth.userId)
+        )
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get('/wxpay/config-check', ...adminOnly, async (_req, res, next) => {
+  try {
+    const wxPayService = require('../services/wxPayService')
+    const c = wxPayService.payConfig()
+    res.json(
+      ok({
+        configured: wxPayService.wxPayConfigured(),
+        mchId: c.mchId || null,
+        appId: c.appId || null,
+        serialNo: c.serialNo ? `${String(c.serialNo).slice(0, 6)}…` : null,
+        hasPrivateKey: Boolean(c.privateKey),
+        hasPublicKey: Boolean(c.wechatPubKey),
+        publicKeyId: c.wechatPubKeyId || null,
+        mode: c.mode,
+        allowDirect: c.allowDirect,
+        platformSubMchId: c.platformSubMchId || null,
+        profitSharing: c.profitSharing,
+        notifyUrl: c.notifyUrl
+      })
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.post(
   '/orders/cross/redeem',
   authRequired,

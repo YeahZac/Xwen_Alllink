@@ -202,6 +202,7 @@ const api = {
   payStall: (body) => request({ path: '/orders/stall/pay', method: 'POST', data: body }),
 
   scanPay: (body) => request({ path: '/orders/stall/scan-pay', method: 'POST', data: body }),
+  syncPay: (body) => request({ path: '/orders/pay/sync', method: 'POST', data: body }),
 
   redeemCross: (body) => request({ path: '/orders/cross/redeem', method: 'POST', data: body }),
 

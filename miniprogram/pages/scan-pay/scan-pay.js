@@ -252,14 +252,22 @@ Page({
     this.setData({ paying: true })
     this.persist()
     try {
-      const result = await api.scanPay({
+      const created = await api.scanPay({
         merchantId: Number(this.data.stallId),
         amount: cash
       })
-      await requestWxPay(result)
+      const result = await requestWxPay(created)
       scan.clearPendingPay()
-      const pts = Number(result.pointsAllocated != null ? result.pointsAllocated : result.pointsWant) || 0
+      const pts =
+        Number(
+          result.pointsAllocated != null
+            ? result.pointsAllocated
+            : created.pointsAllocated != null
+              ? created.pointsAllocated
+              : result.pointsWant || created.pointsWant
+        ) || 0
       if (result.pointsBalance != null) store.setConsumerPoints(result.pointsBalance)
+      else if (created.pointsBalance != null) store.setConsumerPoints(created.pointsBalance)
       await store.refreshProfile().catch(() => {})
       let shortageText = ''
       if (result.shortage && pts < Number(result.pointsWant || 0)) {

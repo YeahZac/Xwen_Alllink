@@ -161,11 +161,20 @@ async function getPhoneNumber(phoneCode, openid) {
   return phone
 }
 
+const wxPayService = require('./wxPayService')
+
 function wxPayConfigured() {
-  return Boolean(process.env.WX_PAY_MCH_ID && process.env.WX_PAY_API_V3_KEY)
+  return wxPayService.wxPayConfigured()
 }
 
-function buildPayResult({ orderNo, cashAmount, simulated = !wxPayConfigured() }) {
+function buildPayResult({
+  orderNo,
+  cashAmount,
+  simulated,
+  payParams = null,
+  payChannel,
+  message
+} = {}) {
   const cash = Math.round(Number(cashAmount || 0) * 100) / 100
   if (cash <= 0) {
     return {
@@ -174,32 +183,42 @@ function buildPayResult({ orderNo, cashAmount, simulated = !wxPayConfigured() })
       cashAmount: 0,
       orderNo,
       payParams: null,
-      message: '现金为 0，无需拉起微信支付'
+      message: message || '现金为 0，无需拉起微信支付'
     }
   }
-  if (simulated) {
+  const useSim = simulated == null ? !wxPayConfigured() : !!simulated
+  if (useSim) {
     return {
       simulated: true,
-      payChannel: 'wxpay_sim',
+      payChannel: payChannel || 'wxpay_sim',
       cashAmount: cash,
       orderNo,
       payParams: null,
-      message: '未配置微信支付商户号，已按微信支付成功入账（可继续联调业务）'
+      message: message || '未配置微信支付商户号，已按微信支付成功入账（可继续联调业务）'
     }
   }
   return {
     simulated: false,
-    payChannel: 'wxpay',
+    payChannel: payChannel || 'wxpay',
     cashAmount: cash,
     orderNo,
-    payParams: null,
-    message: '请配置 JSAPI 预下单参数后拉起微信支付'
+    payParams: payParams || null,
+    message: message || (payParams ? '请拉起微信支付' : '请配置 JSAPI 预下单参数后拉起微信支付'),
+    notifyUrl: wxPayService.notifyUrlForDisplay()
   }
+}
+
+async function createJsapiPayForOrder(opts) {
+  return wxPayService.createJsapiPrepay(opts)
 }
 
 module.exports = {
   code2Session,
   getPhoneNumber,
   wxPayConfigured,
-  buildPayResult
+  buildPayResult,
+  createJsapiPayForOrder,
+  parsePayNotify: (...args) => wxPayService.parsePayNotify(...args),
+  queryWxOrder: (...args) => wxPayService.queryOrderByOutTradeNo(...args),
+  notifyUrlForDisplay: () => wxPayService.notifyUrlForDisplay()
 }

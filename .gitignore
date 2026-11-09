@@ -2,12 +2,17 @@
 node_modules/
 .env
 .env.local
+backend/.env
 *.log
 .DS_Store
 coverage/
 dist/
 tmp/
 .ui-audit/
+# 微信支付私钥/公钥（切勿提交）
+secrets/
+*.pem
+*.p12
 # 大图已上云；本地仅作素材源，不进主包也不强推仓库体积
 miniprogram/assets/covers/
 miniprogram/assets/banners/
