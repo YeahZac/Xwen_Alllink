@@ -300,9 +300,15 @@ async function ensureSchema() {
   } catch (e) {
     console.warn('[schema] rbac bootstrap', e.message)
   }
-  // 禁止在 ensureSchema / 服务启动时自动改写 Banner/门店/商品图：
-  // 旧版 mediaSync 会把商户真图误判为「旧 URL」整库覆盖成同一张 mp-static 图。
-  // 需要时请走运营台显式接口 POST /admin/media/sync-mp-static。
+  try {
+    await runSqlStatements('51_purge_test_placeholder_goods.sql', 'purge test/placeholder goods')
+  } catch (e) {
+    console.warn('[schema] purge test goods', e.message)
+  }
+  // 禁止在 ensureSchema / 服务启动时自动改写 Banner/门店/商品图或复活软删商品：
+  // - 旧 29_cdn_media_backfill 曾用「非 mp-static 一律替换」冲掉运营上传 Banner
+  // - 旧 33_ensure_open_ops_content 曾复活测试 SKU / 种子门店
+  // 需要时请走运营台显式接口 POST /admin/sys/sync-mp-media（仅空图/占位图）。
 }
 
 /** 开通深圳，并把门店迁到真实商场坐标 */

@@ -5013,7 +5013,7 @@ async function renderSysMedia() {
       ${editable ? '<button class="btn primary" id="btnSyncMp">一键替换为实景图</button>' : ''}
       ${editable ? '<label class="btn primary sm">上传<input id="mediaUpload" type="file" accept="image/*,.pdf" hidden /></label>' : ''}
     </div>
-    <p class="muted">图片会自动压缩到 3MB 以内并上传到云托管存储桶。点「一键替换为实景图」会把库内 Banner/门店封面/商品图里的旧图 URL 全面改成 mp-static 实景地址。</p>
+    <p class="muted">图片会自动压缩到 3MB 以内并上传到云托管存储桶。「一键替换」仅处理空图/本地 assets/公开占位图，不会覆盖运营已上传的 Banner/封面/商品图。</p>
     <div id="list"></div>`
   const load = async () => {
     const biz = $('fBiz').value
@@ -5067,10 +5067,18 @@ async function renderSysMedia() {
   if ($('btnSyncMp')) {
     $('btnSyncMp').onclick = () =>
       runAction(async () => {
-        if (!confirm('确认把 Banner、门店封面、商品图中的旧地址全部替换为云端实景图？')) return
-        const r = await api('/admin/sys/sync-mp-media', { method: 'POST', body: '{}' })
+        if (
+          !confirm(
+            '仅替换空图/本地占位图为 mp-static 实景图。\n运营已上传的 Banner/封面/商品图不会被改动。\n确认继续？'
+          )
+        )
+          return
+        const r = await api('/admin/sys/sync-mp-media', {
+          method: 'POST',
+          body: JSON.stringify({ confirm: 'REPLACE_LEGACY_ONLY' })
+        })
         alert(
-          `已替换：Banner ${r.banners?.updated || 0}/${r.banners?.total || 0}，门店 ${r.merchants?.updated || 0}/${r.merchants?.total || 0}`
+          `已替换（仅占位）：Banner ${r.banners?.updated || 0}/${r.banners?.total || 0}，门店 ${r.merchants?.updated || 0}/${r.merchants?.total || 0}`
         )
         await load()
       })

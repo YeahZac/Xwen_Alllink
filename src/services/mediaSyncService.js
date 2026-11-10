@@ -35,11 +35,13 @@ const BANNERS = {
 
 /**
  * 仅「空图 / 本地 assets / 公开占位图服务」视为可替换旧图。
- * 任何已上传的 https CDN（含商户真图）一律不覆盖。
+ * 运营上传（/admin/banner|cover|goods|merchant|license）与任意业务 CDN https 一律不覆盖。
  */
 function isLegacyUrl(url) {
   const s = String(url || '').trim()
   if (!s) return true
+  // 业务上传路径：绝对禁止自动改写（含历史误判把 banner 当旧图的问题）
+  if (/\/admin\/(banner|cover|goods|merchant|license)\//i.test(s)) return false
   if (/\/admin\/mp-static\//i.test(s)) return false
   if (/placehold\.co|picsum\.photos|unsplash\.com|dummyimage|via\.placeholder/i.test(s)) {
     return true
@@ -47,7 +49,7 @@ function isLegacyUrl(url) {
   if (/^\/assets\//i.test(s) || /\/assets\/placeholders\//i.test(s)) return true
   // 历史本地相对路径
   if (!/^https?:\/\//i.test(s)) return true
-  // 真实上传的 CDN / COS / 云托管文件：禁止自动改写
+  // 其它 https（COS / 云托管）：禁止自动改写
   return false
 }
 

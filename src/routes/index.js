@@ -1333,9 +1333,13 @@ router.get('/admin/ops/screen', ...adminOnly, async (req, res) => {
   res.status(410).json({ code: 410, message: '数据大屏已下线', data: null })
 })
 
-/** 显式同步 mp-static 占位图；不会覆盖商户/运营已上传的真实 CDN 图。勿在启动流程调用。 */
+/** 显式同步 mp-static 占位图；仅空图/本地 assets/公开占位图。勿在启动流程调用。 */
 router.post('/admin/sys/sync-mp-media', ...adminOnly, requirePage('sys_media', { edit: true }), async (req, res, next) => {
   try {
+    if (String((req.body && req.body.confirm) || '') !== 'REPLACE_LEGACY_ONLY') {
+      const { HttpError } = require('../utils/response')
+      throw new HttpError(400, '请确认 confirm=REPLACE_LEGACY_ONLY（仅替换空图/占位图，不会改运营上传图）')
+    }
     const mediaSyncService = require('../services/mediaSyncService')
     res.json(ok(await mediaSyncService.syncAllMpStaticMedia()))
   } catch (e) {

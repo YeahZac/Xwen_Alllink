@@ -1,0 +1,12 @@
+---
+description: 禁止启动/种子脚本覆盖线上正式媒体与商品数据
+alwaysApply: true
+---
+
+# 禁止自动覆盖正式数据
+
+- **不要**在 `ensureSchema` / 服务启动时调用 `mediaSync` 或执行会改写已有 https CDN 的 SQL
+- `sql/29_cdn_media_backfill.sql` 只能替换空图/本地 assets/公开占位图；**禁止**用「非 mp-static 一律替换」
+- `sql/33_*` 不得复活软删商品/种子门店；`sql/19_*` 不得每次启动强改门店坐标
+- 测试/占位商品用软删清理（`51_purge_test_placeholder_goods.sql`），不要自动新建「到店消费」等 SKU
+- Banner / 门店封面 / 商品图以运营台上传为准；一键替换须 `confirm=REPLACE_LEGACY_ONLY`
