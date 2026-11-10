@@ -110,27 +110,11 @@ async function assertGoodsCanOnSale(type, goodsId) {
 }
 
 /**
- * 进件完成后：若仍有历史「到店消费」占位草稿则上架（兼容旧数据）。
- * 不会新建商品；新店请由运营/商家人工建品。
+ * 历史：进件完成后自动上架「到店消费」占位 SKU。
+ * 现已改为纯人工建品/上架：删除或下架后不得被进件同步重新上架，故固定 no-op。
  */
-async function activateStallPlaceholderOnFinish(merchantId) {
-  const id = Number(merchantId)
-  if (!id) return { updated: 0 }
-  try {
-    const r = await query(
-      `UPDATE stall_goods
-       SET on_sale=1
-       WHERE merchant_id=:id
-         AND deleted_at IS NULL
-         AND IFNULL(on_sale,0)=0
-         AND (name='到店消费' OR sku_code=CONCAT('SCAN', :id2))`,
-      { id, id2: id }
-    )
-    return { updated: Number(r.affectedRows) || 0 }
-  } catch (e) {
-    console.warn('[merchantReady] activate placeholder', e.message)
-    return { updated: 0 }
-  }
+async function activateStallPlaceholderOnFinish(_merchantId) {
+  return { updated: 0 }
 }
 
 module.exports = {

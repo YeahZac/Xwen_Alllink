@@ -1286,17 +1286,30 @@ async function setGoodsOpen(type, id, open) {
 async function softDeleteGoods(type, id) {
   const gid = Number(id)
   if (!gid) throw new HttpError(400, '商品ID无效')
+  if (!['stall', 'cross', 'supply'].includes(String(type))) {
+    throw new HttpError(400, '商品类型无效')
+  }
   const table = type === 'stall' ? 'stall_goods' : type === 'cross' ? 'cross_goods' : 'supply_goods'
   const col = type === 'supply' ? 'status' : 'on_sale'
   const rows = await query(
-    `SELECT id, merchant_id AS merchantId FROM ${table} WHERE id=:id AND deleted_at IS NULL LIMIT 1`,
+    `SELECT id, merchant_id AS merchantId, name FROM ${table} WHERE id=:id AND deleted_at IS NULL LIMIT 1`,
     { id: gid }
   )
   if (!rows.length) throw new HttpError(404, '商品不存在或已删除')
-  await query(`UPDATE ${table} SET ${col}=0, deleted_at=NOW() WHERE id=:id AND deleted_at IS NULL`, {
-    id: gid
-  })
-  return { id: gid, merchantId: Number(rows[0].merchantId), deleted: true }
+  const r = await query(
+    `UPDATE ${table} SET ${col}=0, deleted_at=NOW() WHERE id=:id AND deleted_at IS NULL`,
+    { id: gid }
+  )
+  if (!r || Number(r.affectedRows) === 0) {
+    throw new HttpError(409, '删除未生效，请刷新后重试')
+  }
+  return {
+    id: gid,
+    merchantId: Number(rows[0].merchantId),
+    name: rows[0].name,
+    deleted: true,
+    softDeleted: true
+  }
 }
 
 async function saveSku(type, body) {
