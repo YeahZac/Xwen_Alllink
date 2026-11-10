@@ -214,8 +214,17 @@ async function listConsumerOrders(userId) {
   )
   cross.forEach((c) => {
     c.type = 'cross'
-    c.payStatus = c.status === 'cancelled' ? 'cancelled' : 'paid'
-    c.unpaid = false
+    // pending=待微信支付；勿标成已支付，否则小程序无法取消/退预扣积分
+    if (c.status === 'pending') {
+      c.payStatus = 'unpaid'
+      c.unpaid = true
+    } else if (c.status === 'cancelled') {
+      c.payStatus = 'cancelled'
+      c.unpaid = false
+    } else {
+      c.payStatus = 'paid'
+      c.unpaid = false
+    }
     c.items = [{ name: c.goods_name, qty: 1 }]
   })
   return [...orders, ...cross].sort(

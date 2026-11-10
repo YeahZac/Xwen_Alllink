@@ -106,8 +106,9 @@ Page({
     if (this.data.busy) return
     if (!store.ensureConsumerOrRedirect()) return
     this.setData({ busy: true })
+    let result = null
     try {
-      const result = await api.redeemCross({
+      result = await api.redeemCross({
         merchantId: Number(this.data.store.id),
         goodsId: Number(item.id),
         payMode,
@@ -150,6 +151,14 @@ Page({
         return
       }
       if (isCancelError(err) || (err && err.code === 'USER_CANCEL')) {
+        const ono = (err && err.orderNo) || (result && result.orderNo) || ''
+        // 关未支付异业单并退预扣积分，避免「取消支付却扣了积分」
+        if (ono) {
+          try {
+            await api.cancelStallOrder({ orderNo: ono })
+            await this.refreshPoints().catch(() => {})
+          } catch (_) {}
+        }
         wx.showToast({ title: '已取消支付', icon: 'none' })
         return
       }

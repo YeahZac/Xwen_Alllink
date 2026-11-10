@@ -1,8 +1,15 @@
 const api = require('./api')
 
 function isCancelError(err) {
-  const msg = String((err && (err.message || err.errMsg)) || '')
-  return /cancel|取消/i.test(msg)
+  if (!err) return false
+  if (err.code === 'USER_CANCEL') return true
+  const msg = String(err.message || err.errMsg || '')
+  // 微信各端文案不一：cancel / 取消 / 用户取消支付 / closed
+  if (/cancel|取消|closed|用户取消支付/i.test(msg)) return true
+  const errno = err.errno != null ? Number(err.errno) : Number(err.raw && err.raw.errno)
+  // 部分基础库用户取消会带 errno=1
+  if (errno === 1 && /requestPayment:fail/i.test(msg)) return true
+  return false
 }
 
 /**
@@ -66,9 +73,10 @@ function requestWxPay(result) {
         resolve({ ...result, payStatus: 'paid' })
       },
       fail: (err) => {
+        const cancelled = isCancelError(err)
         const msg = (err && err.errMsg) || '微信支付未完成'
-        const e = new Error(isCancelError(err) ? '已取消微信支付' : msg)
-        e.code = isCancelError(err) ? 'USER_CANCEL' : 'PAY_FAIL'
+        const e = new Error(cancelled ? '已取消支付' : msg)
+        e.code = cancelled ? 'USER_CANCEL' : 'PAY_FAIL'
         e.orderNo = result.orderNo
         e.raw = err
         reject(e)

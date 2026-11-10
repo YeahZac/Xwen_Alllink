@@ -124,7 +124,13 @@ Page({
           await this.loadDetail()
         } catch (e) {
           this.setData({ acting: false })
-          wx.showToast({ title: (e && e.message) || '取消失败', icon: 'none' })
+          const m = String((e && e.message) || '')
+          if (/已取消|不存在|already/i.test(m)) {
+            wx.showToast({ title: '已取消', icon: 'none' })
+            await this.loadDetail()
+            return
+          }
+          wx.showToast({ title: m || '取消失败', icon: 'none' })
         }
       }
     })

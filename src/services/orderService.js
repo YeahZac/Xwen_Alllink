@@ -1077,10 +1077,56 @@ async function handleWxPayNotify(headers, rawBody) {
   return result
 }
 
-/** 取消未支付点餐单（用户取消微信支付后主动关单） */
+async function refundSpendIfAny(conn, { userId, points, spendBizId, refundBizId, title }) {
+  const pts = Math.max(0, Math.floor(Number(points) || 0))
+  if (!pts) return null
+  // 仅在确实存在预扣 spend 流水时退回，避免无扣款却加积分 / 无流水时报错
+  const [spent] = await conn.execute(
+    `SELECT id FROM user_points_ledger
+     WHERE user_id=? AND biz_type='spend' AND biz_id=? LIMIT 1`,
+    [userId, String(spendBizId)]
+  )
+  if (!spent.length) return null
+  return pointsService.refundConsumerPoints(conn, {
+    userId,
+    points: pts,
+    title,
+    bizId: refundBizId
+  })
+}
+
+/** 取消未支付异业兑换单（退回预扣积分） */
+async function cancelUnpaidCrossOrder(orderNo, userId) {
+  const ono = String(orderNo || '').trim()
+  if (!ono) throw new HttpError(400, '缺少订单号')
+  return withTransaction(async (conn) => {
+    const [rows] = await conn.execute('SELECT * FROM cross_orders WHERE order_no=? FOR UPDATE', [ono])
+    if (!rows.length) throw new HttpError(404, '订单不存在')
+    const o = rows[0]
+    if (Number(o.user_id) !== Number(userId)) throw new HttpError(403, '无权操作该订单')
+    if (o.status === 'cancelled') {
+      return { orderNo: ono, status: 'cancelled', payStatus: 'cancelled', alreadyCancelled: true, type: 'cross' }
+    }
+    if (o.status === 'completed') throw new HttpError(400, '订单已完成，无法取消')
+    if (o.status !== 'pending') throw new HttpError(400, '当前状态不可取消')
+    await conn.execute(`UPDATE cross_orders SET status='cancelled' WHERE id=? AND status='pending'`, [o.id])
+    await refundSpendIfAny(conn, {
+      userId: o.user_id,
+      points: o.points_spend,
+      spendBizId: ono,
+      refundBizId: `${ono}:cancel`,
+      title: '异业兑换取消退回积分'
+    })
+    return { orderNo: ono, status: 'cancelled', payStatus: 'cancelled', type: 'cross' }
+  })
+}
+
+/** 取消未支付点餐/扫码单（用户取消微信支付后主动关单） */
 async function cancelUnpaidConsumerOrder(orderNo, userId) {
   const ono = String(orderNo || '').trim()
   if (!ono) throw new HttpError(400, '缺少订单号')
+  // 异业单号 C… 走异业取消，避免前端误调 stall/cancel 报「订单不存在」
+  if (/^C/i.test(ono)) return cancelUnpaidCrossOrder(ono, userId)
   return withTransaction(async (conn) => {
     const [rows] = await conn.execute(
       'SELECT * FROM consumer_orders WHERE order_no=? FOR UPDATE',
@@ -1099,15 +1145,13 @@ async function cancelUnpaidConsumerOrder(orderNo, userId) {
        WHERE id=? AND pay_status='unpaid' AND order_status<>'cancelled'`,
       [o.id]
     )
-    const pts = Number(o.points_spend) || 0
-    if (pts > 0) {
-      await pointsService.refundConsumerPoints(conn, {
-        userId: o.user_id,
-        points: pts,
-        title: '点餐取消退回积分',
-        bizId: `${ono}:cancel`
-      })
-    }
+    await refundSpendIfAny(conn, {
+      userId: o.user_id,
+      points: o.points_spend,
+      spendBizId: ono,
+      refundBizId: `${ono}:cancel`,
+      title: '点餐取消退回积分'
+    })
     return { orderNo: ono, status: 'cancelled', payStatus: 'unpaid' }
   })
 }
@@ -2213,6 +2257,7 @@ module.exports = {
   handleWxPayNotify,
   syncConsumerPay,
   cancelUnpaidConsumerOrder,
+  cancelUnpaidCrossOrder,
   repayConsumerOrder,
   getConsumerOrderDetail,
   redeemCross,

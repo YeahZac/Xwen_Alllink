@@ -1,7 +1,7 @@
 const store = require('../../utils/store')
 const api = require('../../utils/api')
 const scan = require('../../utils/scan')
-const { requestWxPay } = require('../../utils/pay')
+const { requestWxPay, isCancelError } = require('../../utils/pay')
 
 const KEYS = [
   { k: '1', label: '1' },
@@ -265,8 +265,9 @@ Page({
     this._payLock = true
     this.setData({ paying: true })
     this.persist()
+    let created = null
     try {
-      const created = await api.scanPay({
+      created = await api.scanPay({
         merchantId: Number(this.data.stallId),
         amount: cash
       })
@@ -300,6 +301,15 @@ Page({
       this._payLock = false
       this.setData({ paying: false })
       const msg = (e && e.message) || '支付失败'
+      const ono = (e && e.orderNo) || (created && created.orderNo) || ''
+      // 用户取消支付：安静提示，并尽量关未支付单，避免残留待付款
+      if (isCancelError(e) || (e && e.code === 'USER_CANCEL')) {
+        if (ono) {
+          api.cancelStallOrder({ orderNo: ono }).catch(() => {})
+        }
+        wx.showToast({ title: '已取消支付', icon: 'none' })
+        return
+      }
       if (msg.indexOf('登录已失效') >= 0 || msg.indexOf('未登录') >= 0) {
         return
       }

@@ -179,7 +179,10 @@ Page({
       return
     }
     if (!ono) {
-      wx.showToast({ title: (err && err.message) || '支付失败', icon: 'none' })
+      wx.showToast({
+        title: cancelled ? '已取消支付' : (err && err.message) || '支付失败',
+        icon: 'none'
+      })
       return
     }
     wx.showModal({
@@ -194,12 +197,21 @@ Page({
           await this.continuePay(ono)
           return
         }
+        // 点遮罩关闭时不关单，仅「取消订单」才关
+        if (!r.cancel) return
         try {
           await api.cancelStallOrder({ orderNo: ono })
           this.setData({ pendingOrderNo: '' })
           wx.showToast({ title: '订单已取消', icon: 'none' })
         } catch (e2) {
-          wx.showToast({ title: (e2 && e2.message) || '取消失败', icon: 'none' })
+          const m = String((e2 && e2.message) || '')
+          // 幂等：已取消 / 不存在视为成功，避免用户看到「取消失败」
+          if (/已取消|不存在|already/i.test(m)) {
+            this.setData({ pendingOrderNo: '' })
+            wx.showToast({ title: '订单已取消', icon: 'none' })
+            return
+          }
+          wx.showToast({ title: m || '取消失败', icon: 'none' })
         }
       }
     })
@@ -245,6 +257,7 @@ Page({
     }
     this.setData({ paying: true })
     const cart = store.getCart()
+    let createdOrderNo = ''
     try {
       const result = await api.payStall({
         merchantId: Number(cart.stallId),
@@ -257,7 +270,8 @@ Page({
           remark: i.remark || ''
         }))
       })
-      if (result.orderNo) this.setData({ pendingOrderNo: result.orderNo })
+      createdOrderNo = result.orderNo || ''
+      if (createdOrderNo) this.setData({ pendingOrderNo: createdOrderNo })
 
       // 模拟/已支付：直接成功；现金额兼容 cashPaid / cashAmount（后端保证 ≥0.01）
       const paidCash =
@@ -287,7 +301,7 @@ Page({
       this.showPaySuccess(paid || result)
     } catch (e) {
       this.setData({ paying: false })
-      this.handlePayInterrupt(e, this.data.pendingOrderNo)
+      this.handlePayInterrupt(e, createdOrderNo || this.data.pendingOrderNo)
     }
   }
 })
