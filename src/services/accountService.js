@@ -40,6 +40,63 @@ async function writeLedger(conn, { merchantId, accountType, changeAmount, balanc
   )
 }
 
+/**
+ * 是否把实收现金记入「可提现」台账。
+ * 二级商户真实微信支付：钱已进商家微信商户号，由微信结算到银行卡 → 不记可提现。
+ * 模拟支付 / 平台直收 / 无二级商户号：钱在平台侧台账 → 记可提现。
+ */
+async function shouldCreditWithdrawLedger(conn, { merchantId, payChannel }) {
+  const ch = String(payChannel || '')
+    .trim()
+    .toLowerCase()
+  if (!ch || ch === 'wxpay_sim' || ch === 'simulate' || ch === 'points' || ch === 'ledger') {
+    return { credit: true, mode: 'ledger', reason: 'sim_or_ledger' }
+  }
+  if (ch === 'wxpay') {
+    const [rows] = await conn.execute(
+      'SELECT wx_sub_mch_id AS sub FROM merchants WHERE id=? LIMIT 1',
+      [Number(merchantId)]
+    )
+    const sub = rows[0] ? String(rows[0].sub || '').trim() : ''
+    if (sub) {
+      return { credit: false, mode: 'wx_sub_merchant', reason: 'sub_merchant_wx_settle', subMchId: sub }
+    }
+    return { credit: true, mode: 'platform_direct', reason: 'platform_direct_no_sub' }
+  }
+  return { credit: true, mode: 'ledger', reason: 'default' }
+}
+
+/** 仅记账说明（金额 0），用于微信直结流水展示，不增加可提现余额 */
+async function noteAccountEvent(conn, { merchantId, accountType, bizType, bizId, title }) {
+  if (bizId) {
+    try {
+      const [dup] = await conn.execute(
+        `SELECT id FROM merchant_account_ledger
+         WHERE merchant_id=? AND account_type=? AND biz_type=? AND biz_id=? LIMIT 1`,
+        [merchantId, accountType, bizType, String(bizId)]
+      )
+      if (dup.length) {
+        const acc0 = await getAccount(conn, merchantId, accountType, false)
+        return Number(acc0.balance)
+      }
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  const acc = await getAccount(conn, merchantId, accountType)
+  await writeLedger(conn, {
+    merchantId,
+    accountType,
+    changeAmount: 0,
+    balanceAfter: Number(acc.balance),
+    frozenAfter: Number(acc.frozen),
+    bizType,
+    bizId,
+    title
+  })
+  return Number(acc.balance)
+}
+
 async function creditAccount(conn, { merchantId, accountType, amount, bizType, bizId, title }) {
   const amt = Math.round(Number(amount) * 100) / 100
   if (!amt || amt <= 0) return null
@@ -176,6 +233,8 @@ async function settleWithdrawPaid(conn, { merchantId, accountType, amount, bizId
 module.exports = {
   ensureAccount,
   getAccount,
+  shouldCreditWithdrawLedger,
+  noteAccountEvent,
   creditAccount,
   debitAccount,
   freezeForWithdraw,

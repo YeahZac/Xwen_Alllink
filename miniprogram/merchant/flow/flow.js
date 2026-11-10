@@ -3,8 +3,8 @@ const api = require('../../utils/api')
 
 /** 账户口径是闭集；biz_type 是开放集且对商户无意义，不外显 */
 const ACCOUNT_LABEL = {
-  cash_goods: '货款账户',
-  cash_settlement: '应收账户',
+  cash_goods: '货款台账',
+  cash_settlement: '结算台账',
   points_redeem: '积分折现权益',
   pool: '积分额度池'
 }

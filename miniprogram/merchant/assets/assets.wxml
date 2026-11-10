@@ -1,11 +1,11 @@
 <view class="page">
   <view class="m-page-head">
-    <text class="m-page-head__title">资产账户</text>
+    <text class="m-page-head__title">资产与入账</text>
     <text class="m-page-head__desc">{{desc}}</text>
   </view>
 
   <view wx:if="{{settlementHint}}" class="note note--lead">
-    <text class="note__t">资金说明</text>
+    <text class="note__t">{{hasSubMerchant ? 'C端支付 · 微信直结' : '资金说明'}}</text>
     <text class="note__line">{{settlementHint}}</text>
   </view>
 

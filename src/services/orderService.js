@@ -697,14 +697,31 @@ async function finalizePaidConsumerOrder(conn, orderRow, { transactionId } = {})
     amountGross: settleBase
   })
   const net = Math.round((settleBase - commission) * 100) / 100
-  await accountService.creditAccount(conn, {
+  const payChannel = o.pay_channel || (transactionId ? 'wxpay' : '')
+  const settleMode = await accountService.shouldCreditWithdrawLedger(conn, {
     merchantId: mid,
-    accountType: 'cash_settlement',
-    amount: net,
-    bizType: String(o.order_no || '').startsWith('S') ? 'stall_settle' : 'stall_settle',
-    bizId: o.order_no,
-    title: `${String(o.order_no || '').startsWith('S') ? '到店消费' : '点餐'}入账 · ${o.order_no}`
+    payChannel
   })
+  const orderLabel = String(o.order_no || '').startsWith('S') ? '到店消费' : '点餐'
+  if (settleMode.credit) {
+    await accountService.creditAccount(conn, {
+      merchantId: mid,
+      accountType: 'cash_settlement',
+      amount: net,
+      bizType: 'stall_settle',
+      bizId: o.order_no,
+      title: `${orderLabel}入账 · ${o.order_no}`
+    })
+  } else {
+    // 二级商户真实支付：钱已进商家微信账户，只记流水说明，不进可提现台账
+    await accountService.noteAccountEvent(conn, {
+      merchantId: mid,
+      accountType: 'cash_settlement',
+      bizType: 'stall_wx_direct',
+      bizId: o.order_no,
+      title: `${orderLabel}·微信直结 ¥${net.toFixed(2)}（已入二级商户，不计入可提现）· ${o.order_no}`
+    })
+  }
   await referralService.onConsumerOrderDone(conn, {
     inviteeUserId: uid,
     orderNo: o.order_no,
@@ -721,6 +738,8 @@ async function finalizePaidConsumerOrder(conn, orderRow, { transactionId } = {})
     pointsBalance: urows.length ? Number(urows[0].points_balance) : allocated,
     commission,
     merchantNet: net,
+    settleMode: settleMode.mode,
+    withdrawLedgerCredited: !!settleMode.credit,
     shopName,
     status: orderStatus === 'completed' ? 'completed' : 'preparing'
   }
@@ -1601,7 +1620,17 @@ async function redeemCross({ userId, merchantId, goodsId, payMode, pointsUse = 0
 /** 异业已完成单：库存 + 结算 + 推荐（幂等） */
 async function settleCompletedCrossOrder(
   conn,
-  { orderNo: ono, userId, merchantId, goodsId, payMode, pointsSpend, cashAmount, cashPrice }
+  {
+    orderNo: ono,
+    userId,
+    merchantId,
+    goodsId,
+    payMode,
+    pointsSpend,
+    cashAmount,
+    cashPrice,
+    payChannel
+  }
 ) {
   await conn.execute(`UPDATE cross_goods SET sales_count = IFNULL(sales_count,0) + 1 WHERE id=?`, [
     goodsId
@@ -1624,20 +1653,44 @@ async function settleCompletedCrossOrder(
     amountGross
   })
   const net = Math.round((amountGross - commission) * 100) / 100
-  await accountService.creditAccount(conn, {
+  // 纯积分兑换：无微信现金，仍按折现记台账；现金/组合且二级商户真实收款则微信直结
+  const channel =
+    payChannel ||
+    (payMode === 'points' ? 'points' : cashPart > 0 ? 'wxpay' : 'points')
+  const settleMode = await accountService.shouldCreditWithdrawLedger(conn, {
     merchantId,
-    accountType: 'cash_settlement',
-    amount: net,
-    bizType: payMode === 'mix' ? 'cross_mix_settle' : 'cross_cash_settle',
-    bizId: ono,
-    title: `${payMode === 'mix' ? '组合支付' : '全现金兑换'}结算 · ${ono}`
+    payChannel: channel
   })
+  const label = payMode === 'mix' ? '组合支付' : payMode === 'points' ? '积分兑换' : '全现金兑换'
+  if (settleMode.credit) {
+    await accountService.creditAccount(conn, {
+      merchantId,
+      accountType: 'cash_settlement',
+      amount: net,
+      bizType: payMode === 'mix' ? 'cross_mix_settle' : payMode === 'points' ? 'cross_points_settle' : 'cross_cash_settle',
+      bizId: ono,
+      title: `${label}结算 · ${ono}`
+    })
+  } else {
+    await accountService.noteAccountEvent(conn, {
+      merchantId,
+      accountType: 'cash_settlement',
+      bizType: 'cross_wx_direct',
+      bizId: ono,
+      title: `${label}·微信直结 ¥${net.toFixed(2)}（已入二级商户，不计入可提现）· ${ono}`
+    })
+  }
   await referralService.onConsumerOrderDone(conn, {
     inviteeUserId: userId,
     orderNo: ono,
     kind: 'cross'
   })
-  return { commission, merchantNet: net }
+  return {
+    commission,
+    merchantNet: net,
+    settleMode: settleMode.mode,
+    withdrawLedgerCredited: !!settleMode.credit
+  }
 }
 
 /** 异业微信支付成功入账 */
@@ -1660,7 +1713,8 @@ async function finalizeCrossPaidOrder(conn, orderRow, { transactionId } = {}) {
     payMode: o.pay_mode,
     pointsSpend: Number(o.points_spend) || 0,
     cashAmount: Number(o.cash_amount) || 0,
-    cashPrice: Number(o.cash_amount) || 0
+    cashPrice: Number(o.cash_amount) || 0,
+    payChannel: transactionId ? 'wxpay' : o.pay_channel || 'wxpay'
   })
   return {
     alreadyPaid: false,
@@ -2008,8 +2062,11 @@ async function getWithdrawPolicy(merchantId) {
     },
     hasSubMerchant: hasSubMch,
     settlementHint: hasSubMch
-      ? '本店已开通二级商户收款：顾客扫码支付的资金由微信直接进入本店二级商户账户，并按微信规则结算到入驻银行卡，一般无需再走平台提现。下方「可提现余额」仅对应平台台账（如模拟支付、非微信直结部分）。'
-      : '本店尚未完成二级商户进件时，货款记入平台台账；可申请提现到入驻时提交的银行卡（单笔须满 ¥10）。'
+      ? '本店已开通二级商户收款：C 端点餐/扫码支付的现金会直接进入本店微信支付商户号，由微信结算到入驻银行卡，无需在小程序里再点「提现」。下方「可提现余额」只含平台台账（模拟支付、平台直收等），不是微信里那笔钱。'
+      : '本店尚未完成二级商户进件时，C 端支付记入平台台账；可申请提现到入驻银行卡（单笔须满 ¥10）。',
+    withdrawableHint: hasSubMch
+      ? '可提现 = 平台台账余额（不含已微信直结的 C 端实收）'
+      : '可提现 = 平台台账应收余额'
   }
 }
 

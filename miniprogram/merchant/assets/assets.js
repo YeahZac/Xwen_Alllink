@@ -38,6 +38,7 @@ Page({
     notes: [],
     settlementHint: '',
     arriveHint: '',
+    hasSubMerchant: false,
     minAmount: 10,
     loading: true
   },
@@ -55,35 +56,39 @@ Page({
       const { list: withdraws, policy: p2 } = unwrapWithdraws(wdRaw)
       const policy = p1 || p2 || {}
       const minAmount = Number(policy.minAmount) > 0 ? Number(policy.minAmount) : 10
+      const hasSub = !!policy.hasSubMerchant
       const notes = [
         policy.settlementHint ||
           '二级商户收款由微信结算到入驻银行卡；平台提现仅针对台账余额。',
-        `单笔提现须满 ¥${minAmount}`,
-        policy.arriveHint || '申请通过后将在 1-3 个工作日内提现到入驻时提交的银行卡'
+        policy.withdrawableHint || '可提现仅含平台台账，不含微信直结实收',
+        `平台台账提现：单笔须满 ¥${minAmount}`,
+        policy.arriveHint || '台账提现申请通过后将在 1-3 个工作日内打到入驻银行卡'
       ]
       this.setData({
         loading: false,
         minAmount,
+        hasSubMerchant: hasSub,
         settlementHint: policy.settlementHint || '',
         arriveHint: policy.arriveHint || '申请通过后将在 1-3 个工作日内提现到入驻时提交的银行卡',
         notes,
         accounts: (accounts || []).map((a) => {
-          const balance = Number(a.balance || 0)
+          const balance = Math.max(0, Number(a.balance || 0))
           const canApply = balance >= minAmount
+          const type = a.accountType || a.type
           return {
             ...a,
-            accountType: a.accountType || a.type,
+            accountType: type,
             label:
-              (a.accountType || a.type) === 'cash_goods'
-                ? '货款现金'
-                : (a.accountType || a.type) === 'cash_settlement'
-                  ? '应收结算（平台台账）'
-                  : '积分折现权益',
+              type === 'cash_goods'
+                ? '货款现金（平台台账）'
+                : type === 'cash_settlement'
+                  ? '可提现余额（平台台账）'
+                  : '积分折现权益（平台台账）',
             balance,
             balanceText: `¥${balance.toFixed(2)}`,
             frozenText: Number(a.frozen || 0) > 0 ? `冻结 ¥${Number(a.frozen).toFixed(2)}` : '',
             canApply,
-            btnText: canApply ? '申请提现' : balance > 0 ? `满¥${minAmount}可提` : '暂无可提余额'
+            btnText: canApply ? '申请台账提现' : balance > 0 ? `满¥${minAmount}可提` : '暂无台账可提余额'
           }
         }),
         withdraws: (withdraws || []).map((w) => ({
