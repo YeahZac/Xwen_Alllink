@@ -48,12 +48,9 @@
       </view>
       <view class="field">
         <text class="field__label">分出积分</text>
-        <input class="field__input" type="number" data-key="pointsGrant" value="{{form.pointsGrant}}" bindinput="onField" placeholder="出餐后从本店额度池分出给顾客" />
+        <input class="field__input" type="number" data-key="pointsGrant" value="{{form.pointsGrant}}" bindinput="onField" placeholder="顾客消费后从本店额度池分出" />
       </view>
-      <view class="field">
-        <text class="field__label">可用积分（抵现上限/件）</text>
-        <input class="field__input" type="number" data-key="pointsUsable" value="{{form.pointsUsable}}" bindinput="onField" placeholder="用户下单最多可抵多少积分" />
-      </view>
+      <text class="muted opts-hint">「分出」是给顾客的积分；与管理员给门店「划拨」额度不是一回事</text>
       <view class="field">
         <text class="field__label">库存</text>
         <input class="field__input" type="number" data-key="stock" value="{{form.stock}}" bindinput="onField" />
@@ -62,7 +59,11 @@
         <text class="field__label">允许积分抵现 + 微信支付</text>
         <text class="chip {{form.mixEnabled ? 'chip--soft' : 'chip--off'}}">{{form.mixEnabled ? '已开启' : '关闭'}}</text>
       </view>
-      <text class="muted opts-hint">组合支付须保留至少 ¥0.01 现金，不可全额积分为 0 元单</text>
+      <view class="field" wx:if="{{form.mixEnabled}}">
+        <text class="field__label">最大可抵扣积分 <text class="req">*</text></text>
+        <input class="field__input" type="number" data-key="pointsUsable" value="{{form.pointsUsable}}" bindinput="onField" placeholder="{{usableHint || '用户下单最多可抵多少积分'}}" />
+      </view>
+      <text class="muted opts-hint">{{usableHint || '组合支付须保留至少 ¥0.01 现金；关闭抵现后上限自动清零'}}</text>
       <view class="field row-between" bindtap="toggle" data-key="allowRemark">
         <text class="field__label">点餐允许填写备注</text>
         <text class="chip {{form.allowRemark ? 'chip--soft' : 'chip--off'}}">{{form.allowRemark ? '已开启' : '关闭'}}</text>

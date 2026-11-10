@@ -10,6 +10,7 @@ Page({
     saving: false,
     catalogReady: true,
     readyHint: '',
+    usableHint: '',
     catOptions: [],
     catIndex: 0,
     unitOptions: UNITS,
@@ -33,6 +34,20 @@ Page({
       allowMix: 1,
       allowRemark: 1
     }
+  },
+  maxUsable() {
+    const p = Number(this.data.form.price)
+    if (!Number.isFinite(p) || p < 0.01) return 0
+    return Math.max(0, Math.floor(p / 0.01) - 1)
+  },
+  refreshUsableHint() {
+    const cap = this.maxUsable()
+    const mix = !!this.data.form.mixEnabled
+    let usableHint = ''
+    if (!mix) usableHint = '已关闭积分抵现：顾客不能用积分抵这件商品'
+    else if (cap <= 0) usableHint = '当前售价过低，无法设置可抵扣积分（须留 ¥0.01 现金）'
+    else usableHint = `本件最多可抵 ${cap} 积分（须留 ¥0.01 现金）`
+    this.setData({ usableHint })
   },
   async onLoad(q) {
     if (!store.ensureMerchantOrRedirect()) return
@@ -78,6 +93,7 @@ Page({
       catalogReady,
       readyHint
     })
+    this.refreshUsableHint()
     wx.setNavigationBarTitle({ title: q.id ? '编辑商品' : '添加商品' })
     if (!q.id) return
     this.setData({ goodsId: String(q.id) })
@@ -117,6 +133,7 @@ Page({
           allowRemark: g.allowRemark === 0 ? 0 : 1
         }
       })
+      this.refreshUsableHint()
     } catch (e) {
       wx.hideLoading()
       wx.showToast({ title: e.message || '加载失败', icon: 'none' })
@@ -134,7 +151,9 @@ Page({
   },
   onField(e) {
     const key = e.currentTarget.dataset.key
-    this.setData({ [`form.${key}`]: e.detail.value })
+    this.setData({ [`form.${key}`]: e.detail.value }, () => {
+      if (key === 'price') this.refreshUsableHint()
+    })
   },
   onCat(e) {
     const idx = Number(e.detail.value)
@@ -152,7 +171,19 @@ Page({
   },
   toggle(e) {
     const key = e.currentTarget.dataset.key
-    this.setData({ [`form.${key}`]: this.data.form[key] ? 0 : 1 })
+    const next = this.data.form[key] ? 0 : 1
+    const patch = { [`form.${key}`]: next }
+    if (key === 'mixEnabled' && !next) patch['form.pointsUsable'] = '0'
+    if (key === 'mixEnabled' && next) {
+      const cap = this.maxUsable()
+      const cur = Number(this.data.form.pointsUsable)
+      if ((!Number.isFinite(cur) || cur <= 0) && cap > 0) {
+        patch['form.pointsUsable'] = String(cap)
+      }
+    }
+    this.setData(patch, () => {
+      if (key === 'mixEnabled') this.refreshUsableHint()
+    })
   },
   async onPickImage() {
     wx.chooseMedia({
@@ -214,13 +245,24 @@ Page({
     if (role === 'stall') {
       body.price = Number(f.price)
       body.pointsGrant = Number(f.pointsGrant) || 0
-      body.pointsUsable = Math.max(0, Math.floor(Number(f.pointsUsable) || 0))
+      const cap = this.maxUsable()
+      body.pointsUsable = body.mixEnabled
+        ? Math.min(Math.max(0, Math.floor(Number(f.pointsUsable) || 0)), cap)
+        : 0
       if (!Number.isFinite(body.price) || body.price < 0) {
         wx.showToast({ title: '请填写售价', icon: 'none' })
         return
       }
       if (body.onSale && body.price < 0.01) {
         wx.showToast({ title: '上架售价须≥0.01元', icon: 'none' })
+        return
+      }
+      if (body.mixEnabled && cap > 0 && body.pointsUsable <= 0) {
+        wx.showToast({ title: '请填写最大可抵扣积分', icon: 'none' })
+        return
+      }
+      if (body.mixEnabled && cap <= 0) {
+        wx.showToast({ title: '售价过低无法开启积分抵现', icon: 'none' })
         return
       }
     } else if (role === 'cross') {

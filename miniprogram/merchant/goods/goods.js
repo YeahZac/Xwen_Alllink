@@ -30,7 +30,7 @@ Page({
             ...g,
             onSale: g.onSale ? 1 : 0,
             coverImage: g.imageUrl || '',
-            line: `SKU ${g.sku || '—'} · ¥${g.price} · 可用${g.pointsUsable || 0}积分 · 分出 ${
+            line: `SKU ${g.sku || '—'} · ¥${g.price} · 抵扣上限 ${g.pointsUsable || 0} · 分出 ${
               g.pointsGrant || 0
             } · ${optN > 0 ? `规格${optN}组` : '未配规格'} · 销量 ${g.sales || 0}`,
             statusLabel: g.onSale ? '在售' : '下架'
@@ -144,9 +144,9 @@ Page({
     const g = this.data.list.find((x) => String(x.id) === String(id))
     if (!g) return
     wx.showModal({
-      title: '修改消费赠积分',
+      title: '修改分出积分',
       editable: true,
-      placeholderText: `当前赠 ${g.pointsGrant || 0} 积分`,
+      placeholderText: `当前分出 ${g.pointsGrant || 0} 积分（给顾客）`,
       confirmText: '保存',
       success: async (result) => {
         if (!result.confirm) return
@@ -157,7 +157,7 @@ Page({
         }
         try {
           await this.saveGoods(g, { pointsGrant: Math.floor(pointsGrant) })
-          wx.showToast({ title: '赠分已更新', icon: 'success' })
+          wx.showToast({ title: '分出积分已更新', icon: 'success' })
           this.onShow()
         } catch (err) {
           wx.showToast({ title: err.message || '保存失败', icon: 'none' })
@@ -169,10 +169,11 @@ Page({
     const id = e.currentTarget.dataset.id
     const g = this.data.list.find((x) => String(x.id) === String(id))
     if (!g) return
+    const maxUsable = Math.max(0, Math.floor(Number(g.price || 0) / 0.01) - 1)
     wx.showModal({
-      title: '修改可用积分',
+      title: '修改最大可抵扣积分',
       editable: true,
-      placeholderText: `当前可用 ${g.pointsUsable || 0}（抵现上限/件）`,
+      placeholderText: `当前 ${g.pointsUsable || 0}（上限 ${maxUsable}，须留¥0.01现金）`,
       confirmText: '保存',
       success: async (result) => {
         if (!result.confirm) return
@@ -182,8 +183,11 @@ Page({
           return
         }
         try {
-          await this.saveGoods(g, { pointsUsable: Math.floor(pointsUsable) })
-          wx.showToast({ title: '可用积分已更新', icon: 'success' })
+          await this.saveGoods(g, {
+            pointsUsable: Math.min(Math.floor(pointsUsable), maxUsable),
+            mixEnabled: Math.floor(pointsUsable) > 0 ? 1 : g.mixEnabled
+          })
+          wx.showToast({ title: '抵扣上限已更新', icon: 'success' })
           this.onShow()
         } catch (err) {
           wx.showToast({ title: err.message || '保存失败', icon: 'none' })

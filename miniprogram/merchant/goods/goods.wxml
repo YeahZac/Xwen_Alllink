@@ -18,7 +18,8 @@
 
   <view class="role-list" wx:else>
     <view wx:for="{{list}}" wx:key="id" class="role-card role-card--stack">
-      <view class="role-card__seal">{{item.name[0] || '品'}}</view>
+      <image wx:if="{{item.coverImage}}" class="role-card__cover" src="{{item.coverImage}}" mode="aspectFill" />
+      <view wx:else class="role-card__seal">{{item.name[0] || '品'}}</view>
       <view class="role-card__main">
         <view class="goods-title">
           <text class="role-card__title">{{item.name}}</text>
@@ -30,8 +31,8 @@
         <button class="btn-ghost sm" size="mini" data-id="{{item.id}}" bindtap="onFullEdit">编辑</button>
         <button class="btn-ghost sm" size="mini" data-id="{{item.id}}" bindtap="onPrice">改价格</button>
         <button class="btn-ghost sm" size="mini" wx:if="{{role === 'cross'}}" data-id="{{item.id}}" bindtap="onPoints">改积分</button>
-        <button class="btn-ghost sm" size="mini" wx:if="{{role === 'stall'}}" data-id="{{item.id}}" bindtap="onPointsUsable">改可用积分</button>
-        <button class="btn-ghost sm" size="mini" wx:if="{{role === 'stall'}}" data-id="{{item.id}}" bindtap="onPointsGrant">改赠分</button>
+        <button class="btn-ghost sm" size="mini" wx:if="{{role === 'stall'}}" data-id="{{item.id}}" bindtap="onPointsUsable">改抵扣上限</button>
+        <button class="btn-ghost sm" size="mini" wx:if="{{role === 'stall'}}" data-id="{{item.id}}" bindtap="onPointsGrant">改分出</button>
         <button class="btn-ghost sm" size="mini" wx:if="{{role === 'stall'}}" data-id="{{item.id}}" bindtap="onOptions">规格</button>
         <button class="btn-ghost sm" size="mini" data-id="{{item.id}}" bindtap="onEdit">
           {{item.onSale ? '下架' : '上架'}}

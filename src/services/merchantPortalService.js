@@ -283,7 +283,15 @@ async function listGoods(merchantId, role) {
   const pageSize = 200
   if (role === 'stall') {
     const page = await adminService.listStallGoods({ merchantId: mid, page: 1, pageSize })
-    return page.list || []
+    const { isTestGoodsName } = require('../utils/goodsName')
+    // 商家端不展示测试占位 / 扫码「到店消费」脏 SKU，与正式运营商品对齐
+    return (page.list || []).filter((g) => {
+      const name = String(g.name || '')
+      const sku = String(g.sku || '')
+      if (isTestGoodsName(name)) return false
+      if (name === '到店消费' || /^SCAN\d+$/i.test(sku)) return false
+      return true
+    })
   }
   if (role === 'cross') {
     const page = await adminService.listCrossGoods({ merchantId: mid, page: 1, pageSize })

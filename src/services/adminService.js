@@ -281,16 +281,23 @@ async function patchGoods(type, id, body = {}) {
     params.pg = pg
   }
   if (body.pointsUsable !== undefined) {
-    const pu = Math.floor(Number(body.pointsUsable))
-    if (!Number.isFinite(pu) || pu < 0) throw new HttpError(400, '可用积分无效')
     if (role !== 'stall') throw new HttpError(400, '仅点餐商品可改可用积分')
+    const { clampPointsUsable } = require('../utils/pointsUsable')
+    const priceForCap = body.price !== undefined ? Number(body.price) : Number(row.price)
+    const pu = clampPointsUsable(body.pointsUsable, priceForCap)
+    if (!Number.isFinite(pu) || pu < 0) throw new HttpError(400, '可用积分无效')
     sets.push('points_usable=:pu')
     params.pu = pu
   }
   if (body.mixEnabled !== undefined) {
     if (role !== 'stall') throw new HttpError(400, '仅点餐商品可改积分抵现开关')
+    const mix = body.mixEnabled === 0 || body.mixEnabled === '0' ? 0 : 1
     sets.push('mix_enabled=:mix')
-    params.mix = body.mixEnabled === 0 || body.mixEnabled === '0' ? 0 : 1
+    params.mix = mix
+    if (mix === 0 && body.pointsUsable === undefined) {
+      sets.push('points_usable=:puOff')
+      params.puOff = 0
+    }
   }
   if (body.pointsNeed !== undefined) {
     const pn = Math.floor(Number(body.pointsNeed))
@@ -420,13 +427,23 @@ async function saveStallGoods(body, auth = null) {
   }
   const name = assertProductionGoodsName(body.name)
   const bound = await bindGoodsCategory('stall', body)
-  const pointsUsable = Math.max(0, Math.floor(Number(body.pointsUsable) || 0))
-  if (!Number.isFinite(pointsUsable)) throw new HttpError(400, '可用积分无效')
+  const { clampPointsUsable, maxPointsUsableForPrice } = require('../utils/pointsUsable')
+  const priceNum = Number(body.price)
+  const priceCap = maxPointsUsableForPrice(priceNum)
+  let mixOn = body.mixEnabled === 0 ? 0 : 1
+  if (mixOn && priceCap <= 0) {
+    throw new HttpError(400, '售价过低无法开启积分抵现（须留至少 ¥0.01 现金）')
+  }
+  let pointsUsable = clampPointsUsable(body.pointsUsable, priceNum)
+  if (mixOn && pointsUsable <= 0) {
+    throw new HttpError(400, '已开启积分抵现，请填写「最大可抵扣积分」（须大于 0）')
+  }
+  if (!mixOn) pointsUsable = 0
   const payload = {
     id,
     mid: merchantId,
     name,
-    price: Number(body.price),
+    price: priceNum,
     pg: Number(body.pointsGrant) || 0,
     pu: pointsUsable,
     cat: bound.category,
@@ -437,7 +454,7 @@ async function saveStallGoods(body, auth = null) {
     stock: Number(body.stock) || 9999,
     sku: String(body.sku || '').trim() || null,
     onSale: body.onSale === 0 ? 0 : 1,
-    mix: body.mixEnabled === 0 ? 0 : 1,
+    mix: mixOn,
     allowRemark: body.allowRemark === 0 ? 0 : 1
   }
   if (payload.onSale) await assertCanOnSale(merchantId)
