@@ -1945,6 +1945,74 @@ async function adminGrantPool({ merchantId, points, title }) {
   })
 }
 
+/** 平台台账提现最低金额（元）；二级商户真实收款由微信结算，不走此门槛 */
+const WITHDRAW_MIN_AMOUNT = 10
+
+function maskBankNo(no) {
+  const s = String(no || '').replace(/\s/g, '')
+  if (s.length < 8) return s ? '****' : ''
+  return `${s.slice(0, 4)}****${s.slice(-4)}`
+}
+
+async function getWithdrawPolicy(merchantId) {
+  const mid = Number(merchantId)
+  let hasSubMch = false
+  let bankName = ''
+  let bankAccountName = ''
+  let bankAccountNo = ''
+  try {
+    const rows = await query(
+      `SELECT wx_sub_mch_id AS sub, materials_json AS materials, wx_settlement_json AS settlement, legal_person AS legalPerson
+       FROM merchants WHERE id=:id AND deleted_at IS NULL LIMIT 1`,
+      { id: mid }
+    )
+    if (rows.length) {
+      hasSubMch = !!String(rows[0].sub || '').trim()
+      let materials = rows[0].materials
+      let settlement = rows[0].settlement
+      if (typeof materials === 'string') {
+        try {
+          materials = JSON.parse(materials)
+        } catch (_) {
+          materials = {}
+        }
+      }
+      if (typeof settlement === 'string') {
+        try {
+          settlement = JSON.parse(settlement)
+        } catch (_) {
+          settlement = {}
+        }
+      }
+      materials = materials || {}
+      settlement = settlement || {}
+      bankName = String(materials.bankName || settlement.bankName || '').trim()
+      bankAccountName = String(
+        materials.bankAccountName || settlement.bankAccountName || rows[0].legalPerson || ''
+      ).trim()
+      bankAccountNo = String(materials.bankAccountNo || settlement.bankAccountNo || '').replace(/\s/g, '')
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  const bankMasked = maskBankNo(bankAccountNo)
+  const bankLabel = [bankName, bankAccountName, bankMasked].filter(Boolean).join(' · ') || '入驻时提交的银行卡'
+  return {
+    minAmount: WITHDRAW_MIN_AMOUNT,
+    arriveDaysText: '1-3个工作日',
+    arriveHint: `申请通过后将在 1-3 个工作日内提现到入驻时提交的银行卡（${bankLabel}）`,
+    bankHint: {
+      bankName,
+      bankAccountName,
+      bankAccountNoMasked: bankMasked
+    },
+    hasSubMerchant: hasSubMch,
+    settlementHint: hasSubMch
+      ? '本店已开通二级商户收款：顾客扫码支付的资金由微信直接进入本店二级商户账户，并按微信规则结算到入驻银行卡，一般无需再走平台提现。下方「可提现余额」仅对应平台台账（如模拟支付、非微信直结部分）。'
+      : '本店尚未完成二级商户进件时，货款记入平台台账；可申请提现到入驻时提交的银行卡（单笔须满 ¥10）。'
+  }
+}
+
 async function applyWithdraw({ merchantId, accountType, amount }) {
   const type = accountType
   if (!['cash_goods', 'cash_settlement', 'points_redeem'].includes(type)) {
@@ -1952,6 +2020,10 @@ async function applyWithdraw({ merchantId, accountType, amount }) {
   }
   const amt = Math.round(Number(amount) * 100) / 100
   if (!amt || amt <= 0) throw new HttpError(400, '提现金额无效')
+  if (amt < WITHDRAW_MIN_AMOUNT) {
+    throw new HttpError(400, `单笔提现金额须满 ¥${WITHDRAW_MIN_AMOUNT}`)
+  }
+  const policy = await getWithdrawPolicy(merchantId)
   return withTransaction(async (conn) => {
     const no = orderNo('WD')
     await accountService.freezeForWithdraw(conn, {
@@ -1963,10 +2035,17 @@ async function applyWithdraw({ merchantId, accountType, amount }) {
     })
     await conn.execute(
       `INSERT INTO withdraw_requests (request_no, merchant_id, account_type, amount, status, remark)
-       VALUES (?, ?, ?, ?, 'pending', '商户申请')`,
-      [no, merchantId, type, amt]
+       VALUES (?, ?, ?, ?, 'pending', ?)`,
+      [no, merchantId, type, amt, '商户申请·将打至入驻银行卡']
     )
-    return { requestNo: no, amount: amt, accountType: type, status: 'pending' }
+    return {
+      requestNo: no,
+      amount: amt,
+      accountType: type,
+      status: 'pending',
+      minAmount: WITHDRAW_MIN_AMOUNT,
+      arriveHint: policy.arriveHint
+    }
   })
 }
 
@@ -1976,18 +2055,25 @@ async function getMerchantAccounts(merchantId) {
      FROM merchant_accounts WHERE merchant_id=:id`,
     { id: merchantId }
   )
-  return rows
+  const policy = await getWithdrawPolicy(merchantId)
+  return {
+    accounts: rows,
+    list: rows,
+    policy
+  }
 }
 
 async function listMerchantWithdraws(merchantId, { limit = 50 } = {}) {
   const lim = Math.min(Number(limit) || 50, 100)
-  return query(
+  const list = await query(
     `SELECT id, request_no AS requestNo, account_type AS accountType, amount, status, remark,
             created_at AS createdAt, updated_at AS updatedAt
      FROM withdraw_requests WHERE merchant_id=:id
      ORDER BY id DESC LIMIT ${lim}`,
     { id: merchantId }
   )
+  const policy = await getWithdrawPolicy(merchantId)
+  return { list, policy }
 }
 
 module.exports = {

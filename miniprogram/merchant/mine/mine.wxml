@@ -16,7 +16,7 @@
       </view>
       <view class="menu-tile" bindtap="go" data-url="/merchant/assets/assets">
         <text class="menu-tile__title">资产账户</text>
-        <text class="menu-tile__sub">货款与提现</text>
+        <text class="menu-tile__sub">微信直结 / 台账提现</text>
       </view>
       <view class="menu-tile" bindtap="go" data-url="/merchant/wx-sub/wx-sub">
         <text class="menu-tile__title">收款进件</text>

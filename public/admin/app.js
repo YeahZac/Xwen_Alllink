@@ -4143,6 +4143,7 @@ async function renderWithdraws() {
       <button class="btn" id="btnReload">刷新</button>
       ${editable ? '<button class="btn" id="btnDemo">演示申请</button>' : ''}
     </div>
+    <p class="muted">二级商户真实收款由微信结算到入驻银行卡，一般不走本页。本页审核的是<strong>平台台账</strong>提现（单笔须满 ¥10）；通过后人工打款，商户侧提示 1-3 个工作日到账。</p>
     <div id="list"></div>`
   const load = async () => {
     const status = $('fStatus').value

@@ -57,6 +57,15 @@
   border-radius: var(--radius-lg);
 }
 
+.note--lead {
+  margin-top: 0;
+  margin-bottom: var(--space-md);
+}
+
+.note--lead .note__line {
+  margin-bottom: 0;
+}
+
 .note__t {
   display: block;
   font-size: var(--font-caption);
