@@ -2101,7 +2101,8 @@ async function applyWithdraw({ merchantId, accountType, amount }) {
       accountType: type,
       status: 'pending',
       minAmount: WITHDRAW_MIN_AMOUNT,
-      arriveHint: policy.arriveHint
+      arriveHint: policy.arriveHint,
+      frozenHint: `¥${amt.toFixed(2)} 已转入「提现中」（冻结），打款成功前仍属于本店资金；驳回后自动退回可用余额`
     }
   })
 }
@@ -2113,9 +2114,20 @@ async function getMerchantAccounts(merchantId) {
     { id: merchantId }
   )
   const policy = await getWithdrawPolicy(merchantId)
+  const accounts = (rows || []).map((r) => {
+    const available = Math.max(0, Number(r.balance) || 0)
+    const frozen = Math.max(0, Number(r.frozen) || 0)
+    return {
+      ...r,
+      accountType: r.type,
+      available,
+      frozen,
+      total: Math.round((available + frozen) * 100) / 100
+    }
+  })
   return {
-    accounts: rows,
-    list: rows,
+    accounts,
+    list: accounts,
     policy
   }
 }

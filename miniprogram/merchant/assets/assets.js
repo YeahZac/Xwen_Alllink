@@ -60,6 +60,7 @@ Page({
       const notes = [
         policy.settlementHint ||
           '二级商户收款由微信结算到入驻银行卡；平台提现仅针对台账余额。',
+        '申请提现后金额会进入「提现中」（冻结），打款成功前仍属于本店资金；驳回后自动退回可用余额。',
         policy.withdrawableHint || '可提现仅含平台台账，不含微信直结实收',
         `平台台账提现：单笔须满 ¥${minAmount}`,
         policy.arriveHint || '台账提现申请通过后将在 1-3 个工作日内打到入驻银行卡'
@@ -72,8 +73,10 @@ Page({
         arriveHint: policy.arriveHint || '申请通过后将在 1-3 个工作日内提现到入驻时提交的银行卡',
         notes,
         accounts: (accounts || []).map((a) => {
-          const balance = Math.max(0, Number(a.balance || 0))
-          const canApply = balance >= minAmount
+          const available = Math.max(0, Number(a.balance || 0))
+          const frozen = Math.max(0, Number(a.frozen || 0))
+          const total = Math.round((available + frozen) * 100) / 100
+          const canApply = available >= minAmount
           const type = a.accountType || a.type
           return {
             ...a,
@@ -82,13 +85,24 @@ Page({
               type === 'cash_goods'
                 ? '货款现金（平台台账）'
                 : type === 'cash_settlement'
-                  ? '可提现余额（平台台账）'
+                  ? '平台台账资金'
                   : '积分折现权益（平台台账）',
-            balance,
-            balanceText: `¥${balance.toFixed(2)}`,
-            frozenText: Number(a.frozen || 0) > 0 ? `冻结 ¥${Number(a.frozen).toFixed(2)}` : '',
+            available,
+            frozen,
+            total,
+            // 主数字展示「账户合计」，避免申请提现后看起来像余额被清空
+            balanceText: `¥${total.toFixed(2)}`,
+            availableText: `¥${available.toFixed(2)}`,
+            frozenText: `¥${frozen.toFixed(2)}`,
+            hasFrozen: frozen > 0,
             canApply,
-            btnText: canApply ? '申请台账提现' : balance > 0 ? `满¥${minAmount}可提` : '暂无台账可提余额'
+            btnText: canApply
+              ? '申请台账提现'
+              : available > 0
+                ? `可用满¥${minAmount}可提`
+                : frozen > 0
+                  ? '有提现审核中'
+                  : '暂无台账可提余额'
           }
         }),
         withdraws: (withdraws || []).map((w) => ({
@@ -98,10 +112,10 @@ Page({
             w.status === 'paid'
               ? '已打款'
               : w.status === 'approved'
-                ? '已审核'
+                ? '已审核待打款'
                 : w.status === 'rejected'
-                  ? '已驳回'
-                  : '审核中',
+                  ? '已驳回（已退回可用）'
+                  : '审核中（资金冻结中）',
           timeText: w.createdAt ? String(w.createdAt).replace('T', ' ').slice(0, 16) : ''
         }))
       })
@@ -115,15 +129,21 @@ Page({
     const acc = this.data.accounts.find((a) => a.accountType === type)
     if (!acc) return
     const minAmount = Number(this.data.minAmount) || 10
-    if (Number(acc.balance || 0) < minAmount) {
-      wx.showToast({ title: `可提余额须满 ¥${minAmount}`, icon: 'none' })
+    const available = Number(acc.available != null ? acc.available : acc.balance || 0)
+    if (available < minAmount) {
+      wx.showToast({
+        title: acc.hasFrozen ? '可用余额不足，请等待提现审核' : `可用余额须满 ¥${minAmount}`,
+        icon: 'none'
+      })
       return
     }
     const arriveHint =
       this.data.arriveHint || '申请通过后将在 1-3 个工作日内提现到入驻时提交的银行卡'
     wx.showModal({
       title: '申请提现',
-      content: `${arriveHint}\n\n可提余额 ¥${Number(acc.balance).toFixed(2)}，单笔须满 ¥${minAmount}。请输入提现金额：`,
+      content: `${arriveHint}\n\n可用余额 ¥${available.toFixed(2)}（提现中 ¥${Number(
+        acc.frozen || 0
+      ).toFixed(2)} 不重复可提）。提交后该金额先冻结，打款成功前仍属本店资金。请输入提现金额（须满 ¥${minAmount}）：`,
       editable: true,
       placeholderText: `不少于 ${minAmount}`,
       confirmText: '提交申请',
@@ -138,15 +158,19 @@ Page({
           wx.showToast({ title: `单笔提现须满 ¥${minAmount}`, icon: 'none' })
           return
         }
-        if (amount > Number(acc.balance || 0)) {
-          wx.showToast({ title: '提现金额超过可用余额', icon: 'none' })
+        if (amount > available) {
+          wx.showToast({ title: '超过可用余额（提现中金额不可再提）', icon: 'none' })
           return
         }
         try {
           const res = await api.merchantWithdraw({ accountType: type, amount })
           wx.showModal({
             title: '已提交提现申请',
-            content: (res && res.arriveHint) || arriveHint,
+            content: [
+              (res && res.frozenHint) ||
+                `¥${amount.toFixed(2)} 已转入「提现中」（冻结），打款成功前仍属于本店资金`,
+              (res && res.arriveHint) || arriveHint
+            ].join('\n'),
             showCancel: false
           })
           this.onShow()

@@ -25,11 +25,21 @@
         <view class="m-row__seal m-row__seal--gold">资</view>
         <view class="acc__info">
           <text class="acc__name">{{item.label}}</text>
-          <text class="acc__note" wx:if="{{item.frozenText}}">{{item.frozenText}}</text>
-          <text class="acc__note" wx:else>单笔满 ¥{{minAmount}} 可申请</text>
+          <text class="acc__note">账户合计（可用 + 提现中）</text>
         </view>
       </view>
       <text class="acc__bal">{{item.balanceText}}</text>
+      <view class="acc__split">
+        <view class="acc__split-item">
+          <text class="acc__split-l">可用</text>
+          <text class="acc__split-v">{{item.availableText}}</text>
+        </view>
+        <view class="acc__split-item">
+          <text class="acc__split-l">提现中</text>
+          <text class="acc__split-v {{item.hasFrozen ? 'acc__split-v--warn' : ''}}">{{item.frozenText}}</text>
+        </view>
+      </view>
+      <text wx:if="{{item.hasFrozen}}" class="acc__freeze-tip">提现审核中的金额已冻结，打款成功前仍属本店；驳回后退回可用</text>
       <button
         class="btn-primary acc__btn"
         bindtap="onWithdraw"
