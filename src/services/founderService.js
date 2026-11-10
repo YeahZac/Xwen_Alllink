@@ -112,6 +112,7 @@ async function listMembers(auth, { q, role } = {}) {
   const roleFilter = String(role || '').trim()
   let sql = `SELECT id, nickname, phone, invite_code AS inviteCode, points_balance AS points,
                     IFNULL(is_partner,0) AS isPartner, IFNULL(is_founder,0) AS isFounder,
+                    IFNULL(is_lead,0) AS isLead,
                     status, created_at AS createdAt
              FROM users WHERE status=1`
   const params = {}
@@ -122,19 +123,22 @@ async function listMembers(auth, { q, role } = {}) {
   }
   if (roleFilter === 'partner') sql += ` AND IFNULL(is_partner,0)=1`
   if (roleFilter === 'founder') sql += ` AND IFNULL(is_founder,0)=1`
+  if (roleFilter === 'lead') sql += ` AND IFNULL(is_lead,0)=1`
   sql += ` ORDER BY id DESC LIMIT 100`
   try {
     const users = await query(sql, params)
-    return users.map((u) => ({
-      ...u,
-      roleLabel: Number(u.isFounder)
-        ? '创始人'
-        : Number(u.isPartner)
-          ? '合伙人'
-          : '消费者'
-    }))
+    return users.map((u) => {
+      const labels = []
+      if (Number(u.isFounder)) labels.push('创始人')
+      if (Number(u.isLead)) labels.push('负责人')
+      if (Number(u.isPartner)) labels.push('合伙人')
+      return {
+        ...u,
+        roleLabel: labels.length ? labels.join('/') : '消费者'
+      }
+    })
   } catch (e) {
-    if (/Unknown column.*is_partner|is_founder/i.test(String(e.message || ''))) {
+    if (/Unknown column.*is_partner|is_founder|is_lead/i.test(String(e.message || ''))) {
       throw new HttpError(503, '请先执行 sql/26_user_identities.sql')
     }
     throw e

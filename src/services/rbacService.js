@@ -32,6 +32,7 @@ const PAGE_CATALOG = [
   { pageKey: 'needs', pageName: '供应需求', groupName: '内容管理', sortOrder: 95 },
   { pageKey: 'complaints', pageName: '投诉工单', groupName: '内容管理', sortOrder: 100 },
   { pageKey: 'configs', pageName: '平台配置', groupName: '内容管理', sortOrder: 105 },
+  { pageKey: 'wx_sub_merchants', pageName: '二级商户进件', groupName: '交易运营', sortOrder: 62 },
   { pageKey: 'referral_triggers', pageName: '推荐奖励设置', groupName: '系统管理', sortOrder: 190 },
   { pageKey: 'sys_roles', pageName: '角色权限', groupName: '系统管理', sortOrder: 200 },
   { pageKey: 'sys_accounts', pageName: '账号管理', groupName: '系统管理', sortOrder: 210 },
@@ -72,11 +73,11 @@ async function ensureRbacBootstrap() {
      ON DUPLICATE KEY UPDATE can_view=1, can_edit=1`
   )
   const hash = hashPassword('123456', DEFAULT_SALT)
+  // 仅首次创建写默认密码；已存在账号绝不在启动时重置密码
   await query(
     `INSERT INTO admin_accounts (id, username, password_hash, password_salt, display_name, role_id, status)
      VALUES (1, 'admin', :h, :salt, '超级管理员', 1, 1)
-     ON DUPLICATE KEY UPDATE password_hash=VALUES(password_hash), password_salt=VALUES(password_salt),
-       display_name='超级管理员', role_id=1, status=1`,
+     ON DUPLICATE KEY UPDATE display_name='超级管理员', role_id=1, status=1`,
     { h: hash, salt: DEFAULT_SALT }
   )
   await ensureOpsRolesAndAccounts(hash)
@@ -155,10 +156,10 @@ async function ensureOpsRolesAndAccounts(passwordHash) {
       roleId = Number(inserted.insertId)
     }
     for (const pageKey of role.pages) {
+      // 仅补齐缺失权限点；不覆盖运营已收紧的 can_view/can_edit
       await query(
-        `INSERT INTO admin_role_permissions (role_id, page_key, can_view, can_edit)
-         VALUES (:rid, :pk, 1, 1)
-         ON DUPLICATE KEY UPDATE can_view=1, can_edit=1`,
+        `INSERT IGNORE INTO admin_role_permissions (role_id, page_key, can_view, can_edit)
+         VALUES (:rid, :pk, 1, 1)`,
         { rid: roleId, pk: pageKey }
       )
     }
@@ -174,14 +175,13 @@ async function ensureOpsRolesAndAccounts(passwordHash) {
       { u: role.username }
     )
     if (accRows.length) {
+      // 已有账号只校正角色/展示名，绝不重置密码
       await query(
         `UPDATE admin_accounts
-         SET password_hash=:h, password_salt=:salt, display_name=:n, role_id=:rid, status=1
+         SET display_name=:n, role_id=:rid, status=1
          WHERE id=:id`,
         {
           id: Number(accRows[0].id),
-          h: hash,
-          salt: DEFAULT_SALT,
           n: role.displayName,
           rid: roleId
         }
@@ -302,10 +302,14 @@ async function loginByPassword(username, password) {
   return buildAdminSession(a)
 }
 
-/** 兼容旧邀请码 A001：映射到超级管理员会话 */
+/** 兼容旧邀请码 A001：映射到超级管理员会话（生产默认关闭，需 ADMIN_CODE_LOGIN=1） */
 async function loginByAdminInviteCode(code) {
+  const allow =
+    String(process.env.ADMIN_CODE_LOGIN || '').trim() === '1' ||
+    (process.env.NODE_ENV !== 'production' && String(process.env.ADMIN_CODE_LOGIN || '1') !== '0')
+  if (!allow) return null
   const adminCode = String(process.env.ADMIN_CODE || 'A001').trim()
-  if (String(code || '').trim() !== adminCode) return null
+  if (!adminCode || String(code || '').trim() !== adminCode) return null
 
   const rows = await query(
     `SELECT a.*, r.code AS role_code, r.name AS role_name, r.status AS role_status
@@ -357,7 +361,12 @@ async function loginByAdminInviteCode(code) {
       'referral_triggers',
       'sys_roles',
       'sys_accounts',
-      'sys_media'
+      'sys_media',
+      'wx_sub_merchants',
+      'identity_flags',
+      'partner_ops',
+      'partner_purchases',
+      'op_logs'
     ].forEach((k) => {
       permissions[k] = { view: true, edit: true }
     })

@@ -186,11 +186,8 @@ async function ensureSchema() {
   } catch (e) {
     console.warn('[schema] ops roles platform applies', e.message)
   }
-  try {
-    await runSqlStatements('29_cdn_media_backfill.sql', 'cdn media backfill')
-  } catch (e) {
-    console.warn('[schema] cdn media backfill', e.message)
-  }
+  // 已停用：勿在 ensureSchema 自动跑 29_cdn_media_backfill.sql。
+  // 空图回填请走运营台 POST /admin/sys/sync-mp-media（confirm=REPLACE_LEGACY_ONLY）。
   try {
     await runSqlStatements('31_apply_review_logs.sql', 'apply review logs')
   } catch (e) {

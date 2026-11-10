@@ -12,7 +12,7 @@ async function loginByInviteCode(code) {
   const invite = String(code || '').trim()
   if (!invite) throw new HttpError(400, '请输入邀请码/账号')
 
-  // 运营邀请码 / 兼容 A001 → 超级管理员（后台入口，始终允许）
+  // 运营邀请码 → 超级管理员（生产默认关闭，见 ADMIN_CODE_LOGIN）
   const adminSession = await rbacService.loginByAdminInviteCode(invite)
   if (adminSession) return adminSession
 

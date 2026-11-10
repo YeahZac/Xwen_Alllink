@@ -2629,7 +2629,7 @@ router.post(
         ok(
           await adminService.grantPool({
             merchantId: Number(req.body.merchantId),
-            points: Number(req.body.points) || 500,
+            points: Number(req.body.points),
             title: req.body.title
           })
         )

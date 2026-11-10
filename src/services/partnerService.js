@@ -462,28 +462,43 @@ async function listPurchaseOrders(auth) {
   }
 }
 
-async function listAllPurchaseOrders({ status, limit = 100 } = {}) {
-  const lim = Math.min(Number(limit) || 100, 300)
-  let sql = `SELECT p.id, p.order_no AS orderNo, p.user_id AS userId, p.goods_name AS goodsName,
-                    p.qty_text AS qtyText, p.note, p.status, p.created_at AS createdAt,
-                    u.nickname AS userName, u.phone AS userPhone
-             FROM partner_purchase_orders p
-             LEFT JOIN users u ON u.id = p.user_id WHERE 1=1`
+async function listAllPurchaseOrders({ status, limit = 200, page = 1, pageSize } = {}) {
+  const size = Math.min(Number(pageSize) || Number(limit) || 200, 500)
+  const pg = Math.max(1, Number(page) || 1)
+  const offset = (pg - 1) * size
+  let where = ' WHERE 1=1'
   const params = {}
   if (status) {
-    sql += ` AND p.status=:st`
+    where += ` AND p.status=:st`
     params.st = status
   }
-  sql += ` ORDER BY p.id DESC LIMIT ${lim}`
   try {
-    const rows = await query(sql, params)
-    return rows.map((r) => ({
+    const countRows = await query(
+      `SELECT COUNT(*) AS c FROM partner_purchase_orders p${where}`,
+      params
+    )
+    const rows = await query(
+      `SELECT p.id, p.order_no AS orderNo, p.user_id AS userId, p.goods_name AS goodsName,
+              p.qty_text AS qtyText, p.note, p.status, p.created_at AS createdAt,
+              u.nickname AS userName, u.phone AS userPhone
+       FROM partner_purchase_orders p
+       LEFT JOIN users u ON u.id = p.user_id${where}
+       ORDER BY p.id DESC LIMIT ${size} OFFSET ${offset}`,
+      params
+    )
+    const list = rows.map((r) => ({
       ...r,
       statusText: PURCHASE_STATUS_TEXT[r.status] || r.status
     }))
+    return {
+      list,
+      total: Number(countRows[0]?.c) || 0,
+      page: pg,
+      pageSize: size
+    }
   } catch (e) {
     if (/partner_purchase_orders|doesn't exist/i.test(String(e.message || ''))) {
-      return []
+      return { list: [], total: 0, page: pg, pageSize: size }
     }
     throw e
   }

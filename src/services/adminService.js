@@ -1653,9 +1653,13 @@ async function listReferrals({ page, pageSize, limit } = {}) {
 }
 
 async function grantPool(body) {
+  const merchantId = Number(body.merchantId)
+  const points = Number(body.points)
+  if (!merchantId) throw new HttpError(400, '请选择门店')
+  if (!Number.isFinite(points) || points <= 0) throw new HttpError(400, '请填写有效积分数量（须大于 0）')
   return orderService.adminGrantPool({
-    merchantId: Number(body.merchantId),
-    points: Number(body.points) || 500,
+    merchantId,
+    points: Math.floor(points),
     title: body.title || '后台发放'
   })
 }

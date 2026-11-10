@@ -1264,13 +1264,16 @@ async function renderIdentities(role) {
       b.onclick = () => {
         openModal(
           '发放积分额度',
-          field('points', '积分数量', '500', 'number') + field('title', '备注', '后台发放'),
+          field('points', '积分数量', '', 'number', '须大于 0，请手动填写') +
+            field('title', '备注', '后台发放'),
           async () => {
+            const pts = Number(formVal('points'))
+            if (!Number.isFinite(pts) || pts <= 0) throw new Error('请填写有效积分数量（须大于 0）')
             await api('/admin/points-pool/grant', {
               method: 'POST',
               body: JSON.stringify({
                 merchantId: Number(b.dataset.grant),
-                points: Number(formVal('points')),
+                points: pts,
                 title: formVal('title')
               })
             })
@@ -2521,14 +2524,16 @@ async function renderMerchants() {
     openModal(
       '发放积分额度',
       field('merchantId', '商户 ID', '', 'number') +
-        field('points', '积分数量', '500', 'number') +
+        field('points', '积分数量', '', 'number', '须大于 0，请手动填写') +
         field('title', '备注', '后台发放'),
       async () => {
+        const pts = Number(formVal('points'))
+        if (!Number.isFinite(pts) || pts <= 0) throw new Error('请填写有效积分数量（须大于 0）')
         await api('/admin/points-pool/grant', {
           method: 'POST',
           body: JSON.stringify({
             merchantId: Number(formVal('merchantId')),
-            points: Number(formVal('points')),
+            points: pts,
             title: formVal('title')
           })
         })
@@ -3456,14 +3461,16 @@ async function renderPoints() {
       openModal(
         '发放商户额度',
         field('merchantId', '商户 ID', '', 'number') +
-          field('points', '积分数量', '500', 'number') +
+          field('points', '积分数量', '', 'number', '须大于 0，请手动填写') +
           field('title', '备注', '后台发放'),
         async () => {
+          const pts = Number(formVal('points'))
+          if (!Number.isFinite(pts) || pts <= 0) throw new Error('请填写有效积分数量（须大于 0）')
           await api('/admin/points-pool/grant', {
             method: 'POST',
             body: JSON.stringify({
               merchantId: Number(formVal('merchantId')),
-              points: Number(formVal('points')),
+              points: pts,
               title: formVal('title')
             })
           })
@@ -5383,6 +5390,7 @@ async function renderIdentityFlags() {
         <option value="">全部</option>
         <option value="partner">合伙人</option>
         <option value="founder">创始人</option>
+        <option value="lead">负责人</option>
       </select>
       <button class="btn" id="btnSearch">查询</button>`
     const q = encodeURIComponent(($('fQ') && $('fQ').value.trim()) || '')
@@ -5406,7 +5414,9 @@ async function renderIdentityFlags() {
                <button class="btn sm" data-id="${u.id}" data-flag="founder" data-v="${Number(u.isFounder) ? 0 : 1}">${
                  Number(u.isFounder) ? '取消创始人' : '设为创始人'
                }</button>
-               <button class="btn sm" data-id="${u.id}" data-flag="lead" data-v="1">设为负责人</button>`
+               <button class="btn sm" data-id="${u.id}" data-flag="lead" data-v="${Number(u.isLead) ? 0 : 1}">${
+                 Number(u.isLead) ? '取消负责人' : '设为负责人'
+               }</button>`
             : '-'
         }</td></tr>`
           )
@@ -5468,9 +5478,13 @@ async function renderPartnerPurchases() {
     <div id="list"></div>`
   const load = async () => {
     const st = $('fStatus').value
-    const qs = st ? `?status=${encodeURIComponent(st)}` : ''
-    const rows = (await api(`/admin/partner-purchases${qs}`)) || []
-    const data = pageLocal(Array.isArray(rows) ? rows : rows.list || [], pageState)
+    const qs = new URLSearchParams({
+      page: String(pageState.page),
+      pageSize: String(pageState.pageSize)
+    })
+    if (st) qs.set('status', st)
+    const data = unwrapList(await api(`/admin/partner-purchases?${qs}`))
+    pageState.page = data.page
     $('list').innerHTML =
       table(
         ['ID', '单号', '合伙人', '品名', '数量', '状态', '时间', '操作'],
@@ -5550,6 +5564,7 @@ $('btnLogin').onclick = async () => {
     const password = $('loginPass').value
     let data
     if (password) {
+      // 有密码只走账号密码，不再回退邀请码（避免撞库/误登超管）
       data = await api('/auth/admin-login', {
         method: 'POST',
         body: JSON.stringify({ username, password })
@@ -5568,23 +5583,7 @@ $('btnLogin').onclick = async () => {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(data))
     await showDash()
   } catch (e) {
-    // 密码登录失败时，尝试邀请码
-    try {
-      const username = $('loginUser').value.trim()
-      const data = await api('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ code: username })
-      })
-      if (data.role !== 'admin') throw new Error(e.message)
-      state.token = data.token
-      state.profile = data
-      state.permissions = data.permissions || {}
-      localStorage.setItem(TOKEN_KEY, data.token)
-      localStorage.setItem(PROFILE_KEY, JSON.stringify(data))
-      await showDash()
-    } catch (e2) {
-      $('loginErr').textContent = e.message || e2.message
-    }
+    $('loginErr').textContent = e.message || '登录失败'
   }
 }
 
