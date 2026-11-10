@@ -57,6 +57,16 @@
   line-height: var(--lh-snug);
 }
 
+.wallet__note {
+  display: block;
+  margin-top: 8rpx;
+  font-size: var(--font-caption);
+  color: rgba(255, 255, 255, 0.85);
+  position: relative;
+  z-index: 1;
+  line-height: var(--lh-snug);
+}
+
 .actions {
   display: flex;
   flex-direction: column;

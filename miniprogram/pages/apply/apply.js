@@ -380,7 +380,20 @@ Page({
     this.setData({ 'form.stallCommitment': !this.data.form.stallCommitment })
   },
   openMerchantLegal() {
-    legal.openDoc('merchant')
+    const f = this.data.form || {}
+    const roleMap = { stall: '地摊', cross: '异业', supply: '供应链' }
+    const role = this.data.selected || 'stall'
+    legal.openMerchantAgreement({
+      shopName: f.shopName || '',
+      legalPerson: f.legalPerson || '',
+      contactName: f.contactName || '',
+      contactPhone: f.contactPhone || '',
+      city: f.city || '',
+      address: f.address || '',
+      role,
+      roleLabel: roleMap[role] || this.data.roleLabel || '',
+      date: new Date().toISOString().slice(0, 10)
+    })
   },
   queryStatus() {
     this.queryApplyProgress()

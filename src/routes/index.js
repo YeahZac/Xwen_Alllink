@@ -15,7 +15,14 @@ const rbacService = require('../services/rbacService')
 const storageService = require('../services/storageService')
 const opsService = require('../services/opsService')
 const merchantPortalService = require('../services/merchantPortalService')
-const { getCashRate, pointsToCash } = require('../services/configService')
+const {
+  getCashRate,
+  pointsToCash,
+  getMerchantAgreement,
+  getMerchantAgreementTemplate,
+  setConfig,
+  MERCHANT_AGREEMENT_KEY
+} = require('../services/configService')
 const categoryService = require('../services/categoryService')
 const cityService = require('../services/cityService')
 const feeService = require('../services/feeService')
@@ -1856,6 +1863,75 @@ router.get('/config/cash-rate', async (_req, res, next) => {
     next(e)
   }
 })
+
+router.get('/config/merchant-agreement', async (req, res, next) => {
+  try {
+    const q = req.query || {}
+    res.json(
+      ok(
+        await getMerchantAgreement({
+          shopName: q.shopName || q.shop_name || '',
+          legalPerson: q.legalPerson || q.legal_person || '',
+          contactName: q.contactName || q.contact_name || '',
+          contactPhone: q.contactPhone || q.contact_phone || '',
+          city: q.city || '',
+          address: q.address || '',
+          role: q.role || '',
+          roleLabel: q.roleLabel || q.role_label || '',
+          date: q.date || ''
+        })
+      )
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.get(
+  '/admin/merchant-agreement',
+  ...adminOnly,
+  requireAnyPage(['applies', 'configs']),
+  async (_req, res, next) => {
+    try {
+      const template = await getMerchantAgreementTemplate()
+      res.json(
+        ok({
+          key: MERCHANT_AGREEMENT_KEY,
+          template,
+          placeholders: [
+            'shopName',
+            'legalPerson',
+            'contactName',
+            'contactPhone',
+            'city',
+            'address',
+            'roleLabel',
+            'date'
+          ],
+          hint: '入驻申请页会按商家填写信息自动替换 {{占位符}}；审核通过即视为同意本协议。'
+        })
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.put(
+  '/admin/merchant-agreement',
+  ...adminOnly,
+  requireAnyPage(['applies', 'configs'], { edit: true }),
+  async (req, res, next) => {
+    try {
+      const template = String((req.body && req.body.template) || '').trim()
+      if (!template) throw new HttpError(400, '协议内容不能为空')
+      await setConfig(MERCHANT_AGREEMENT_KEY, template, '商户入驻协议模板（支持 {{shopName}} 等占位符）')
+      res.json(ok({ key: MERCHANT_AGREEMENT_KEY, template }))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
 
 router.get('/cities/resolve', async (req, res, next) => {
   try {

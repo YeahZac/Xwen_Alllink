@@ -23,7 +23,7 @@ Page({
       this.setData({
         balance: data.balance || 0,
         cashValue: Number(data.cashValue || 0).toFixed(2),
-        cashRateText: data.cashRate != null ? `1 积分额度 ≈ ¥${data.cashRate}` : '',
+        cashRateText: data.cashRate != null ? `1 积分 = ¥${data.cashRate}` : '',
         ledger: (data.ledger || []).map((r) => {
           const change = Number(r.change != null ? r.change : 0)
           const up = change >= 0

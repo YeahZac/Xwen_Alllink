@@ -175,6 +175,17 @@ const api = {
 
   cashRate: () => request({ path: '/config/cash-rate', auth: false }),
 
+  merchantAgreement: (vars = {}) => {
+    const q = Object.keys(vars || {})
+      .filter((k) => vars[k] != null && String(vars[k]).trim() !== '')
+      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(String(vars[k]))}`)
+      .join('&')
+    return request({
+      path: `/config/merchant-agreement${q ? `?${q}` : ''}`,
+      auth: false
+    })
+  },
+
   cities: () => request({ path: '/cities', auth: false }),
 
   resolveCity: (lat, lng) =>

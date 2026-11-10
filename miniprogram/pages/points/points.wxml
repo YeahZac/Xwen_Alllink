@@ -13,7 +13,7 @@
       <view class="hero-card">
         <text class="hero-card__label">可用积分</text>
         <text class="hero-card__num">{{points}}</text>
-        <text class="hero-card__hint">约可抵现 ¥{{cashValue}} · 抵现汇率 (后台可调): {{cashRateText}}</text>
+        <text class="hero-card__hint">约可抵现 ¥{{cashValue}} · {{cashRateText}}</text>
         <view class="btn-ghost-on-hero" bindtap="goCross">去异业兑换 / 抵现</view>
       </view>
 

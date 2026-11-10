@@ -142,8 +142,9 @@
           <label class="cell cell--check">
             <checkbox value="1" checked="{{form.agreed}}" color="#FA5151" />
             <view class="cell__bd">
-              <text class="check-text">我已阅读并同意</text>
+              <text class="check-text">提交申请并通过审核即视为同意</text>
               <text class="link" catchtap="openMerchantLegal">《商户入驻平台协议》</text>
+              <text class="check-text">（协议内已按本店信息自动填充）</text>
             </view>
           </label>
         </checkbox-group>

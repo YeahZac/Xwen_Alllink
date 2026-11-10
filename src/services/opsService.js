@@ -13,6 +13,7 @@ const {
   normalizeSource
 } = require('../utils/goodsProvenance')
 const { isTestGoodsName } = require('../utils/goodsName')
+const pointsService = require('./pointsService')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链', consumer: 'C端用户' }
 const PLATFORM_ROLE_LABEL = { partner: '合伙人', founder: '创始人', lead: '负责人' }
@@ -767,7 +768,7 @@ async function createStore(body = {}) {
       }
     }
     const mid = ins.insertId
-    await conn.execute(`INSERT INTO merchant_points_pool (merchant_id, balance) VALUES (?, 0)`, [mid])
+    await pointsService.grantOpenGift(conn, mid)
     if (role === 'supply') {
       await conn.execute(
         `INSERT INTO merchant_accounts (merchant_id, account_type, balance) VALUES

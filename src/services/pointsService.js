@@ -1,15 +1,42 @@
 /**
  * 积分额度核心服务
- * 采购获额 / 后台发放 / 消费划拨 / 消费者扣减
+ * 开店赠送 / 采购获额 / 后台发放 / 消费划拨 / 消费者扣减
  */
 const { pointsToCash, getCashRate, getConfig } = require('./configService')
 const { HttpError } = require('../utils/response')
+
+/** 新建门店默认赠送的积分额度（后台可继续划拨） */
+const DEFAULT_OPEN_GIFT_POINTS = 500
 
 async function ensurePool(conn, merchantId) {
   await conn.execute(
     `INSERT IGNORE INTO merchant_points_pool (merchant_id, balance) VALUES (?, 0)`,
     [merchantId]
   )
+}
+
+/** 开店赠送默认额度；已有流水 open_gift 时不重复发放 */
+async function grantOpenGift(conn, merchantId, points = DEFAULT_OPEN_GIFT_POINTS) {
+  const gift = Math.max(0, Math.floor(Number(points) || 0))
+  if (!gift) {
+    await ensurePool(conn, merchantId)
+    return 0
+  }
+  await ensurePool(conn, merchantId)
+  const [dup] = await conn.execute(
+    `SELECT id FROM merchant_pool_ledger
+     WHERE merchant_id=? AND biz_type='open_gift' LIMIT 1`,
+    [merchantId]
+  )
+  if (dup.length) {
+    return getPoolBalance(conn, merchantId)
+  }
+  return grantPool(conn, {
+    merchantId,
+    points: gift,
+    bizType: 'open_gift',
+    title: '开店赠送积分额度'
+  })
 }
 
 async function getPoolBalance(conn, merchantId) {
@@ -166,9 +193,11 @@ async function refundConsumerPoints(conn, { userId, points, title, bizId }) {
 }
 
 module.exports = {
+  DEFAULT_OPEN_GIFT_POINTS,
   ensurePool,
   getPoolBalance,
   grantPool,
+  grantOpenGift,
   allocateToConsumer,
   spendConsumerPoints,
   refundConsumerPoints

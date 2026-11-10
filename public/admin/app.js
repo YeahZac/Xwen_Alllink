@@ -23,6 +23,7 @@ const NAV_GROUPS = [
     icon: 'badge',
     items: [
       { id: 'applies', label: '商家入驻审核' },
+      { id: 'merchant_agreement', label: '入驻协议配置' },
       { id: 'partner_ops', label: '合伙人申请/提现' },
       { id: 'identity_flags', label: '创始人/负责人申请' },
       { id: 'cities', label: '经营城市开通' }
@@ -113,12 +114,18 @@ function isSuper() {
 
 function canView(page) {
   if (isSuper()) return true
+  if (page === 'merchant_agreement') {
+    return canView('applies') || canView('configs')
+  }
   const p = state.permissions?.[page]
   return !!(p && p.view)
 }
 
 function canEdit(page) {
   if (isSuper()) return true
+  if (page === 'merchant_agreement') {
+    return canEdit('applies') || canEdit('configs')
+  }
   const p = state.permissions?.[page]
   return !!(p && p.edit)
 }
@@ -387,6 +394,7 @@ function go(page) {
     wx_sub_merchants: renderWxSubMerchants,
     banners: renderBanners,
     configs: renderConfigs,
+    merchant_agreement: renderMerchantAgreement,
     withdraws: renderWithdraws,
     partner_purchases: renderPartnerPurchases,
     complaints: renderComplaints,
@@ -3999,6 +4007,59 @@ function editBanner(b, reload, meta, defaults = {}) {
   if (typeSel) {
     typeSel.onchange = () => renderBannerLinkExtra(typeSel.value, b)
   }
+}
+
+async function renderMerchantAgreement() {
+  const editable = canEdit('applies') || canEdit('configs')
+  content().innerHTML = `
+    <div class="toolbar">
+      <button class="btn" id="btnReload">刷新</button>
+      ${editable ? '<button class="btn primary" id="btnSave">保存协议</button>' : ''}
+    </div>
+    <div class="panel form-stack" style="max-width:920px">
+      <p class="muted" id="agreeHint">加载中…</p>
+      <div class="form-field">
+        <label class="form-field__label" for="f_template">协议正文</label>
+        <span class="form-field__hint">可用占位符：{{shopName}} {{legalPerson}} {{contactName}} {{contactPhone}} {{city}} {{address}} {{roleLabel}} {{date}}。小程序入驻页会按商家填写自动填充；审核通过即视为同意。</span>
+        <textarea id="f_template" rows="22" ${editable ? '' : 'readonly'}></textarea>
+      </div>
+      <div class="form-field">
+        <label class="form-field__label">预览（示例填充）</label>
+        <pre id="agreePreview" class="surface" style="white-space:pre-wrap;padding:12px;max-height:320px;overflow:auto"></pre>
+      </div>
+    </div>`
+  const fillPreview = (tpl) => {
+    const sample = String(tpl || '')
+      .replace(/\{\{\s*shopName\s*\}\}/g, '示例火锅店')
+      .replace(/\{\{\s*legalPerson\s*\}\}/g, '张三')
+      .replace(/\{\{\s*contactName\s*\}\}/g, '李四')
+      .replace(/\{\{\s*contactPhone\s*\}\}/g, '13800000000')
+      .replace(/\{\{\s*city\s*\}\}/g, '深圳')
+      .replace(/\{\{\s*address\s*\}\}/g, '南山区示例路 1 号')
+      .replace(/\{\{\s*roleLabel\s*\}\}/g, '地摊')
+      .replace(/\{\{\s*date\s*\}\}/g, new Date().toISOString().slice(0, 10))
+    $('agreePreview').textContent = sample
+  }
+  const load = async () => {
+    const d = await api('/admin/merchant-agreement')
+    $('agreeHint').textContent = d.hint || ''
+    $('f_template').value = d.template || ''
+    fillPreview(d.template || '')
+  }
+  $('f_template').oninput = () => fillPreview($('f_template').value)
+  if ($('btnSave')) {
+    $('btnSave').onclick = () =>
+      runAction(async () => {
+        await api('/admin/merchant-agreement', {
+          method: 'PUT',
+          body: JSON.stringify({ template: $('f_template').value })
+        })
+        alert('已保存入驻协议')
+        await load()
+      })
+  }
+  $('btnReload').onclick = () => runAction(load)
+  await load()
 }
 
 async function renderConfigs() {

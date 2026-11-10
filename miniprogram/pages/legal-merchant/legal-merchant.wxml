@@ -1,0 +1,7 @@
+<scroll-view class="privacy" scroll-y>
+  <text class="privacy__h1">{{title}}</text>
+  <block wx:if="{{!loading}}">
+    <text wx:for="{{paragraphs}}" wx:key="index" class="{{item ? 'privacy__p' : 'privacy__gap'}}">{{item || ' '}}</text>
+  </block>
+  <text class="privacy__foot">入驻申请审核通过即视为同意本协议；页眉商家信息按申请资料自动填充。</text>
+</scroll-view>

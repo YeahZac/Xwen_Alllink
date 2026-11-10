@@ -6,6 +6,7 @@ const cityService = require('./cityService')
 const referralService = require('./referralService')
 const { getConfig } = require('./configService')
 const { parseMaybeJson, pickCoverFromLicenses } = require('../utils/mediaPick')
+const pointsService = require('./pointsService')
 
 const ROLE_LICENSE_RULES = {
   // 地摊（微信收付通小微）：身份证人像/国徽 + 经营场景照；无营业执照/食品证亦可
@@ -714,10 +715,7 @@ async function approveApply(applyId, { reviewerId, reviewerName, remark } = {}) 
       ]
     )
     const merchantId = ins.insertId
-    await conn.execute(
-      `INSERT INTO merchant_points_pool (merchant_id, balance) VALUES (?, 0)`,
-      [merchantId]
-    )
+    await pointsService.grantOpenGift(conn, merchantId)
 
     // 优先绑定申请人账号，手机号匹配为兜底，避免 owner 与申请人错位
     let ownerUserId = 0

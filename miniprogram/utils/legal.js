@@ -202,9 +202,37 @@ function openPrivacy() {
 }
 
 /**
+ * 商户入驻协议：后台可配正文，按申请资料自动填充占位符
+ */
+function openMerchantAgreement(vars = {}) {
+  const keys = [
+    'shopName',
+    'legalPerson',
+    'contactName',
+    'contactPhone',
+    'city',
+    'address',
+    'role',
+    'roleLabel',
+    'date'
+  ]
+  const q = keys
+    .filter((k) => vars[k] != null && String(vars[k]).trim() !== '')
+    .map((k) => `${k}=${encodeURIComponent(String(vars[k]))}`)
+    .join('&')
+  return new Promise((resolve) => {
+    wx.navigateTo({
+      url: `/pages/legal-merchant/legal-merchant${q ? `?${q}` : ''}`,
+      success: () => resolve(true),
+      fail: () => resolve(false)
+    })
+  })
+}
+
+/**
  * 打开协议（小程序内，不跳浏览器、不用 web-view）
  */
-function openDoc(keyOrDoc) {
+function openDoc(keyOrDoc, vars) {
   const doc = typeof keyOrDoc === 'string' ? docByKey(keyOrDoc) : keyOrDoc
   if (!doc) {
     wx.showToast({ title: '协议不存在', icon: 'none' })
@@ -212,6 +240,9 @@ function openDoc(keyOrDoc) {
   }
   if (doc.key === 'privacy' || doc.page) {
     return openPrivacy()
+  }
+  if (doc.key === 'merchant') {
+    return openMerchantAgreement(vars || {})
   }
 
   wx.showLoading({ title: '打开协议…', mask: true })
@@ -243,6 +274,7 @@ module.exports = {
   docByKey,
   docUrl,
   openDoc,
+  openMerchantAgreement,
   openInWebView,
   openFromPackage,
   openFromCloud

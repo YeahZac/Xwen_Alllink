@@ -56,7 +56,7 @@ Page({
         })),
         summary,
         points,
-        cashRateText: `后台汇率：100 积分 ≈ ¥${(store.getCashRate() * 100).toFixed(0)}`,
+        cashRateText: `1 积分 = ¥${Number(store.getCashRate()).toFixed(2)}`,
         loading: false
       })
       this.recompute(Math.min(points, store.cashToPoints(summary.totalPrice)))

@@ -40,8 +40,8 @@ function menusFor(role) {
       { id: 'orders', icon: '单', tone: 'ink', title: '订单', sub: '待出单 / 出餐履约', url: '/merchant/orders/orders' },
       { id: 'goods', icon: '品', tone: 'seal', title: '菜品物料', sub: '菜单上架与售价', url: '/merchant/goods/goods' },
       { id: 'flow', icon: '财', tone: 'teal', title: '财务', sub: '收款与流水', url: '/merchant/flow/flow' },
-      { id: 'purchase', icon: '供', tone: 'seal', title: '供应链', sub: '向平台采购获额度', url: '/merchant/purchase/purchase' },
-      { id: 'pool', icon: '票', tone: 'soft', title: '饭票/积分池', sub: '额度与划拨', url: '/merchant/points-pool/points-pool' },
+      { id: 'purchase', icon: '供', tone: 'seal', title: '供应链', sub: '采购补充额度', url: '/merchant/purchase/purchase' },
+      { id: 'pool', icon: '票', tone: 'soft', title: '饭票/积分池', sub: '开店赠送·后台划拨', url: '/merchant/points-pool/points-pool' },
       { id: 'customers', icon: '客', tone: 'gold', title: '我的客户', sub: '到店消费者', url: '/merchant/customers/customers' }
     ])
   }
@@ -50,8 +50,8 @@ function menusFor(role) {
       { id: 'orders', icon: '单', tone: 'ink', title: '订单', sub: '兑换核销履约', url: '/merchant/orders/orders' },
       { id: 'goods', icon: '品', tone: 'seal', title: '门店商品', sub: '积分价 / 现金价', url: '/merchant/goods/goods' },
       { id: 'flow', icon: '财', tone: 'teal', title: '财务', sub: '核销与收银流水', url: '/merchant/flow/flow' },
-      { id: 'purchase', icon: '供', tone: 'seal', title: '供应链', sub: '采购获积分额度', url: '/merchant/purchase/purchase' },
-      { id: 'pool', icon: '票', tone: 'soft', title: '饭票/积分池', sub: '池余额查询', url: '/merchant/points-pool/points-pool' },
+      { id: 'purchase', icon: '供', tone: 'seal', title: '供应链', sub: '采购补充额度', url: '/merchant/purchase/purchase' },
+      { id: 'pool', icon: '票', tone: 'soft', title: '饭票/积分池', sub: '开店赠送·后台划拨', url: '/merchant/points-pool/points-pool' },
       { id: 'customers', icon: '客', tone: 'gold', title: '我的客户', sub: '积分客 / 现金客', url: '/merchant/customers/customers' }
     ])
   }
