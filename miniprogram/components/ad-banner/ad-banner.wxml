@@ -13,7 +13,7 @@
     <swiper-item wx:for="{{list}}" wx:key="id">
       <view class="ad-banner__slide" bindtap="onTap" data-index="{{index}}">
         <image
-          wx:if="{{item.placeholder}}"
+          wx:if="{{item.imgError && item.placeholder}}"
           class="ad-banner__img ad-banner__img--ph"
           src="{{item.placeholder}}"
           mode="aspectFill"
@@ -23,7 +23,7 @@
           class="ad-banner__img"
           src="{{item.image}}"
           mode="aspectFill"
-          lazy-load="{{true}}"
+          lazy-load="{{false}}"
           binderror="onImgError"
           data-index="{{index}}"
         />

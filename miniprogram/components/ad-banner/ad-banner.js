@@ -39,8 +39,8 @@ Component({
   },
   lifetimes: {
     attached() {
-      const scope = this.properties.role || 'consumer'
-      this.setData({ list: mergeBanners(scope, []) })
+      // 勿先塞默认包，避免接口返回运营图前用户先看到旧图
+      this.setData({ list: [] })
       this.load()
     }
   },
@@ -79,6 +79,11 @@ Component({
       if (Number.isNaN(idx) || idx < 0) return
       const item = this.data.list[idx]
       if (!item) return
+      // 运营台下发的 Banner 加载失败时只标错，绝不偷偷换成默认包旧图
+      if (item.fromApi) {
+        this.setData({ [`list[${idx}].imgError`]: true })
+        return
+      }
       const pack = mergeBanners(this.properties.role || 'consumer', [])
       const fallback = pack[idx % pack.length]
       const cloud = fallback && fallback.image

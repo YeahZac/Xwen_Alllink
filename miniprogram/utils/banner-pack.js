@@ -114,10 +114,14 @@ function packFor(role) {
 
 function mergeBanners(role, rows) {
   const pack = packFor(role)
-  const list = Array.isArray(rows) && rows.length ? rows : pack
+  const fromApi = Array.isArray(rows) && rows.length > 0
+  const list = fromApi ? rows : pack
   return list.map((item, i) => {
     const fallback = pack[i % pack.length]
-    const image = isMissingImage(item.image) ? fallback.image : item.image
+    const raw = String(item.image || '').trim()
+    // 后端已下发的 https（含运营上传 /admin/banner）必须原样展示，禁止再回落默认包
+    const keepApi = fromApi && /^https?:\/\//i.test(raw)
+    const image = keepApi ? raw : isMissingImage(raw) ? fallback.image : raw
     return {
       id: item.id || `local-${role}-${i}`,
       title: item.jumpName || item.title || fallback.title,
@@ -129,6 +133,7 @@ function mergeBanners(role, rows) {
       linkType: item.linkType || fallback.linkType,
       linkAppid: item.linkAppid || '',
       linkImageUrl: item.linkImageUrl || '',
+      fromApi: !!fromApi,
       imgError: !String(image || '').trim()
     }
   })
