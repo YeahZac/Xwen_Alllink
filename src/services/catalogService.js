@@ -13,8 +13,15 @@ const BANNER_IMAGES = {
   supply: [`${MP_STATIC}/821f8b62aeaa627a.webp`, `${MP_STATIC}/821f8b62aeaa627a.webp`],
   login: [`${MP_STATIC}/8f773fae68a0ba0e.webp`]
 }
-const LOCAL_BANNER =
-  /\/assets\/banners\/|(consumer-[123]|stall-[12]|cross-[12]|supply-[12]|login-[12])\.png$|placehold|picsum|unsplash|\/admin\/(banner|cover)\//i
+/** 仅空图 / 本地旧 assets / 公开占位图服务才回落默认图；运营上传的 /admin/banner 必须原样下发 */
+function shouldReplaceBannerImage(image) {
+  const s = String(image || '').trim()
+  if (!s) return true
+  if (/placehold\.co|picsum\.photos|unsplash\.com|dummyimage|via\.placeholder/i.test(s)) return true
+  if (/\/assets\/banners\//i.test(s)) return true
+  if (/(consumer|stall|cross|supply|login)-[123]\.png$/i.test(s)) return true
+  return false
+}
 
 function normalizePublicLinkType(raw) {
   const t = String(raw || '').trim()
@@ -85,8 +92,7 @@ async function listBanners(role, page) {
   const pack = BANNER_IMAGES[scope] || BANNER_IMAGES.consumer
   return rows.map((row, i) => {
     const image = String(row.image || '').trim()
-    const ready = /\/admin\/mp-static\//i.test(image)
-    if (!image || !ready || LOCAL_BANNER.test(image)) {
+    if (shouldReplaceBannerImage(image)) {
       row.image = pack[i % pack.length]
     }
     row.linkType = normalizePublicLinkType(row.linkType)

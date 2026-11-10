@@ -97,15 +97,14 @@ const PACK = {
 function isMissingImage(image) {
   const s = String(image || '').trim()
   if (!s) return true
-  if (s.indexOf('/assets/placeholders/') === 0) return false
+  // 云托管 / COS / 运营上传 banner·cover 一律视为可用，不再回落默认图
   if (cdn.isOurCdn(s)) return false
-  if (/tcb\.qcloud\.la\/admin\/(cover|banner)\//i.test(s)) return true
+  if (s.indexOf('/assets/placeholders/') === 0) return false
   if (s.indexOf('/uploads/') === 0) return false
   if (/^cloud:\/\//i.test(s)) return false
-  if (/placehold|picsum|unsplash|dummyimage|via\.placeholder/i.test(s)) return true
+  if (/placehold\.co|picsum\.photos|unsplash\.com|dummyimage|via\.placeholder/i.test(s)) return true
   if (/(consumer|stall|cross|supply|login)-[123]\.png$/i.test(s)) return true
   if (/\/assets\/banners\//i.test(s)) return true
-  if (/^https?:\/\//i.test(s)) return true
   return false
 }
 

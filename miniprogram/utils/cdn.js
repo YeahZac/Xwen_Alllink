@@ -8,12 +8,11 @@ const CDN_HOST = String((manifest && manifest.cdnHost) || '').replace(/\/+$/, ''
 const PLACEHOLDER_BANNER = '/assets/placeholders/banner-loading.jpg'
 const PLACEHOLDER_COVER = '/assets/placeholders/cover-loading.jpg'
 
-/** 平台静态素材或业务上传 CDN（不含旧 admin/cover 模拟图） */
+/** 平台静态素材或业务上传 CDN（含运营上传的 /admin/banner、/admin/cover） */
 function isOurCdn(url) {
   const s = String(url || '')
   if (!s) return false
-  if (/tcb\.qcloud\.la\/admin\/(cover|banner)\//i.test(s)) return false
-  return /tcb\.qcloud\.la\/admin\/mp-static\/|tcb\.qcloud\.la\/|myqcloud\.com|\.cos\./i.test(s)
+  return /tcb\.qcloud\.la|myqcloud\.com|\.cos\./i.test(s)
 }
 
 function bannerUrl(fileName) {
