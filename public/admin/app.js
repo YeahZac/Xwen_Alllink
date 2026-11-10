@@ -460,12 +460,49 @@ function bindToggleSwitch(root, selector, handler) {
 
 function selectOnOff(name, value, { onLabel = '启用', offLabel = '停用', onValue = 1, offValue = 0 } = {}) {
   const on = Number(value) === Number(onValue)
-  return `<label>${esc(onLabel)}/${esc(offLabel)}
-    <select name="${esc(name)}">
+  return `<div class="form-field form-field--compact">
+    <label class="form-field__label" for="f_${esc(name)}">${esc(onLabel)} / ${esc(offLabel)}</label>
+    <select id="f_${esc(name)}" name="${esc(name)}">
       <option value="${onValue}" ${on ? 'selected' : ''}>${esc(onLabel)}</option>
       <option value="${offValue}" ${!on ? 'selected' : ''}>${esc(offLabel)}</option>
     </select>
-  </label>`
+  </div>`
+}
+
+/** 上传控件尺寸标注（按业务场景） */
+const MEDIA_SPECS = {
+  goods: {
+    size: '建议尺寸 800×800（1:1）',
+    tip: 'JPG / PNG / WebP · 单张 ≤3MB（自动压缩）· 商品主图'
+  },
+  category: {
+    size: '建议尺寸 400×400（1:1）',
+    tip: 'JPG / PNG / WebP · ≤3MB · 小程序「分类」入口封面'
+  },
+  banner: {
+    size: '建议尺寸 750×320（横图）',
+    tip: 'JPG / PNG / WebP · ≤3MB · 小程序 Banner 广告位'
+  },
+  merchant: {
+    size: '建议尺寸 750×560（约 4:3）',
+    tip: 'JPG / PNG / WebP · ≤3MB · 门店封面 / 场景主图'
+  },
+  license: {
+    size: '建议长边 1200–1600px',
+    tip: '清晰 JPG · 压缩后 ≤900KB · 证照 / 进件材料'
+  },
+  general: {
+    size: '建议长边 ≤2200px',
+    tip: 'JPG / PNG / WebP · ≤3MB（自动压缩）'
+  }
+}
+
+function mediaSpecFor(bizType) {
+  const key = String(bizType || 'general').toLowerCase()
+  if (MEDIA_SPECS[key]) return MEDIA_SPECS[key]
+  if (/^(license|idcard|id_card|apply|stall_license)$/i.test(key)) return MEDIA_SPECS.license
+  if (/^(cover|store|shop)$/i.test(key)) return MEDIA_SPECS.merchant
+  return MEDIA_SPECS.general
 }
 
 function isImgUrl(url) {
@@ -624,11 +661,13 @@ function bindPager(pagerEl, pageState, onChange) {
 function openModal(title, bodyHtml, onSave, wide) {
   $('modal').classList.remove('hidden')
   $('modalTitle').textContent = title
-  $('modalBody').innerHTML = bodyHtml
+  const body = $('modalBody')
+  body.className = 'form-stack'
+  body.innerHTML = bodyHtml
   const card = $('modal').querySelector('.modal-card')
   if (card) card.classList.toggle('wide', !!wide)
-  bindMediaFields($('modalBody'))
-  bindThumbs($('modalBody'))
+  bindMediaFields(body)
+  bindThumbs(body)
   $('modalFoot').innerHTML = onSave
     ? `<button type="button" class="btn ghost" id="modalCancel">取消</button>
        <button type="button" class="btn primary" id="modalSave">保存</button>`
@@ -664,14 +703,23 @@ function closeModal() {
   $('modal').classList.add('hidden')
 }
 
-function field(name, label, value = '', type = 'text') {
+function field(name, label, value = '', type = 'text', hint = '') {
+  const hintHtml = hint ? `<span class="form-field__hint">${esc(hint)}</span>` : ''
   if (type === 'textarea') {
-    return `<label>${label}<textarea name="${name}" rows="3">${esc(value)}</textarea></label>`
+    return `<div class="form-field">
+      <label class="form-field__label" for="f_${esc(name)}">${esc(label)}</label>
+      ${hintHtml}
+      <textarea id="f_${esc(name)}" name="${esc(name)}" rows="3">${esc(value)}</textarea>
+    </div>`
   }
   if (type === 'select') {
     return ''
   }
-  return `<label>${label}<input name="${name}" type="${type}" value="${esc(value)}" /></label>`
+  return `<div class="form-field">
+    <label class="form-field__label" for="f_${esc(name)}">${esc(label)}</label>
+    ${hintHtml}
+    <input id="f_${esc(name)}" name="${esc(name)}" type="${type}" value="${esc(value)}" />
+  </div>`
 }
 
 function selectField(name, label, options, value = '') {
@@ -682,7 +730,10 @@ function selectField(name, label, options, value = '') {
       return `<option value="${esc(String(v))}" ${String(v) === String(value) ? 'selected' : ''}>${esc(t)}</option>`
     })
     .join('')
-  return `<label>${esc(label)}<select name="${esc(name)}">${opts}</select></label>`
+  return `<div class="form-field">
+    <label class="form-field__label" for="f_${esc(name)}">${esc(label)}</label>
+    <select id="f_${esc(name)}" name="${esc(name)}">${opts}</select>
+  </div>`
 }
 
 /** 门店上线标准流程说明（入驻审核 / 二级商户进件） */
@@ -776,17 +827,27 @@ async function loadOpenCityOptions({ includeEmpty = true, emptyLabel = '请选�
   return options
 }
 
-/** 图片/文件上传控件：压缩后上传云托管存储，支持删除 */
+/** 图片/文件上传控件：压缩后上传云托管存储，支持删除；尺寸规格常驻展示 */
 function mediaField(name, label, value = '', bizType = 'general') {
   const v = value || ''
+  const spec = mediaSpecFor(bizType)
+  const accept = /^(license|idcard|id_card|apply|stall_license)$/i.test(String(bizType || ''))
+    ? 'image/*,.pdf'
+    : 'image/*'
   return `<div class="media-field" data-name="${esc(name)}" data-biz="${esc(bizType)}">
-    <label>${esc(label)}</label>
-    <div class="media-preview">${v ? `<img src="${esc(v)}" alt="" />` : '<span class="muted">未上传</span>'}</div>
+    <div class="media-field__head">
+      <label class="form-field__label">${esc(label)}</label>
+      <div class="media-spec">
+        <span class="media-spec__size">${esc(spec.size)}</span>
+        <span class="media-spec__tip">${esc(spec.tip)}</span>
+      </div>
+    </div>
+    <div class="media-preview">${v ? `<img src="${esc(v)}" alt="" />` : '<span class="media-preview__empty">未上传</span>'}</div>
     <input type="hidden" name="${esc(name)}" value="${esc(v)}" />
     <div class="media-actions">
-      <label class="btn sm">选择文件<input type="file" accept="image/*,.pdf" hidden /></label>
+      <label class="btn sm">选择文件<input type="file" accept="${accept}" hidden /></label>
       <button type="button" class="btn sm danger media-del" ${v ? '' : 'disabled'}>删除</button>
-      <span class="muted media-tip">图片自动压到 ≤3MB，尽量保清晰</span>
+      <span class="muted media-tip">按上方尺寸上传，系统会自动压缩</span>
     </div>
   </div>`
 }
@@ -839,9 +900,9 @@ function bindMediaFields(root = document) {
         /* 即使远端删除失败也清空引用 */
       }
       hidden.value = ''
-      preview.innerHTML = '<span class="muted">未上传</span>'
+      preview.innerHTML = '<span class="media-preview__empty">未上传</span>'
       delBtn.disabled = true
-      tip.textContent = '已删除'
+      tip.textContent = '已删除 · 可重新按上方尺寸上传'
     }
   })
 }
@@ -2256,7 +2317,7 @@ async function renderCities() {
         field('name', '城市名', row.name || '') +
           field('province', '省份', row.province || '') +
           field('remark', '备注', row.remark || '') +
-          `<label>状态<select name="status"><option value="1" ${Number(row.status) !== 0 ? 'selected' : ''}>开通</option><option value="0" ${Number(row.status) === 0 ? 'selected' : ''}>关闭</option></select></label>`,
+          `<div class="form-field form-field--compact"><label class="form-field__label" for="f_status">状态</label><select id="f_status" name="status"><option value="1" ${Number(row.status) !== 0 ? 'selected' : ''}>开通</option><option value="0" ${Number(row.status) === 0 ? 'selected' : ''}>关闭</option></select></div>`,
         async () => {
           const name = formVal('name').trim()
           if (!name) throw new Error('请填写城市名')
@@ -2803,16 +2864,19 @@ function openCategoryModal(row, reload) {
   const r = row || { role: 'stall', name: '', sortOrder: 10, status: 1, imageUrl: '' }
   openModal(
     row ? '编辑类目' : '新建类目',
-    `<label>关联角色<select id="f_role">
-      <option value="stall" ${r.role === 'stall' ? 'selected' : ''}>地摊</option>
-      <option value="cross" ${r.role === 'cross' ? 'selected' : ''}>异业门店</option>
-      <option value="supply" ${r.role === 'supply' ? 'selected' : ''}>供应链</option>
-    </select></label>` +
+    `<div class="form-field">
+      <label class="form-field__label" for="f_role">关联角色</label>
+      <select id="f_role">
+        <option value="stall" ${r.role === 'stall' ? 'selected' : ''}>地摊</option>
+        <option value="cross" ${r.role === 'cross' ? 'selected' : ''}>异业门店</option>
+        <option value="supply" ${r.role === 'supply' ? 'selected' : ''}>供应链</option>
+      </select>
+    </div>` +
       field('name', '类目名称', r.name || '') +
       mediaField('imageUrl', '小程序类目封面图', r.imageUrl || '', 'category') +
       field('sortOrder', '排序（越小越靠前）', r.sortOrder ?? 10, 'number') +
       selectOnOff('status', r.status ?? 1, { onLabel: '启用', offLabel: '停用' }) +
-      `<p class="muted">启用中的类目会出现在小程序「分类」；新建门店商品须选择启用类目，点击类目可查看该类目下的上架商品。</p>`,
+      `<p class="form-note">启用中的类目会出现在小程序「分类」；新建门店商品须选择启用类目。</p>`,
     async () => {
       await api('/admin/goods-categories', {
         method: 'POST',
@@ -2849,7 +2913,11 @@ async function categorySelectHtml(role, g = {}) {
           .join('')
       : `<option value="">（请先在商品类目中添加并启用）</option>`
   const roleLabel = role === 'stall' ? '地摊' : role === 'cross' ? '异业门店' : '供应链'
-  return `<label>商品类目（${roleLabel}·仅启用中）<select id="f_categoryId">${catOptions}</select></label>`
+  return `<div class="form-field">
+    <label class="form-field__label" for="f_categoryId">商品类目（${esc(roleLabel)} · 仅启用中）</label>
+    <span class="form-field__hint">须选择运营台「商品类目」中已启用的类目</span>
+    <select id="f_categoryId">${catOptions}</select>
+  </div>`
 }
 
 function readCategorySelect() {
@@ -2868,10 +2936,10 @@ async function editGoods(type, g, reload) {
   g = g || { merchantId: '', name: '', onSale: 1, status: 1, imageUrl: '', category: '' }
   const shops = await loadStoreOptions(type)
   const catField = await categorySelectHtml(type, g)
-  const storeField = `<label>所属门店（必选）<select id="f_merchantId">${storeOptionHtml(
-    shops,
-    g.merchantId
-  )}</select></label>`
+  const storeField = `<div class="form-field">
+    <label class="form-field__label" for="f_merchantId">所属门店（必选）</label>
+    <select id="f_merchantId">${storeOptionHtml(shops, g.merchantId)}</select>
+  </div>`
 
   let fields = storeField + field('name', '品名', g.name) + catField
   if (type === 'stall') {
@@ -3815,11 +3883,12 @@ function bannerLinkFieldsHtml(b, linkTypes) {
     )
     .join('')
   return `
-    <label>跳转类型
+    <div class="form-field">
+      <label class="form-field__label" for="f_linkType">跳转类型</label>
       <select name="linkType" id="f_linkType">${types}</select>
-    </label>
-    <div id="bannerLinkExtra"></div>
-    <p class="muted tip" id="bannerLinkTip"></p>`
+    </div>
+    <div id="bannerLinkExtra" class="form-stack"></div>
+    <p class="form-note" id="bannerLinkTip"></p>`
 }
 
 function renderBannerLinkExtra(linkType, b = {}) {
@@ -3881,9 +3950,15 @@ function editBanner(b, reload, meta, defaults = {}) {
     .join('')
   openModal(
     b.id ? '编辑 Banner' : '新建 Banner',
-    `<label>展示端<select name="roleScope" id="f_roleScope">${roleOptions}</select></label>
-     <label>展示位置<select name="pageKey" id="f_pageKey">${pageOptions}</select></label>` +
-      mediaField('imageUrl', 'Banner 图片（必填一张）', b.imageUrl || '', 'banner') +
+    `<div class="form-field">
+      <label class="form-field__label" for="f_roleScope">展示端</label>
+      <select name="roleScope" id="f_roleScope">${roleOptions}</select>
+    </div>
+    <div class="form-field">
+      <label class="form-field__label" for="f_pageKey">展示位置</label>
+      <select name="pageKey" id="f_pageKey">${pageOptions}</select>
+    </div>` +
+      mediaField('imageUrl', 'Banner 图片（必填）', b.imageUrl || '', 'banner') +
       field('title', '跳转名称（必填）', b.title || b.jumpName || '') +
       bannerLinkFieldsHtml(b, linkTypes) +
       field('remark', '备注', b.remark || '', 'textarea') +
@@ -4608,7 +4683,7 @@ async function renderSysAccounts() {
         openModal(
           '编辑账号',
           field('displayName', '显示名', a.displayName) +
-            `<label>角色<select name="roleId">${roleOptions}</select></label>` +
+            `<div class="form-field"><label class="form-field__label" for="f_roleId">角色</label><select id="f_roleId" name="roleId">${roleOptions}</select></div>` +
             field('password', '新密码（留空不改）', '', 'password') +
             field('status', '状态(1/0)', a.status, 'number'),
           async () => {
@@ -4637,7 +4712,7 @@ async function renderSysAccounts() {
         field('username', '登录账号', '') +
           field('displayName', '显示名', '') +
           field('password', '初始密码', '', 'password') +
-          `<label>角色<select name="roleId">${roleOptions}</select></label>`,
+          `<div class="form-field"><label class="form-field__label" for="f_roleId">角色</label><select id="f_roleId" name="roleId">${roleOptions}</select></div>`,
         async () => {
           await api('/admin/rbac/accounts', {
             method: 'POST',
