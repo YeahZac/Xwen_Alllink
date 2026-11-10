@@ -28,10 +28,6 @@
           data-index="{{index}}"
         />
         <view wx:elif="{{!item.placeholder}}" class="ad-banner__fallback"></view>
-        <view class="ad-banner__mask" wx:if="{{item.title || item.jumpName}}">
-          <text class="ad-banner__title ellipsis-1">{{item.jumpName || item.title}}</text>
-          <text class="ad-banner__sub ellipsis-1" wx:if="{{item.sub}}">{{item.sub}}</text>
-        </view>
       </view>
     </swiper-item>
   </swiper>

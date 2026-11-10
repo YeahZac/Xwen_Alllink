@@ -35,34 +35,3 @@
 .ad-banner__fallback {
   background: linear-gradient(120deg, #ff8a5c 0%, #ff4d4f 48%, #c41e3a 100%);
 }
-
-.ad-banner__mask {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 62%;
-  padding: var(--space-lg) var(--space-md);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  background: linear-gradient(90deg, rgba(18, 20, 26, 0.72) 0%, rgba(18, 20, 26, 0.28) 70%, transparent 100%);
-  color: #fff;
-  pointer-events: none;
-  box-sizing: border-box;
-}
-
-.ad-banner__title {
-  font-size: 36rpx;
-  font-weight: 800;
-  line-height: var(--lh-snug);
-  letter-spacing: var(--tracking-display);
-}
-
-.ad-banner__sub {
-  display: block;
-  margin-top: 8rpx;
-  font-size: var(--font-caption);
-  color: rgba(255, 255, 255, 0.92);
-  line-height: var(--lh-snug);
-}
