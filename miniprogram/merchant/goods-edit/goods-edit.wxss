@@ -27,11 +27,13 @@
 
 .field__input {
   height: 72rpx;
+  line-height: 72rpx;
   padding: 0 var(--space-md);
   background: var(--color-surface-soft);
   border-radius: var(--radius-md);
   font-size: var(--font-body);
   border: 1rpx solid transparent;
+  box-sizing: border-box;
 }
 
 .field__pick {

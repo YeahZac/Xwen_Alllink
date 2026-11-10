@@ -262,21 +262,27 @@ page {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
   gap: 12rpx;
   margin-top: 16rpx;
   padding-left: calc(var(--role-seal-size) + 20rpx);
+  padding-bottom: 4rpx;
   box-sizing: border-box;
+  overflow: visible;
 }
 
 .role-card__actions .btn-primary,
 .role-card__actions .btn-ghost,
-.role-card__actions .sm {
+.role-card__actions .sm,
+.role-card__actions button {
   margin: 0;
-  min-width: 128rpx;
-  min-height: 64rpx;
-  padding: 0 20rpx;
-  font-size: 24rpx;
-  line-height: 64rpx;
+  min-width: 112rpx;
+  height: 56rpx !important;
+  min-height: 56rpx !important;
+  padding: 0 16rpx !important;
+  font-size: 24rpx !important;
+  line-height: 1.2 !important;
+  box-sizing: border-box;
 }
 
 /* KPI 条 */
@@ -354,8 +360,9 @@ page {
 
 .action-stack .btn-outline-primary,
 .action-stack .btn-gradient {
-  min-height: 88rpx;
-  line-height: 88rpx;
+  min-height: 72rpx;
+  height: 72rpx;
+  line-height: 72rpx;
   font-size: 28rpx;
   padding: 0 24rpx;
   box-sizing: border-box;

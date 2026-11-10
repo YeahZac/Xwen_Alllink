@@ -196,8 +196,8 @@ picker {
 }
 
 .btn-outline-primary {
-  height: 88rpx;
-  line-height: 84rpx;
+  height: 72rpx;
+  line-height: 68rpx;
   text-align: center;
   border-radius: var(--radius-pill);
   border: 2rpx solid var(--color-primary);
@@ -205,6 +205,7 @@ picker {
   font-size: var(--font-body);
   font-weight: 700;
   background: #fff;
+  box-sizing: border-box;
 }
 
 .btn-outline-primary::after {
@@ -458,11 +459,13 @@ picker {
   border-radius: var(--radius-pill);
   font-size: var(--font-subtitle);
   font-weight: 700;
-  height: 88rpx;
-  line-height: 88rpx;
+  height: 72rpx;
+  line-height: 72rpx;
+  padding: 0 28rpx;
   text-align: center;
   border: none;
   box-shadow: var(--shadow-seal);
+  box-sizing: border-box;
 }
 
 .btn-primary::after {
@@ -480,9 +483,11 @@ picker {
   border-radius: var(--radius-pill);
   font-size: var(--font-body);
   font-weight: 600;
-  height: 80rpx;
-  line-height: 76rpx;
+  height: 64rpx;
+  line-height: 60rpx;
+  padding: 0 24rpx;
   text-align: center;
+  box-sizing: border-box;
 }
 
 .btn-ghost::after {
@@ -493,16 +498,41 @@ picker {
   background: var(--color-primary-soft);
 }
 
+/* 列表内 mini 操作钮：压低微信 button 默认高度，避免又粗又高 */
+button.btn-ghost.sm,
+button.btn-primary.sm,
+.btn-ghost.sm,
+.btn-primary.sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 56rpx !important;
+  min-height: 56rpx !important;
+  line-height: 1.2 !important;
+  padding: 0 18rpx !important;
+  margin: 0;
+  font-size: 24rpx !important;
+  font-weight: 600;
+  border-width: 2rpx;
+  box-sizing: border-box;
+}
+
+button.btn-ghost.sm::after,
+button.btn-primary.sm::after {
+  border: none;
+}
+
 .btn-on-primary {
   background: #fff;
   color: var(--color-primary-deep);
   border-radius: var(--radius-pill);
   font-size: var(--font-subtitle);
   font-weight: 700;
-  height: 88rpx;
-  line-height: 88rpx;
+  height: 72rpx;
+  line-height: 72rpx;
   text-align: center;
   border: none;
+  box-sizing: border-box;
 }
 
 .btn-on-primary::after {
@@ -515,10 +545,11 @@ picker {
   border-radius: var(--radius-pill);
   font-size: var(--font-subtitle);
   font-weight: 700;
-  height: 88rpx;
-  line-height: 88rpx;
+  height: 72rpx;
+  line-height: 72rpx;
   text-align: center;
   border: none;
+  box-sizing: border-box;
 }
 
 .btn-on-ink::after {

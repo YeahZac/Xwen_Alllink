@@ -68,15 +68,17 @@ App({
     this.globalData.bootPromise = store.bootstrapSession().catch(() => ({ ok: false }))
 
     const path = String((opt && opt.path) || '').replace(/^\//, '')
-    // 仅首页冷启 / 明确收款页才把 query.id 当作摊位收款；异业详情·类目等共用 id 参数，禁止劫持
-    const allowPayHijack =
-      !path ||
-      path === 'pages/index/index' ||
-      path.indexOf('pages/scan-pay/scan-pay') === 0
-    if (!allowPayHijack) return
-    // 必须是扫码类 scene，或 path/query 明确带摊位，才进入收款；避免「最近使用」残留
     const stallId = scan.extractFromLaunch(opt || {})
     const fromScan = scan.isScanLaunchScene(opt && opt.scene) || !!stallId
+
+    // 旧点餐码若落到首页：带门店 id 时进本店菜单，勿劫持成收款页
+    if (stallId && fromScan && (!path || path === 'pages/index/index')) {
+      this._openStallMenuId = stallId
+      return
+    }
+
+    // 仅收款码页才走收款劫持；异业详情·菜单·类目等共用 id，禁止劫持
+    if (path.indexOf('pages/scan-pay/scan-pay') !== 0) return
     if (!stallId || !fromScan) return
     const pending = scan.getPendingPay() || {}
     const same = String(pending.stallId || '') === String(stallId)
@@ -85,15 +87,20 @@ App({
       amount: same && pending.resume ? pending.amount : '',
       resume: false
     })
-    if (path.indexOf('scan-pay') < 0) {
-      this._openScanPay = true
-    }
+    this._openScanPay = true
   },
   onShow(opt) {
     captureInviteFromLaunch(opt)
     const showPath = String((opt && opt.path) || '').replace(/^\//, '')
     const stallId = scan.extractFromLaunch(opt || {})
     const fromScan = scan.isScanLaunchScene(opt && opt.scene) || !!stallId
+
+    if (this._openStallMenuId) {
+      const mid = this._openStallMenuId
+      this._openStallMenuId = ''
+      wx.reLaunch({ url: `/pages/stall-menu/stall-menu?id=${encodeURIComponent(mid)}` })
+      return
+    }
 
     // 非扫码再次打开却停在收款页（微信会恢复上次页面）→ 回首页
     if (showPath.indexOf('pages/scan-pay/scan-pay') === 0 && !fromScan && !this._openScanPay) {
@@ -105,11 +112,7 @@ App({
       }
     }
 
-    const allowPayHijack =
-      !showPath ||
-      showPath === 'pages/index/index' ||
-      showPath.indexOf('pages/scan-pay/scan-pay') === 0
-    if (!allowPayHijack) {
+    if (showPath.indexOf('pages/scan-pay/scan-pay') !== 0) {
       this._openScanPay = false
       return
     }

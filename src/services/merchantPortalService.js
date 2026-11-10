@@ -527,6 +527,7 @@ async function getOrCreateStoreQrcode(merchantId, { kind = 'menu', force = false
   if (k === 'pay' && m.role !== 'stall') {
     throw new HttpError(400, '仅地摊支持收款码')
   }
+  // 点餐码必须进本店菜单/异业详情，禁止落到首页；收款码进收款页
   const page =
     k === 'pay'
       ? 'pages/scan-pay/scan-pay'

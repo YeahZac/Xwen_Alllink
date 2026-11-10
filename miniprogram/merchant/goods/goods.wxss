@@ -1,9 +1,12 @@
 .add-btn {
   width: auto;
   margin: 0 0 20rpx;
-  min-height: 88rpx;
-  line-height: 88rpx;
+  height: 72rpx;
+  min-height: 72rpx;
+  line-height: 72rpx;
   font-size: 28rpx;
+  padding: 0 28rpx;
+  box-sizing: border-box;
 }
 
 .goods-title {
@@ -20,4 +23,13 @@
 .goods-title .chip {
   flex-shrink: 0;
   margin-top: 4rpx;
+}
+
+.role-card--stack {
+  overflow: visible;
+  padding-bottom: 24rpx;
+}
+
+.role-card__actions {
+  padding-left: 0;
 }

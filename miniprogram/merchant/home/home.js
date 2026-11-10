@@ -200,7 +200,8 @@ Page({
   async previewAndSaveQr(kind) {
     try {
       wx.showLoading({ title: '生成小程序码', mask: true })
-      const data = await api.merchantStoreQrcode(kind, false)
+      // 点餐码强制重生成，避免历史缓存页仍指向首页
+      const data = await api.merchantStoreQrcode(kind, kind === 'menu')
       wx.hideLoading()
       const url = data.qrcodeUrl
       if (!url) throw new Error('未返回二维码')

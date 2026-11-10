@@ -92,7 +92,21 @@ Page({
     sort: 'distance',
     feedTitle: '附近地摊'
   },
-  onLoad() {
+  onLoad(query) {
+    // 点餐码/分享若落到首页且带门店 id → 本店商品列表（菜单），不停留主页
+    try {
+      const scene = require('../../utils/scene')
+      const mid = scene.merchantIdFromQuery(query || {})
+      if (mid) {
+        wx.navigateTo({
+          url: `/pages/stall-menu/stall-menu?id=${encodeURIComponent(mid)}`,
+          fail: () =>
+            wx.reLaunch({ url: `/pages/stall-menu/stall-menu?id=${encodeURIComponent(mid)}` })
+        })
+        return
+      }
+    } catch (_) {}
+
     const sys = wx.getSystemInfoSync()
     const statusBarHeight = sys.statusBarHeight || 44
     // 定位行与右上角胶囊垂直居中：顶距=胶囊 top，行高=胶囊 height，右侧留白避开胶囊
