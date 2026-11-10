@@ -9,4 +9,5 @@
   />
   <view wx:else class="empty">暂无图片</view>
   <text wx:if="{{title}}" class="title">{{title}}</text>
+  <text class="hint" wx:if="{{src}}">点击图片可放大预览，长按可保存</text>
 </view>

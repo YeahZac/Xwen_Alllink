@@ -103,10 +103,14 @@ Component({
       if (linkType === 'none' || linkType === '') return
 
       if (linkType === 'image_detail') {
-        const src = item.linkImageUrl || item.image
-        if (!src) return
+        const src = String(item.linkImageUrl || item.image || '').trim()
+        if (!src) {
+          wx.showToast({ title: '暂无图片', icon: 'none' })
+          return
+        }
         wx.navigateTo({
-          url: `/pages/banner-image/banner-image?src=${encodeURIComponent(src)}&title=${title}`
+          url: `/pages/banner-image/banner-image?src=${encodeURIComponent(src)}&title=${title}`,
+          fail: () => wx.showToast({ title: '无法打开图片页', icon: 'none' })
         })
         return
       }

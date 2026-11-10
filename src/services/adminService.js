@@ -921,17 +921,128 @@ const BANNER_PAGES = {
 }
 
 const BANNER_LINK_TYPES = {
-  image_detail: '图片详情',
-  page: '小程序页面',
+  none: '不跳转',
+  image_detail: '跳转图片（二级页打开）',
+  page: '跳转路径-到具体界面',
   miniprogram: '其他小程序路径',
   url: '外链网址'
+}
+
+/** 可选跳转目标：中文名 + 路径 + 在哪里找 */
+const BANNER_JUMP_TARGETS = {
+  consumer: [
+    {
+      path: '/pages/index/index',
+      label: '首页',
+      hint: '底部 Tab「首页」'
+    },
+    {
+      path: '/pages/cross/cross',
+      label: '分类兑换',
+      hint: '底部 Tab「分类」'
+    },
+    {
+      path: '/pages/points/points',
+      label: '饭票/积分',
+      hint: '底部 Tab「饭票/积分」'
+    },
+    {
+      path: '/pages/mine/mine',
+      label: '我的',
+      hint: '底部 Tab「我的」'
+    },
+    {
+      path: '/pages/orders/orders',
+      label: '我的订单',
+      hint: '我的 → 订单入口'
+    },
+    {
+      path: '/pages/apply/apply',
+      label: '入驻申请',
+      hint: '登录/我的 → 申请入驻'
+    },
+    {
+      path: '/pages/recommend/recommend',
+      label: '推荐页',
+      hint: '运营推广落地页'
+    },
+    {
+      path: '/pages/service/service',
+      label: '客服服务',
+      hint: '我的 → 客服/帮助'
+    },
+    {
+      path: '/pages/identity/identity',
+      label: '身份中心',
+      hint: '我的 → 切换身份'
+    },
+    {
+      path: '/pages/legal/legal',
+      label: '协议列表',
+      hint: '我的 / 入驻流程中的协议入口'
+    },
+    {
+      path: '/pages/scan-pay/scan-pay',
+      label: '扫码收款页',
+      hint: '扫商家收款码进入（一般需带门店参数）'
+    }
+  ],
+  stall: [
+    { path: '/merchant/home/home', label: '商家工作台', hint: '商家端首页' },
+    { path: '/merchant/orders/orders', label: '商家订单', hint: '工作台 → 订单' },
+    { path: '/merchant/goods/goods', label: '本店商品', hint: '工作台 → 物料/商品' },
+    { path: '/merchant/assets/assets', label: '财务资产', hint: '工作台 → 财务' },
+    { path: '/merchant/wx-sub/wx-sub', label: '进件/结算', hint: '工作台 → 进件资料' },
+    { path: '/pages/identity/identity', label: '身份中心', hint: '我的 → 切换身份' }
+  ],
+  cross: [
+    { path: '/merchant/home/home', label: '商家工作台', hint: '商家端首页' },
+    { path: '/merchant/orders/orders', label: '商家订单', hint: '工作台 → 订单' },
+    { path: '/merchant/goods/goods', label: '本店商品', hint: '工作台 → 商品' },
+    { path: '/merchant/assets/assets', label: '财务资产', hint: '工作台 → 财务' },
+    { path: '/pages/identity/identity', label: '身份中心', hint: '我的 → 切换身份' }
+  ],
+  supply: [
+    { path: '/merchant/home/home', label: '商家工作台', hint: '商家端首页' },
+    { path: '/merchant/goods/goods', label: '供货商品', hint: '工作台 → 商品' },
+    { path: '/merchant/orders/orders', label: '采购/订单', hint: '工作台 → 订单' },
+    { path: '/merchant/supply-list/supply-list', label: '供应列表', hint: '工作台 → 供应' },
+    { path: '/pages/identity/identity', label: '身份中心', hint: '我的 → 切换身份' }
+  ],
+  partner: [
+    { path: '/partner/home/home', label: '合伙人首页', hint: '合伙人工作台' },
+    { path: '/partner/books/books', label: '账目', hint: '合伙人 → 账目' },
+    { path: '/partner/orders/orders', label: '订单', hint: '合伙人 → 订单' },
+    { path: '/partner/supply/supply', label: '供应链', hint: '合伙人 → 供应' },
+    { path: '/pages/identity/identity', label: '身份中心', hint: '切换身份' }
+  ],
+  founder: [
+    { path: '/founder/home/home', label: '创始人首页', hint: '创始人工作台' },
+    { path: '/founder/applies/applies', label: '入驻审核', hint: '创始人 → 申请审核' },
+    { path: '/founder/members/members', label: '成员', hint: '创始人 → 成员' },
+    { path: '/founder/perms/perms', label: '权限', hint: '创始人 → 权限' },
+    { path: '/pages/identity/identity', label: '身份中心', hint: '切换身份' }
+  ],
+  login: [
+    { path: '/pages/login/login', label: '登录页', hint: '未登录入口' },
+    { path: '/pages/apply/apply', label: '入驻申请', hint: '登录后申请入驻' },
+    { path: '/pages/identity-apply/identity-apply', label: '身份申请', hint: '申请合伙人/创始人等' },
+    { path: '/pages/legal/legal', label: '协议列表', hint: '入驻前协议' }
+  ]
 }
 
 function normalizeBannerLinkType(raw) {
   const t = String(raw || '').trim()
   if (t === 'navigate' || t === 'switchTab') return 'page'
   if (['image_detail', 'page', 'miniprogram', 'url', 'none'].includes(t)) return t
-  return 'page'
+  return 'none'
+}
+
+function normalizeBannerPagePath(raw) {
+  let p = String(raw || '').trim()
+  if (!p) return ''
+  if (p.charAt(0) !== '/') p = `/${p}`
+  return p
 }
 
 function assertBannerPayload(body) {
@@ -940,24 +1051,31 @@ function assertBannerPayload(body) {
   const pageKey = String(body.pageKey || '').trim()
   const pages = BANNER_PAGES[roleScope] || []
   if (!pages.some((p) => p.key === pageKey)) throw new HttpError(400, '请选择展示位置')
-  const title = String(body.title || body.jumpName || '').trim()
-  if (!title) throw new HttpError(400, '请填写跳转名称')
+  // 跳转名称可选；未填则存空串（Banner 遮罩不显示标题）
+  const title = String(body.title || body.jumpName || '').trim().slice(0, 64)
   const imageUrl = String(body.imageUrl || '').trim()
   if (!imageUrl) throw new HttpError(400, '请上传 Banner 图片')
   const linkType = normalizeBannerLinkType(body.linkType)
-  const linkUrl = String(body.linkUrl || '').trim()
+  let linkUrl = normalizeBannerPagePath(body.linkUrl)
   const linkAppid = String(body.linkAppid || '').trim()
-  const linkImageUrl = String(body.linkImageUrl || '').trim()
-  if (linkType === 'image_detail' && !linkImageUrl) {
-    throw new HttpError(400, '请上传详情图片')
-  }
-  if (linkType === 'page' && !linkUrl) throw new HttpError(400, '请填写小程序页面路径')
-  if (linkType === 'miniprogram') {
+  let linkImageUrl = String(body.linkImageUrl || '').trim()
+  if (linkType === 'none') {
+    linkUrl = ''
+    linkImageUrl = ''
+  } else if (linkType === 'image_detail') {
+    // 详情图可选：未单独上传时，用 Banner 主图在二级页打开
+    if (!linkImageUrl) linkImageUrl = imageUrl
+    linkUrl = ''
+  } else if (linkType === 'page') {
+    if (!linkUrl) throw new HttpError(400, '请选择或填写要跳转的界面路径')
+  } else if (linkType === 'miniprogram') {
     if (!linkAppid) throw new HttpError(400, '请填写其他小程序 AppID')
     if (!linkUrl) throw new HttpError(400, '请填写其他小程序页面路径')
-  }
-  if (linkType === 'url' && !/^https?:\/\//i.test(linkUrl)) {
-    throw new HttpError(400, '外链须以 http:// 或 https:// 开头')
+  } else if (linkType === 'url') {
+    linkUrl = String(body.linkUrl || '').trim()
+    if (!/^https?:\/\//i.test(linkUrl)) {
+      throw new HttpError(400, '外链须以 http:// 或 https:// 开头')
+    }
   }
   return {
     roleScope,
@@ -965,7 +1083,7 @@ function assertBannerPayload(body) {
     title,
     imageUrl,
     linkType,
-    linkUrl: linkType === 'image_detail' ? '' : linkUrl,
+    linkUrl: linkType === 'image_detail' || linkType === 'none' ? '' : linkUrl,
     linkAppid: linkType === 'miniprogram' ? linkAppid : '',
     linkImageUrl: linkType === 'image_detail' ? linkImageUrl : '',
     remark: String(body.remark || '').trim(),
@@ -1032,7 +1150,8 @@ function bannerMeta() {
     linkTypes: Object.keys(BANNER_LINK_TYPES).map((key) => ({
       key,
       label: BANNER_LINK_TYPES[key]
-    }))
+    })),
+    jumpTargets: BANNER_JUMP_TARGETS
   }
 }
 

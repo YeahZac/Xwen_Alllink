@@ -21,3 +21,10 @@
   color: rgba(255, 255, 255, 0.55);
   font-size: 28rpx;
 }
+.hint {
+  display: block;
+  margin: 16rpx 32rpx 0;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 24rpx;
+  line-height: 1.4;
+}

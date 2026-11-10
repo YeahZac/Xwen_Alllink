@@ -3794,11 +3794,13 @@ async function renderBanners() {
       login: [{ key: 'apply', label: '入驻申请页顶' }]
     },
     linkTypes: [
-      { key: 'image_detail', label: '图片详情' },
-      { key: 'page', label: '小程序页面' },
+      { key: 'none', label: '不跳转' },
+      { key: 'image_detail', label: '跳转图片（二级页打开）' },
+      { key: 'page', label: '跳转路径-到具体界面' },
       { key: 'miniprogram', label: '其他小程序路径' },
       { key: 'url', label: '外链网址' }
-    ]
+    ],
+    jumpTargets: {}
   }))
   const stateBanner = {
     role: (meta.roles[0] && meta.roles[0].key) || 'consumer',
@@ -3830,7 +3832,7 @@ async function renderBanners() {
       <button class="btn" id="btnReload">刷新</button>
       ${editable ? '<button class="btn primary" id="btnAdd">新建 Banner</button>' : ''}
     </div>
-    <p class="muted" style="margin:0 0 12px">按「用户端 + 展示位置」分别管理；关闭后小程序对应位置不展示。</p>
+    <p class="muted" style="margin:0 0 12px">按「用户端 + 展示位置」分别管理；跳转名称/路径均可不填。类型可选：不跳转、跳转图片（二级页）、跳转到具体界面、外链等。</p>
     <div id="list"></div>`
   fillPages()
   const load = async () => {
@@ -3845,10 +3847,11 @@ async function renderBanners() {
         rows
           .map((b) => {
             const on = Number(b.status) === 1
+            const name = String(b.jumpName || b.title || '').trim()
             return `<tr class="${on ? '' : 'is-off'}">
         <td>${thumb(b.imageUrl)}</td>
         <td>${b.id}</td>
-        <td>${esc(b.jumpName || b.title)}</td>
+        <td>${esc(name || '—')}</td>
         <td>${esc(b.linkTypeLabel || b.linkType)}</td>
         <td>${esc(b.remark || '—')}</td>
         <td>${switchControl({
@@ -3916,7 +3919,7 @@ async function renderBanners() {
 }
 
 function bannerLinkFieldsHtml(b, linkTypes) {
-  const lt = b.linkType || 'page'
+  const lt = b.linkType || 'none'
   const types = (linkTypes || [])
     .map(
       (t) =>
@@ -3932,16 +3935,87 @@ function bannerLinkFieldsHtml(b, linkTypes) {
     <p class="form-note" id="bannerLinkTip"></p>`
 }
 
-function renderBannerLinkExtra(linkType, b = {}) {
+function renderBannerLinkExtra(linkType, b = {}, meta = {}) {
   const box = $('bannerLinkExtra')
   const tip = $('bannerLinkTip')
   if (!box) return
-  if (linkType === 'image_detail') {
-    box.innerHTML = mediaField('linkImageUrl', '详情图片（必填一张）', b.linkImageUrl || '', 'banner')
-    if (tip) tip.textContent = '用户点击 Banner 后全屏查看该图片'
+  const roleScope = (typeof formVal === 'function' && formVal('roleScope')) || b.roleScope || 'consumer'
+  const jumpMap = (meta && meta.jumpTargets) || {}
+  const targets = jumpMap[roleScope] || jumpMap.consumer || []
+  if (linkType === 'none') {
+    box.innerHTML = ''
+    if (tip) tip.textContent = '仅展示 Banner 图，点击无跳转'
+  } else if (linkType === 'image_detail') {
+    box.innerHTML = mediaField(
+      'linkImageUrl',
+      '详情图片（可选，不填则用上方 Banner 图）',
+      b.linkImageUrl || '',
+      'banner'
+    )
+    if (tip) {
+      tip.textContent =
+        '用户点击后进入小程序二级页「Banner 图片」查看大图，可长按保存；未另传详情图时自动使用 Banner 主图'
+    }
   } else if (linkType === 'page') {
-    box.innerHTML = field('linkUrl', '小程序页面路径（如 /pages/cross/cross）', b.linkUrl || '')
-    if (tip) tip.textContent = '填写本小程序内页面路径，Tab 页会自动 switchTab'
+    const cur = String(b.linkUrl || '').trim()
+    const matched = targets.some((t) => t.path === cur)
+    const opts =
+      `<option value="">请选择界面</option>` +
+      targets
+        .map(
+          (t) =>
+            `<option value="${esc(t.path)}" ${t.path === cur ? 'selected' : ''} data-hint="${esc(
+              t.hint || ''
+            )}">${esc(t.label)}（${esc(t.path)}）</option>`
+        )
+        .join('') +
+      `<option value="__custom__" ${cur && !matched ? 'selected' : ''}>自定义路径…</option>`
+    const isCustom = !!(cur && !matched)
+    box.innerHTML = `
+      <div class="form-field">
+        <label class="form-field__label" for="f_jumpTarget">跳转到界面</label>
+        <select id="f_jumpTarget">${opts}</select>
+      </div>
+      <div class="form-field" id="bannerCustomPathWrap" style="${isCustom ? '' : 'display:none'}">
+        <label class="form-field__label" for="f_linkUrl">自定义页面路径</label>
+        <input id="f_linkUrl" ${isCustom ? 'name="linkUrl"' : ''} value="${esc(
+          isCustom ? cur : ''
+        )}" placeholder="/pages/xxx/xxx" />
+      </div>
+      <input type="hidden" id="f_linkUrlHidden" ${isCustom ? '' : 'name="linkUrl"'} value="${esc(
+        matched ? cur : ''
+      )}" />
+      <p class="form-note" id="bannerJumpHint"></p>`
+    const sel = $('f_jumpTarget')
+    const hintEl = $('bannerJumpHint')
+    const customWrap = $('bannerCustomPathWrap')
+    const hidden = $('f_linkUrlHidden')
+    const sync = () => {
+      if (!sel) return
+      const v = sel.value
+      const t = targets.find((x) => x.path === v)
+      if (hintEl) {
+        hintEl.textContent = t
+          ? `在哪里找：${t.hint || '—'} · 路径 ${t.path}`
+          : v === '__custom__'
+            ? '填写 app.json 中已注册的页面路径，Tab 页会自动 switchTab'
+            : '请选择要跳转的界面'
+      }
+      if (customWrap) customWrap.style.display = v === '__custom__' ? '' : 'none'
+      if (hidden) hidden.value = v && v !== '__custom__' ? v : ''
+      const customInput = $('f_linkUrl')
+      if (customInput) {
+        if (v === '__custom__') customInput.setAttribute('name', 'linkUrl')
+        else customInput.removeAttribute('name')
+      }
+      if (hidden) {
+        if (v === '__custom__' || !v) hidden.removeAttribute('name')
+        else hidden.setAttribute('name', 'linkUrl')
+      }
+    }
+    if (sel) sel.onchange = sync
+    sync()
+    if (tip) tip.textContent = '从列表选择中文界面名；也可选「自定义路径」手填'
   } else if (linkType === 'miniprogram') {
     box.innerHTML =
       field('linkAppid', '其他小程序 AppID', b.linkAppid || '') +
@@ -3969,7 +4043,7 @@ function editBanner(b, reload, meta, defaults = {}) {
     pageKey: defaults.pageKey || 'index',
     title: '',
     imageUrl: '',
-    linkType: 'page',
+    linkType: 'none',
     linkUrl: '',
     linkAppid: '',
     linkImageUrl: '',
@@ -4000,11 +4074,19 @@ function editBanner(b, reload, meta, defaults = {}) {
       <select name="pageKey" id="f_pageKey">${pageOptions}</select>
     </div>` +
       mediaField('imageUrl', 'Banner 图片（必填）', b.imageUrl || '', 'banner') +
-      field('title', '跳转名称（必填）', b.title || b.jumpName || '') +
+      field('title', '跳转名称（可选，显示在图上）', b.title || b.jumpName || '') +
       bannerLinkFieldsHtml(b, linkTypes) +
       field('remark', '备注', b.remark || '', 'textarea') +
       selectOnOff('status', b.status ?? 1, { onLabel: '展示', offLabel: '隐藏' }),
     async () => {
+      const linkType = formVal('linkType')
+      let linkUrl = formVal('linkUrl')
+      // page 类型：优先取下拉隐藏域 / 自定义输入
+      if (linkType === 'page') {
+        const jump = $('f_jumpTarget')
+        if (jump && jump.value && jump.value !== '__custom__') linkUrl = jump.value
+        else if ($('f_linkUrl')) linkUrl = formVal('linkUrl')
+      }
       await api('/admin/banners', {
         method: 'POST',
         body: JSON.stringify({
@@ -4013,8 +4095,8 @@ function editBanner(b, reload, meta, defaults = {}) {
           pageKey: formVal('pageKey'),
           title: formVal('title'),
           imageUrl: formVal('imageUrl'),
-          linkType: formVal('linkType'),
-          linkUrl: formVal('linkUrl'),
+          linkType,
+          linkUrl,
           linkAppid: formVal('linkAppid'),
           linkImageUrl: formVal('linkImageUrl'),
           remark: formVal('remark'),
@@ -4025,7 +4107,7 @@ function editBanner(b, reload, meta, defaults = {}) {
     },
     true
   )
-  renderBannerLinkExtra(b.linkType || 'page', b)
+  renderBannerLinkExtra(b.linkType || 'none', b, meta)
   const roleSel = $('f_roleScope')
   const pageSel = $('f_pageKey')
   const typeSel = $('f_linkType')
@@ -4035,10 +4117,13 @@ function editBanner(b, reload, meta, defaults = {}) {
       pageSel.innerHTML = pages
         .map((p) => `<option value="${esc(p.key)}">${esc(p.label)}</option>`)
         .join('')
+      if (typeSel && typeSel.value === 'page') {
+        renderBannerLinkExtra('page', { ...b, roleScope: roleSel.value, linkUrl: '' }, meta)
+      }
     }
   }
   if (typeSel) {
-    typeSel.onchange = () => renderBannerLinkExtra(typeSel.value, b)
+    typeSel.onchange = () => renderBannerLinkExtra(typeSel.value, b, meta)
   }
 }
 
