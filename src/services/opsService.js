@@ -1290,10 +1290,24 @@ async function softDeleteGoods(type, id) {
 }
 
 async function saveSku(type, body) {
-  if (!body.id) throw new HttpError(400, '缺少商品ID')
+  const gid = Number(body.id)
+  if (!gid || !Number.isFinite(gid)) throw new HttpError(400, '缺少商品ID')
+  body.id = gid
+  const table = type === 'stall' ? 'stall_goods' : type === 'cross' ? 'cross_goods' : 'supply_goods'
+  const existed = await query(
+    `SELECT id, name FROM ${table} WHERE id=:id AND deleted_at IS NULL LIMIT 1`,
+    { id: gid }
+  )
+  if (!existed.length) throw new HttpError(404, '商品不存在，无法更新（已阻止误新建）')
   const onSale = body.onSale === 0 ? 0 : 1
   if (onSale) await assertGoodsCanOnSale(type, body.id)
-  const safeName = body.name != null ? assertProductionGoodsName(body.name) : null
+  // 品名以提交为准；若空则保留库内原名，避免表单编码异常把品名写成乱码后仍强制覆盖
+  let safeName = null
+  if (body.name != null && String(body.name).trim() !== '') {
+    safeName = assertProductionGoodsName(body.name)
+  } else {
+    safeName = existed[0].name
+  }
   const categoryService = require('./categoryService')
   let bound = null
   if (body.categoryId != null || body.category != null || body.categoryName != null) {

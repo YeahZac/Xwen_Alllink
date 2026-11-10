@@ -194,25 +194,9 @@ Page({
     })
   },
   saveGoods(g, patch) {
-    const onSale = patch.onSale != null ? patch.onSale : g.onSale ? 1 : 0
-    return api.saveMerchantGoods({
-      id: g.id,
-      merchantId: store.getSession().merchantId,
-      name: g.name,
-      price: g.price,
-      cashPrice: g.cashPrice,
-      pointsNeed: g.pointsNeed,
-      pointsGrant: g.pointsGrant,
-      stock: g.stock,
-      onSale,
-      status: onSale,
-      imageUrl: g.imageUrl,
-      category: g.category,
-      description: g.description,
-      pointsRatio: g.pointsRatio,
-      ...patch,
-      onSale,
-      status: patch.status != null ? patch.status : onSale
-    })
+    // 快捷改积分/价格/上下架：走 PATCH，只改字段，绝不整单重提（避免丢 id 后误新建、品名被污染）
+    const body = { ...patch }
+    if (body.onSale != null && body.status == null) body.status = body.onSale
+    return api.patchMerchantGoods(g.id, body)
   }
 })

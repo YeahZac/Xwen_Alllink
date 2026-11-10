@@ -655,6 +655,19 @@ router.post('/admin/goods/supply', ...adminOnly, requirePage('goods'), async (re
   }
 })
 
+/** 快捷改积分/价格/上下架：只更新指定字段，禁止误新建 */
+router.patch('/admin/goods/:type/:id', ...adminOnly, requirePage('goods'), async (req, res, next) => {
+  try {
+    const type = String(req.params.type || '')
+    if (!['stall', 'cross', 'supply'].includes(type)) {
+      throw new HttpError(400, '商品类型无效')
+    }
+    res.json(ok(await adminService.patchGoods(type, Number(req.params.id), req.body || {})))
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.delete('/admin/goods/:type/:id', ...adminOnly, requirePage('goods'), async (req, res, next) => {
   try {
     const type = String(req.params.type || '')
@@ -2371,6 +2384,28 @@ router.post(
     try {
       res.json(
         ok(await merchantPortalService.saveGoods(req.auth.merchantId, req.auth.role, req.body, req.auth))
+      )
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.patch(
+  '/merchant/goods/:id',
+  authRequired,
+  requireRoles('stall', 'cross', 'supply'),
+  async (req, res, next) => {
+    try {
+      res.json(
+        ok(
+          await merchantPortalService.patchGoods(
+            req.auth.merchantId,
+            req.auth.role,
+            req.params.id,
+            req.body || {}
+          )
+        )
       )
     } catch (e) {
       next(e)

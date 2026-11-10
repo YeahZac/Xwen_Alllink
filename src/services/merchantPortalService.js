@@ -360,6 +360,22 @@ async function saveGoods(merchantId, role, body, auth = null) {
   )
 }
 
+/** 商家端快捷改积分/价格/上下架：绝不新建、不改品名 */
+async function patchGoods(merchantId, role, id, body = {}) {
+  const mid = Number(merchantId)
+  if (!mid) throw new HttpError(400, '缺少商户ID')
+  const rows = await query(
+    `SELECT id, role, status FROM merchants WHERE id=:id AND deleted_at IS NULL LIMIT 1`,
+    { id: mid }
+  )
+  if (!rows.length) throw new HttpError(404, '门店不存在或已删除')
+  if (Number(rows[0].status) !== 1) throw new HttpError(400, '门店已停业，无法维护商品')
+  if (role && rows[0].role !== role) throw new HttpError(400, '门店角色与当前身份不符')
+  const result = await adminService.patchGoods(rows[0].role, id, body)
+  if (Number(result.merchantId) !== mid) throw new HttpError(403, '无权修改该商品')
+  return result
+}
+
 async function getGoods(merchantId, role, id) {
   const list = await listGoods(merchantId, role)
   const item = (list || []).find((g) => String(g.id) === String(id))
@@ -605,6 +621,7 @@ module.exports = {
   listGoods,
   getGoods,
   saveGoods,
+  patchGoods,
   deleteGoods,
   listCustomers,
   listFlow,

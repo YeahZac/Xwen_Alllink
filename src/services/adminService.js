@@ -246,6 +246,103 @@ async function assertMerchantForGoods(merchantId, expectedRole) {
   return rows[0]
 }
 
+function parseGoodsId(raw) {
+  if (raw === undefined || raw === null || raw === '') return 0
+  const id = Number(raw)
+  if (!Number.isFinite(id) || id <= 0) throw new HttpError(400, '商品ID无效')
+  return id
+}
+
+/**
+ * 快捷改积分/价格/上下架：只更新指定字段，品名/类目一律以库内为准，禁止走新建。
+ */
+async function patchGoods(type, id, body = {}) {
+  const role = String(type || '')
+  if (!['stall', 'cross', 'supply'].includes(role)) throw new HttpError(400, '商品类型无效')
+  const gid = parseGoodsId(id)
+  const table = role === 'stall' ? 'stall_goods' : role === 'cross' ? 'cross_goods' : 'supply_goods'
+  const rows = await query(
+    `SELECT * FROM ${table} WHERE id=:id AND deleted_at IS NULL LIMIT 1`,
+    { id: gid }
+  )
+  if (!rows.length) throw new HttpError(404, '商品不存在')
+  const row = rows[0]
+  const merchantId = Number(row.merchant_id)
+  await assertMerchantForGoods(merchantId, role)
+
+  const sets = []
+  const params = { id: gid, mid: merchantId }
+
+  if (body.pointsGrant !== undefined) {
+    const pg = Math.floor(Number(body.pointsGrant))
+    if (!Number.isFinite(pg) || pg < 0) throw new HttpError(400, '积分数量无效')
+    if (role === 'cross') throw new HttpError(400, '异业商品请改所需积分')
+    sets.push('points_grant=:pg')
+    params.pg = pg
+  }
+  if (body.pointsNeed !== undefined) {
+    const pn = Math.floor(Number(body.pointsNeed))
+    if (!Number.isFinite(pn) || pn < 0) throw new HttpError(400, '积分数量无效')
+    if (role !== 'cross') throw new HttpError(400, '仅异业商品可改所需积分')
+    sets.push('points_need=:pn')
+    params.pn = pn
+  }
+  if (body.price !== undefined) {
+    const price = Number(body.price)
+    if (!Number.isFinite(price) || price < 0) throw new HttpError(400, '价格无效')
+    if (role === 'cross') throw new HttpError(400, '异业商品请改现金价')
+    sets.push('price=:price')
+    params.price = price
+  }
+  if (body.cashPrice !== undefined) {
+    const cash = Number(body.cashPrice)
+    if (!Number.isFinite(cash) || cash < 0) throw new HttpError(400, '现金价无效')
+    if (role !== 'cross') throw new HttpError(400, '仅异业商品可改现金价')
+    sets.push('cash_price=:cashPrice')
+    params.cashPrice = cash
+  }
+  if (body.stock !== undefined) {
+    const stock = Number(body.stock)
+    if (!Number.isFinite(stock) || stock < 0) throw new HttpError(400, '库存无效')
+    sets.push('stock=:stock')
+    params.stock = stock
+  }
+  if (body.onSale !== undefined || body.status !== undefined) {
+    const on =
+      body.onSale !== undefined ? (body.onSale === 0 || body.onSale === '0' ? 0 : 1) : body.status === 0 || body.status === '0' ? 0 : 1
+    if (on) await assertCanOnSale(merchantId)
+    if (role === 'supply') {
+      sets.push('status=:onSale')
+    } else {
+      sets.push('on_sale=:onSale')
+    }
+    params.onSale = on
+  }
+
+  if (!sets.length) throw new HttpError(400, '没有可更新的字段')
+
+  const sql = `UPDATE ${table} SET ${sets.join(', ')} WHERE id=:id AND merchant_id=:mid AND deleted_at IS NULL`
+  let result
+  try {
+    result = await query(sql, params)
+  } catch (e) {
+    if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+    // 兼容缺列的旧库：去掉 stock/on_sale 以外的可选列后不应到这里；直接抛出可读错误
+    throw new HttpError(500, '商品表结构不完整，请先执行最新 SQL 迁移')
+  }
+  if (!result || Number(result.affectedRows) === 0) {
+    throw new HttpError(404, '商品不存在或无权更新')
+  }
+  return {
+    id: gid,
+    merchantId,
+    role,
+    patched: Object.keys(body).filter((k) =>
+      ['pointsGrant', 'pointsNeed', 'price', 'cashPrice', 'stock', 'onSale', 'status'].includes(k)
+    )
+  }
+}
+
 async function listStallGoods({ merchantId, page, pageSize, limit } = {}) {
   const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
   let where = ` WHERE g.deleted_at IS NULL AND m.deleted_at IS NULL AND m.role='stall'`
@@ -288,10 +385,18 @@ async function listStallGoods({ merchantId, page, pageSize, limit } = {}) {
 async function saveStallGoods(body, auth = null) {
   const merchantId = Number(body.merchantId)
   await assertMerchantForGoods(merchantId, 'stall')
+  const id = parseGoodsId(body.id)
+  if (id) {
+    const existed = await query(
+      `SELECT id FROM stall_goods WHERE id=:id AND merchant_id=:mid AND deleted_at IS NULL LIMIT 1`,
+      { id, mid: merchantId }
+    )
+    if (!existed.length) throw new HttpError(404, '商品不存在，无法更新（已阻止误新建）')
+  }
   const name = assertProductionGoodsName(body.name)
   const bound = await bindGoodsCategory('stall', body)
   const payload = {
-    id: body.id ? Number(body.id) : 0,
+    id,
     mid: merchantId,
     name,
     price: Number(body.price),
@@ -313,21 +418,28 @@ async function saveStallGoods(body, auth = null) {
   }
   if (payload.id) {
     try {
-      await query(
+      const r = await query(
         `UPDATE stall_goods SET name=:name, price=:price, points_grant=:pg, category=:cat, category_id=:categoryId,
          unit=:unit, desc_text=:desc, image_url=:img, stock=:stock, sku_code=IFNULL(:sku, sku_code),
          on_sale=:onSale, mix_enabled=:mix, allow_remark=:allowRemark
-         WHERE id=:id AND merchant_id=:mid`,
+         WHERE id=:id AND merchant_id=:mid AND deleted_at IS NULL`,
         payload
       )
+      if (!r || Number(r.affectedRows) === 0) {
+        throw new HttpError(404, '商品不存在，无法更新（已阻止误新建）')
+      }
     } catch (e) {
+      if (e instanceof HttpError) throw e
       if (e && e.code === 'ER_BAD_FIELD_ERROR') {
-        await query(
+        const r = await query(
           `UPDATE stall_goods SET name=:name, price=:price, points_grant=:pg, category=:cat,
            desc_text=:desc, image_url=:img, stock=:stock, on_sale=:onSale
            WHERE id=:id AND merchant_id=:mid`,
           payload
         )
+        if (!r || Number(r.affectedRows) === 0) {
+          throw new HttpError(404, '商品不存在，无法更新（已阻止误新建）')
+        }
       } else {
         throw e
       }
@@ -367,13 +479,13 @@ async function saveStallGoods(body, auth = null) {
       throw e
     }
   }
-  const id = r.insertId
-  if (!payload.sku && id) {
+  const insertId = r.insertId
+  if (!payload.sku && insertId) {
     await query(`UPDATE stall_goods SET sku_code = CONCAT('ST', LPAD(id, 6, '0')) WHERE id=:id AND (sku_code IS NULL OR sku_code='')`, {
-      id
+      id: insertId
     })
   }
-  return { id, categoryId: payload.categoryId, category: payload.cat }
+  return { id: insertId, categoryId: payload.categoryId, category: payload.cat }
 }
 
 async function listCrossGoods({ merchantId, page, pageSize, limit } = {}) {
@@ -418,10 +530,18 @@ async function listCrossGoods({ merchantId, page, pageSize, limit } = {}) {
 async function saveCrossGoods(body, auth = null) {
   const merchantId = Number(body.merchantId)
   await assertMerchantForGoods(merchantId, 'cross')
+  const id = parseGoodsId(body.id)
+  if (id) {
+    const existed = await query(
+      `SELECT id FROM cross_goods WHERE id=:id AND merchant_id=:mid AND deleted_at IS NULL LIMIT 1`,
+      { id, mid: merchantId }
+    )
+    if (!existed.length) throw new HttpError(404, '商品不存在，无法更新（已阻止误新建）')
+  }
   const name = assertProductionGoodsName(body.name)
   const bound = await bindGoodsCategory('cross', body)
   const payload = {
-    id: body.id ? Number(body.id) : 0,
+    id,
     mid: merchantId,
     name,
     pn: Number(body.pointsNeed) || 0,
@@ -439,21 +559,28 @@ async function saveCrossGoods(body, auth = null) {
   if (payload.pn < 0 || payload.cp < 0) throw new HttpError(400, '请填写正确的积分价/现金价')
   if (payload.id) {
     try {
-      await query(
+      const r = await query(
         `UPDATE cross_goods SET name=:name, points_need=:pn, cash_price=:cp, category=:cat, category_id=:categoryId,
          desc_text=:desc, image_url=:img, stock=:stock, sku_code=IFNULL(:sku, sku_code),
          on_sale=:onSale, allow_mix=:mix
-         WHERE id=:id AND merchant_id=:mid`,
+         WHERE id=:id AND merchant_id=:mid AND deleted_at IS NULL`,
         payload
       )
+      if (!r || Number(r.affectedRows) === 0) {
+        throw new HttpError(404, '商品不存在，无法更新（已阻止误新建）')
+      }
     } catch (e) {
+      if (e instanceof HttpError) throw e
       if (e && e.code === 'ER_BAD_FIELD_ERROR') {
-        await query(
+        const r = await query(
           `UPDATE cross_goods SET name=:name, points_need=:pn, cash_price=:cp, category=:cat, desc_text=:desc,
            image_url=:img, on_sale=:onSale
            WHERE id=:id AND merchant_id=:mid`,
           payload
         )
+        if (!r || Number(r.affectedRows) === 0) {
+          throw new HttpError(404, '商品不存在，无法更新（已阻止误新建）')
+        }
       } else {
         throw e
       }
@@ -488,14 +615,14 @@ async function saveCrossGoods(body, auth = null) {
       throw e
     }
   }
-  const id = r.insertId
-  if (!payload.sku && id) {
+  const insertId = r.insertId
+  if (!payload.sku && insertId) {
     await query(
       `UPDATE cross_goods SET sku_code = CONCAT('CR', LPAD(id, 6, '0')) WHERE id=:id AND (sku_code IS NULL OR sku_code='')`,
-      { id }
+      { id: insertId }
     )
   }
-  return { id, categoryId: payload.categoryId, category: payload.cat }
+  return { id: insertId, categoryId: payload.categoryId, category: payload.cat }
 }
 
 async function listSupplyGoodsAdmin({ merchantId, page, pageSize, limit } = {}) {
@@ -538,10 +665,18 @@ async function listSupplyGoodsAdmin({ merchantId, page, pageSize, limit } = {}) 
 async function saveSupplyGoods(body, auth = null) {
   const merchantId = Number(body.merchantId)
   await assertMerchantForGoods(merchantId, 'supply')
+  const id = parseGoodsId(body.id)
+  if (id) {
+    const existed = await query(
+      `SELECT id FROM supply_goods WHERE id=:id AND merchant_id=:mid AND deleted_at IS NULL LIMIT 1`,
+      { id, mid: merchantId }
+    )
+    if (!existed.length) throw new HttpError(404, '商品不存在，无法更新（已阻止误新建）')
+  }
   const name = assertProductionGoodsName(body.name)
   const bound = await bindGoodsCategory('supply', body)
   const payload = {
-    id: body.id ? Number(body.id) : 0,
+    id,
     mid: merchantId,
     name,
     price: Number(body.price),
@@ -561,20 +696,27 @@ async function saveSupplyGoods(body, auth = null) {
   }
   if (payload.id) {
     try {
-      await query(
+      const r = await query(
         `UPDATE supply_goods SET name=:name, price=:price, stock=:stock, points_grant=:pg,
          points_ratio_text=:ratio, category=:cat, category_id=:categoryId, desc_text=:desc, image_url=:img,
          sku_code=IFNULL(:sku, sku_code), status=:status
-         WHERE id=:id AND merchant_id=:mid`,
+         WHERE id=:id AND merchant_id=:mid AND deleted_at IS NULL`,
         payload
       )
+      if (!r || Number(r.affectedRows) === 0) {
+        throw new HttpError(404, '商品不存在，无法更新（已阻止误新建）')
+      }
     } catch (e) {
+      if (e instanceof HttpError) throw e
       if (e && e.code === 'ER_BAD_FIELD_ERROR') {
-        await query(
+        const r = await query(
           `UPDATE supply_goods SET name=:name, price=:price, stock=:stock, points_grant=:pg,
            points_ratio_text=:ratio, category=:cat, image_url=:img, status=:status WHERE id=:id AND merchant_id=:mid`,
           payload
         )
+        if (!r || Number(r.affectedRows) === 0) {
+          throw new HttpError(404, '商品不存在，无法更新（已阻止误新建）')
+        }
       } else {
         throw e
       }
@@ -609,14 +751,14 @@ async function saveSupplyGoods(body, auth = null) {
       throw e
     }
   }
-  const id = r.insertId
-  if (!payload.sku && id) {
+  const insertId = r.insertId
+  if (!payload.sku && insertId) {
     await query(
       `UPDATE supply_goods SET sku_code = CONCAT('SP', LPAD(id, 6, '0')) WHERE id=:id AND (sku_code IS NULL OR sku_code='')`,
-      { id }
+      { id: insertId }
     )
   }
-  return { id, categoryId: payload.categoryId, category: payload.cat }
+  return { id: insertId, categoryId: payload.categoryId, category: payload.cat }
 }
 
 /* ---------- orders ---------- */
@@ -1386,6 +1528,7 @@ module.exports = {
   adjustUserPoints,
   listStallGoods,
   saveStallGoods,
+  patchGoods,
   listCrossGoods,
   saveCrossGoods,
   listSupplyGoodsAdmin,

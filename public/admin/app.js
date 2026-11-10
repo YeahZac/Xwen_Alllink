@@ -636,11 +636,24 @@ function openModal(title, bodyHtml, onSave, wide) {
   $('modalClose').onclick = closeModal
   $('modalCancel').onclick = closeModal
   if (onSave) {
+    let saving = false
     $('modalSave').onclick = async () => {
+      if (saving) return
+      saving = true
+      const btn = $('modalSave')
+      if (btn) {
+        btn.disabled = true
+        btn.textContent = '保存中…'
+      }
       try {
         await onSave()
         closeModal()
       } catch (e) {
+        saving = false
+        if (btn) {
+          btn.disabled = false
+          btn.textContent = '保存'
+        }
         alert(e.message)
       }
     }
@@ -1658,6 +1671,7 @@ async function renderGoodsSku() {
     const data = unwrapList(await api(`/admin/ops/skus?${qs}`))
     pageState.page = data.page
     const rows = data.list
+    const byKey = new Map(rows.map((g) => [`${g.goodsType}:${g.id}`, g]))
     $('list').innerHTML =
       table(
         [
@@ -1702,7 +1716,7 @@ async function renderGoodsSku() {
         <td class="actions">
           ${
             editable
-              ? `<button class="btn sm" data-edit='${encodeURIComponent(JSON.stringify(g))}'>编辑</button>
+              ? `<button class="btn sm" data-edit-key="${g.goodsType}:${g.id}">编辑</button>
                  <button class="btn danger sm" data-del="${g.goodsType}:${g.id}">删除</button>`
               : '-'
           }
@@ -1713,9 +1727,13 @@ async function renderGoodsSku() {
       ) + pagerHtml(data)
     bindPager($('listPager'), pageState, () => runAction(load))
     bindThumbs($('list'))
-    $('list').querySelectorAll('[data-edit]').forEach((b) => {
+    $('list').querySelectorAll('[data-edit-key]').forEach((b) => {
       b.onclick = () => {
-        const g = JSON.parse(decodeURIComponent(b.getAttribute('data-edit')))
+        const g = byKey.get(String(b.getAttribute('data-edit-key') || ''))
+        if (!g || !g.id || !g.goodsType) {
+          alert('商品数据已失效，请刷新后重试')
+          return
+        }
         openModal(
           '编辑 SKU',
           field('name', '品名', g.name) +
@@ -1723,21 +1741,26 @@ async function renderGoodsSku() {
             field('price', '价格', g.price, 'number') +
             field('sales', '销量', g.sales, 'number') +
             field('stock', '库存', g.stock || 0, 'number') +
+            (g.goodsType === 'cross'
+              ? field('pointsNeed', '所需积分', g.pointsNeed || 0, 'number')
+              : field('pointsGrant', '赠送积分', g.pointsGrant || 0, 'number')) +
             selectOnOff('onSale', g.onSale ?? 1, { onLabel: '上架', offLabel: '下架' }) +
             mediaField('imageUrl', '商品图', g.imageUrl || '', 'goods'),
           async () => {
+            const name = String(formVal('name') || '').trim()
+            if (!name) throw new Error('请填写商品名称')
             await api(`/admin/ops/skus/${g.goodsType}/${g.id}`, {
               method: 'PUT',
               body: JSON.stringify({
-                name: formVal('name'),
+                name,
                 sku: formVal('sku'),
                 price: Number(formVal('price')),
                 sales: Number(formVal('sales')),
                 stock: Number(formVal('stock')),
                 onSale: Number(formVal('onSale')),
                 imageUrl: formVal('imageUrl'),
-                pointsNeed: g.pointsNeed,
-                pointsGrant: g.pointsGrant
+                pointsNeed: Number(formVal('pointsNeed') || g.pointsNeed || 0),
+                pointsGrant: Number(formVal('pointsGrant') || g.pointsGrant || 0)
               })
             })
             load()
@@ -2559,6 +2582,7 @@ async function renderGoods() {
     const data = unwrapList(await api(`/admin/goods/${type}?${qs}`))
     pageState.page = data.page
     const rows = data.list
+    const byId = new Map(rows.map((g) => [String(g.id), g]))
     const shopCell = (g) => {
       const name = g.shopName || g.vendor || '-'
       return `${esc(name)}<div class="muted">门店ID ${g.merchantId || '-'}</div>`
@@ -2600,7 +2624,7 @@ async function renderGoods() {
           <td>${optBadge}</td><td>${remarkBadge}</td><td>${g.stock}</td>
           <td>${saleCell(g)}</td>
           <td class="actions">
-            ${editable ? `<button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button>
+            ${editable ? `<button class="btn sm" data-edit-id="${g.id}">编辑</button>
             <button class="btn sm primary" data-opts="${g.id}" data-name="${esc(g.name)}">规格</button>` : '-'}
             ${delBtn(g)}
           </td></tr>`
@@ -2612,7 +2636,7 @@ async function renderGoods() {
           <td>${esc(g.category || '')}</td>
           <td>${g.pointsNeed}</td><td>${g.cashPrice}</td><td>${g.stock ?? '-'}</td><td>${saleCell(g)}</td>
           <td class="actions">
-            ${editable ? `<button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button>` : '-'}
+            ${editable ? `<button class="btn sm" data-edit-id="${g.id}">编辑</button>` : '-'}
             ${delBtn(g)}
           </td></tr>`
             }
@@ -2622,7 +2646,7 @@ async function renderGoods() {
           <td>${esc(g.category || '')}</td>
           <td>${g.price}</td><td>${g.stock}</td><td>${g.pointsGrant}</td><td>${saleCell(g)}</td>
           <td class="actions">
-            ${editable ? `<button class="btn sm" data-edit="${encodeURIComponent(JSON.stringify(g))}">编辑</button>` : '-'}
+            ${editable ? `<button class="btn sm" data-edit-id="${g.id}">编辑</button>` : '-'}
             ${delBtn(g)}
           </td></tr>`
           })
@@ -2630,8 +2654,15 @@ async function renderGoods() {
       ) + pagerHtml(data)
     bindPager($('listPager'), pageState, () => runAction(load))
     bindThumbs($('list'))
-    $('list').querySelectorAll('[data-edit]').forEach((b) => {
-      b.onclick = () => editGoods(type, JSON.parse(decodeURIComponent(b.getAttribute('data-edit'))), load)
+    $('list').querySelectorAll('[data-edit-id]').forEach((b) => {
+      b.onclick = () => {
+        const g = byId.get(String(b.getAttribute('data-edit-id')))
+        if (!g || !g.id) {
+          alert('商品数据已失效，请刷新后重试')
+          return
+        }
+        editGoods(type, g, load)
+      }
     })
     $('list').querySelectorAll('[data-opts]').forEach((b) => {
       b.onclick = () => editStallOptions(Number(b.getAttribute('data-opts')), b.getAttribute('data-name'), load)
