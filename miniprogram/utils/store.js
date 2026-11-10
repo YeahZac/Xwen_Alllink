@@ -423,21 +423,8 @@ function routeAfterLogin() {
     const ref = wx.getStorageSync('wy_pending_ref')
     if (ref) {
       wx.removeStorageSync('wy_pending_ref')
-      api
-        .bindReferral(String(ref))
-        .then((res) => {
-          const pts = Number(res && res.rewardPoints) || 0
-          wx.showToast({
-            title: pts > 0 ? `已绑定推荐人（邀请人 +${pts} 积分）` : '推荐关系已绑定',
-            icon: 'none'
-          })
-        })
-        .catch((err) => {
-          wx.showToast({
-            title: (err && err.message) || '推荐码绑定失败',
-            icon: 'none'
-          })
-        })
+      // 切换登录 / 脏 scene 常带无效码；绑定失败静默，勿打断登录流程
+      api.bindReferral(String(ref)).catch(() => {})
     }
   } catch (e) {}
   if (resumePendingPay()) return
