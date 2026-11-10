@@ -106,7 +106,7 @@ Page({
     const kpi =
       role === 'supply'
         ? {
-            a: `¥${Number(dash.monthAmount || 0).toFixed(0)}`,
+            a: `¥${Number(dash.monthAmount || 0).toFixed(2)}`,
             aLabel: '本月出货',
             b: String(dash.monthOrders || 0),
             bLabel: '本月订单',
@@ -115,7 +115,7 @@ Page({
           }
         : role === 'cross'
           ? {
-              a: `¥${Number(dash.todayAmount || 0).toFixed(0)}`,
+              a: `¥${Number(dash.todayAmount || 0).toFixed(2)}`,
               aLabel: '今日现金',
               b: `${dash.todayPointsOrders || 0}/${dash.todayCashOrders || 0}`,
               bLabel: '积分单/现金单',
@@ -123,12 +123,12 @@ Page({
               cLabel: '积分额度池'
             }
           : {
-              a: `¥${Number(dash.todayAmount || 0).toFixed(0)}`,
+              a: `¥${Number(dash.todayAmount || 0).toFixed(2)}`,
               aLabel: '今日营业额',
               b: String(dash.todayOrders || 0),
               bLabel: '今日单量',
               c: String(dash.todayPointsAllocated != null ? dash.todayPointsAllocated : dash.poolBalance || 0),
-              cLabel: dash.todayPointsAllocated != null ? '今日划拨积分' : '积分额度池'
+              cLabel: dash.todayPointsAllocated != null ? '今日分出积分' : '积分额度池'
             }
 
     let feeHint = ''

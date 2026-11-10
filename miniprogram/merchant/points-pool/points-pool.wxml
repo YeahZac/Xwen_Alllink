@@ -12,7 +12,7 @@
 
   <view class="m-page-head">
     <text class="m-page-head__title m-page-head__title--section">额度流水</text>
-    <text class="m-page-head__desc">开店赠送 / 后台发放 / 采购获额 / 划拨给 C 端</text>
+    <text class="m-page-head__desc">开店赠送 / 后台划拨 / 采购获额 / 分出给顾客</text>
   </view>
 
   <view wx:if="{{!ledger.length}}" class="empty-state surface">

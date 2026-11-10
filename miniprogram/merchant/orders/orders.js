@@ -27,7 +27,7 @@ function mapOrder(o, role) {
   if (o.fulfillType) sub = [sub, o.fulfillType === 'offline' ? '线下' : '线上'].filter(Boolean).join(' · ')
   if (o.pointsGrant) sub = [sub, `额度+${o.pointsGrant}`].filter(Boolean).join(' · ')
   if (Number(o.pointsAllocated) > 0) {
-    sub = [sub, `已划拨${o.pointsAllocated}积分`].filter(Boolean).join(' · ')
+    sub = [sub, `已分出${o.pointsAllocated}积分`].filter(Boolean).join(' · ')
   }
   if (o.payMode === 'points') sub = [sub, '积分兑'].filter(Boolean).join(' · ')
   if (o.payMode === 'cash') sub = [sub, '现金'].filter(Boolean).join(' · ')
@@ -168,7 +168,7 @@ Page({
     try {
       const result = await api.completeStallOrder(id)
       wx.showToast({
-        title: result && result.pointsAllocated ? `已划拨 ${result.pointsAllocated} 积分` : '已完成',
+        title: result && result.pointsAllocated ? `已分出 ${result.pointsAllocated} 积分` : '已完成',
         icon: 'success'
       })
       await this.loadList()

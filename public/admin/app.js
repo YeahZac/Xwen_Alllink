@@ -2986,7 +2986,7 @@ async function editGoods(type, g, reload) {
   if (type === 'stall') {
     fields +=
       field('price', '价格', g.price || '', 'number') +
-      field('pointsGrant', '划拨积分', g.pointsGrant || 0, 'number') +
+      field('pointsGrant', '分出积分', g.pointsGrant || 0, 'number') +
       field('stock', '库存', g.stock || 9999, 'number') +
       selectOnOff('onSale', g.onSale ?? 1, { onLabel: '上架', offLabel: '下架' }) +
       selectOnOff('allowRemark', g.allowRemark ?? 1, { onLabel: '允许备注', offLabel: '关闭备注' }) +

@@ -47,8 +47,8 @@
         <input class="field__input" type="digit" data-key="price" value="{{form.price}}" bindinput="onField" placeholder="如 18.00" />
       </view>
       <view class="field">
-        <text class="field__label">消费获积分</text>
-        <input class="field__input" type="number" data-key="pointsGrant" value="{{form.pointsGrant}}" bindinput="onField" placeholder="出餐后从额度池划拨" />
+        <text class="field__label">分出积分</text>
+        <input class="field__input" type="number" data-key="pointsGrant" value="{{form.pointsGrant}}" bindinput="onField" placeholder="出餐后从本店额度池分出给顾客" />
       </view>
       <view class="field">
         <text class="field__label">可用积分（抵现上限/件）</text>

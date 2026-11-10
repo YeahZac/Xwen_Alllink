@@ -74,7 +74,7 @@ async function allocateToConsumer(conn, { merchantId, userId, wantPoints, shopNa
   const policy = String(await getConfig('pool_shortage_policy', 'partial'))
   // 支付入账场景 allowDegrade：额度不足只部分/0 划拨，不抛错以免卡死已支付订单
   if (policy === 'block' && pool < want && !allowDegrade) {
-    throw new HttpError(400, '商家积分额度不足，暂无法完单划拨')
+    throw new HttpError(400, '商家积分额度不足，暂无法完单分出积分')
   }
   const allocated = Math.min(want, pool)
   if (allocated > 0) {
@@ -87,7 +87,7 @@ async function allocateToConsumer(conn, { merchantId, userId, wantPoints, shopNa
       `INSERT INTO merchant_pool_ledger
         (merchant_id, change_amount, balance_after, biz_type, biz_id, title)
        VALUES (?, ?, ?, 'allocate', ?, ?)`,
-      [merchantId, -allocated, poolLeft, orderNo, `划拨给消费者 · ${orderNo}`]
+      [merchantId, -allocated, poolLeft, orderNo, `分出给顾客 · ${orderNo}`]
     )
 
     await conn.execute(
@@ -108,7 +108,7 @@ async function allocateToConsumer(conn, { merchantId, userId, wantPoints, shopNa
         allocated,
         urows[0].points_balance,
         orderNo,
-        `${shopName || '门店'} · 消费划拨`,
+        `${shopName || '门店'} · 消费获积分`,
         pointsToCash(allocated, rate)
       ]
     )

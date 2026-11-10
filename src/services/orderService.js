@@ -1381,7 +1381,7 @@ async function completeStallOrder({ merchantId, orderId }) {
       if (allocated === 0) {
         throw new HttpError(
           400,
-          '积分额度池不足，无法划拨给消费者。请先向供应链采购或后台发放额度后再出餐'
+          '积分额度池不足，无法分出给顾客。请先向供应链采购或由后台划拨额度后再出餐'
         )
       }
       try {

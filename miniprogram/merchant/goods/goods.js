@@ -30,7 +30,7 @@ Page({
             ...g,
             onSale: g.onSale ? 1 : 0,
             coverImage: g.imageUrl || '',
-            line: `SKU ${g.sku || '—'} · ¥${g.price} · 可用${g.pointsUsable || 0}积分 · 划拨 ${
+            line: `SKU ${g.sku || '—'} · ¥${g.price} · 可用${g.pointsUsable || 0}积分 · 分出 ${
               g.pointsGrant || 0
             } · ${optN > 0 ? `规格${optN}组` : '未配规格'} · 销量 ${g.sales || 0}`,
             statusLabel: g.onSale ? '在售' : '下架'

@@ -34,18 +34,21 @@ async function dashboard(merchantId, role) {
   let todayCashOrders = 0
 
   if (role === 'stall') {
+    // 按支付日统计（paid_at）；营业额=订单额；分出积分=已支付单实际分出（含制作中，不限 completed）
     const [t] = await query(
       `SELECT COUNT(*) c, IFNULL(SUM(total_amount),0) a,
-              IFNULL(SUM(CASE WHEN order_status='completed' THEN points_allocated ELSE 0 END),0) p
+              IFNULL(SUM(IFNULL(points_allocated,0)),0) p
        FROM consumer_orders
-       WHERE merchant_id=:id AND pay_status='paid' AND DATE(created_at)=CURDATE()`,
+       WHERE merchant_id=:id AND pay_status='paid'
+         AND DATE(IFNULL(paid_at, created_at))=CURDATE()`,
       { id: mid }
     )
     const [m] = await query(
       `SELECT COUNT(*) c, IFNULL(SUM(total_amount),0) a,
-              IFNULL(SUM(CASE WHEN order_status='completed' THEN points_allocated ELSE 0 END),0) p
+              IFNULL(SUM(IFNULL(points_allocated,0)),0) p
        FROM consumer_orders
-       WHERE merchant_id=:id AND pay_status='paid' AND created_at>=DATE_FORMAT(NOW(),'%Y-%m-01')`,
+       WHERE merchant_id=:id AND pay_status='paid'
+         AND IFNULL(paid_at, created_at)>=DATE_FORMAT(NOW(),'%Y-%m-01')`,
       { id: mid }
     )
     todayOrders = Number(t.c)
