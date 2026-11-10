@@ -296,6 +296,9 @@ const api = {
   merchantGoodsDetail: (id) => request({ path: `/merchant/goods/${id}` }),
   saveMerchantGoods: (body) =>
     request({ path: '/merchant/goods', method: 'POST', data: body }),
+  /** 兼容旧调用名 merchantSaveGoods */
+  merchantSaveGoods: (body) =>
+    request({ path: '/merchant/goods', method: 'POST', data: body }),
   patchMerchantGoods: (id, body) =>
     request({ path: `/merchant/goods/${id}`, method: 'PATCH', data: body || {} }),
   deleteMerchantGoods: (id) => request({ path: `/merchant/goods/${id}`, method: 'DELETE' }),

@@ -235,7 +235,7 @@ Page({
     this.setData({ saving: true })
     try {
       wx.showLoading({ title: '保存中' })
-      const res = await api.merchantSaveGoods(body)
+      const res = await api.saveMerchantGoods(body)
       wx.hideLoading()
       if (res && res.id && !this.data.goodsId) this.setData({ goodsId: String(res.id) })
       wx.showToast({ title: '已保存', icon: 'success' })
