@@ -1,6 +1,5 @@
 const store = require('../../utils/store')
 const api = require('../../utils/api')
-const location = require('../../utils/location')
 const coverPack = require('../../utils/cover-pack')
 
 Page({
@@ -8,44 +7,60 @@ Page({
     categoryId: '',
     categoryName: '',
     roleLabel: '',
-    stores: [],
+    goods: [],
     loading: true
   },
   onLoad(q) {
     const categoryId = String((q && q.id) || '')
     const categoryName = decodeURIComponent((q && q.name) || '')
     this.setData({ categoryId, categoryName })
-    wx.setNavigationBarTitle({ title: categoryName || '关联商家' })
+    wx.setNavigationBarTitle({ title: categoryName || '类目商品' })
   },
   async onShow() {
     if (!store.ensureConsumerOrRedirect({ allowGuest: true })) return
-    location.ensureDefaultLoc()
-    await this.loadMerchants()
+    await this.loadGoods()
   },
-  async loadMerchants() {
+  async loadGoods() {
     const id = this.data.categoryId
     if (!id) {
-      this.setData({ loading: false, stores: [] })
+      this.setData({ loading: false, goods: [] })
       return
     }
     this.setData({ loading: true })
     try {
-      const q = location.queryFromSaved()
-      const data = await api.categoryMerchants(id, q, { timeout: 25000 })
+      const data = await api.categoryGoods(id, { limit: 100 }, { timeout: 25000 })
       const cat = (data && data.category) || {}
-      const list = location.decorateList((data && data.list) || []).map((s) => {
-        const role = s.role || cat.role || 'cross'
-        const roleLabel = s.roleLabel || (role === 'stall' ? '点餐' : role === 'supply' ? '供货' : '兑换')
+      const role = cat.role || 'cross'
+      const list = ((data && data.list) || []).map((g) => {
+        const itemRole = g.role || role
+        let priceText = ''
+        if (itemRole === 'cross') {
+          const pts = g.pointsNeed != null ? `${g.pointsNeed} 积分` : ''
+          const cash =
+            g.cashPrice != null || g.price != null
+              ? `¥${Number(g.cashPrice != null ? g.cashPrice : g.price).toFixed(2)}`
+              : ''
+          priceText = [pts, cash].filter(Boolean).join(' · ') || '兑换商品'
+        } else if (g.price != null) {
+          priceText = `¥${Number(g.price).toFixed(2)}`
+        } else {
+          priceText = '查看详情'
+        }
+        const coverImage =
+          g.coverImage ||
+          g.imageUrl ||
+          coverPack.resolveCover({
+            ...g,
+            role: itemRole,
+            name: g.shopName || g.name
+          })
         return {
-          ...s,
-          role,
-          initial: s.initial || (s.name || '').slice(0, 1),
-          coverImage: coverPack.resolveCover({
-            ...s,
-            role,
-            bizType: s.bizType || s.category || s.tag
-          }),
-          metaText: [s.category || s.tag || cat.name, roleLabel, s.distance || s.city]
+          ...g,
+          role: itemRole,
+          coverImage,
+          initial: (g.name || g.shopName || '商').slice(0, 1),
+          priceText,
+          metaText: [g.shopName, g.city || g.address]
             .map((v) => String(v || '').trim())
             .filter((v, i, arr) => v && arr.indexOf(v) === i)
             .join(' · ')
@@ -53,28 +68,28 @@ Page({
       })
       this.setData({
         loading: false,
-        stores: list,
+        goods: list,
         categoryName: cat.name || this.data.categoryName,
         roleLabel: cat.roleLabel || ''
       })
       if (cat.name) wx.setNavigationBarTitle({ title: cat.name })
     } catch (e) {
-      this.setData({ loading: false, stores: [] })
+      this.setData({ loading: false, goods: [] })
       wx.showToast({ title: (e && e.message) || '加载失败', icon: 'none' })
     }
   },
-  openStore(e) {
-    const id = e.currentTarget.dataset.id
+  openGoods(e) {
+    const merchantId = e.currentTarget.dataset.merchantId
     const role = e.currentTarget.dataset.role
-    if (!id) return
+    if (!merchantId) return
     if (role === 'stall') {
-      wx.navigateTo({ url: `/pages/stall-menu/stall-menu?id=${id}` })
+      wx.navigateTo({ url: `/pages/stall-menu/stall-menu?id=${merchantId}` })
       return
     }
     if (role === 'supply') {
-      wx.navigateTo({ url: `/pages/supply-need/supply-need?merchantId=${id}` })
+      wx.navigateTo({ url: `/pages/supply-need/supply-need?merchantId=${merchantId}` })
       return
     }
-    wx.navigateTo({ url: `/pages/cross-detail/cross-detail?id=${id}` })
+    wx.navigateTo({ url: `/pages/cross-detail/cross-detail?id=${merchantId}` })
   }
 })

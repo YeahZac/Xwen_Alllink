@@ -275,7 +275,7 @@ async function listGoods(merchantId, role) {
   if (role === 'stall') {
     try {
       return await query(
-        `SELECT id, name, price, points_grant AS pointsGrant, category, unit, stock, on_sale AS onSale,
+        `SELECT id, name, price, points_grant AS pointsGrant, category, category_id AS categoryId, unit, stock, on_sale AS onSale,
                 mix_enabled AS mixEnabled, IFNULL(allow_remark,1) AS allowRemark,
                 image_url AS imageUrl, sku_code AS sku, sales_count AS sales,
                 desc_text AS description,
@@ -298,7 +298,7 @@ async function listGoods(merchantId, role) {
     try {
       return await query(
         `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice, on_sale AS onSale,
-                allow_mix AS allowMix, category, stock, image_url AS imageUrl, sku_code AS sku,
+                allow_mix AS allowMix, category, category_id AS categoryId, stock, image_url AS imageUrl, sku_code AS sku,
                 sales_count AS sales, desc_text AS description
          FROM cross_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
         { id: mid }
@@ -316,7 +316,7 @@ async function listGoods(merchantId, role) {
   try {
     return await query(
       `SELECT id, name, price, stock, points_grant AS pointsGrant, points_ratio_text AS pointsRatio,
-              category, desc_text AS description, status AS onSale, image_url AS imageUrl,
+              category, category_id AS categoryId, desc_text AS description, status AS onSale, image_url AS imageUrl,
               sku_code AS sku, sales_count AS sales
        FROM supply_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
       { id: mid }

@@ -1,11 +1,6 @@
 const store = require('../../utils/store')
 const api = require('../../utils/api')
 
-const CATS = {
-  stall: ['餐饮', '百货商店'],
-  cross: ['餐饮', '百货商店'],
-  supply: ['粮油', '生鲜']
-}
 const UNITS = ['份', '件', '束', '盒', '袋', '箱']
 
 Page({
@@ -16,11 +11,13 @@ Page({
     catalogReady: true,
     readyHint: '',
     catOptions: [],
+    catIndex: 0,
     unitOptions: UNITS,
     form: {
       name: '',
       sku: '',
       category: '',
+      categoryId: '',
       unit: '份',
       description: '',
       imageUrl: '',
@@ -40,7 +37,6 @@ Page({
     if (!store.ensureMerchantOrRedirect()) return
     const s = store.getSession()
     const role = s.role
-    const cats = CATS[role] || CATS.stall
     let catalogReady = true
     let readyHint = ''
     try {
@@ -50,14 +46,37 @@ Page({
         readyHint = '进件未完成或支付未就绪：可先保存为下架草稿；上架会被拦截'
       }
     } catch (_) {}
+
+    let catOptions = []
+    try {
+      const cats = await api.goodsCategories(role, { timeout: 15000 })
+      catOptions = (Array.isArray(cats) ? cats : [])
+        .filter((c) => Number(c.status) !== 0)
+        .map((c) => ({ id: Number(c.id), name: c.name }))
+    } catch (_) {
+      catOptions = []
+    }
+    if (!catOptions.length) {
+      readyHint = (readyHint ? readyHint + '；' : '') + '暂无启用类目，请联系运营在后台配置'
+    }
+
+    const first = catOptions[0] || { id: '', name: '' }
     const form = {
       ...this.data.form,
-      category: cats[0],
+      category: first.name || '',
+      categoryId: first.id ? String(first.id) : '',
       unit: '份',
       stock: role === 'supply' ? '0' : '9999',
       onSale: catalogReady ? 1 : 0
     }
-    this.setData({ role, catOptions: cats, form, catalogReady, readyHint })
+    this.setData({
+      role,
+      catOptions,
+      catIndex: 0,
+      form,
+      catalogReady,
+      readyHint
+    })
     wx.setNavigationBarTitle({ title: q.id ? '编辑商品' : '添加商品' })
     if (!q.id) return
     this.setData({ goodsId: String(q.id) })
@@ -65,11 +84,22 @@ Page({
       wx.showLoading({ title: '加载中' })
       const g = await api.merchantGoodsDetail(q.id)
       wx.hideLoading()
+      let catIndex = 0
+      if (g.categoryId) {
+        const idx = catOptions.findIndex((c) => Number(c.id) === Number(g.categoryId))
+        if (idx >= 0) catIndex = idx
+      } else if (g.category) {
+        const idx = catOptions.findIndex((c) => c.name === g.category)
+        if (idx >= 0) catIndex = idx
+      }
+      const picked = catOptions[catIndex] || first
       this.setData({
+        catIndex,
         form: {
           name: g.name || '',
           sku: g.sku || '',
-          category: g.category || cats[0],
+          category: picked.name || g.category || '',
+          categoryId: picked.id ? String(picked.id) : g.categoryId ? String(g.categoryId) : '',
           unit: g.unit || '份',
           description: g.description || g.desc || '',
           imageUrl: g.imageUrl || '',
@@ -106,7 +136,13 @@ Page({
   },
   onCat(e) {
     const idx = Number(e.detail.value)
-    this.setData({ 'form.category': this.data.catOptions[idx] || this.data.form.category })
+    const picked = this.data.catOptions[idx]
+    if (!picked) return
+    this.setData({
+      catIndex: idx,
+      'form.category': picked.name,
+      'form.categoryId': String(picked.id)
+    })
   },
   onUnit(e) {
     const idx = Number(e.detail.value)
@@ -135,7 +171,6 @@ Page({
           this.setData({ 'form.imageUrl': url })
         } catch (err) {
           wx.hideLoading()
-          // 禁止写入本地临时路径：保存时会被清空，导致主图丢失
           wx.showToast({ title: err.message || '图片上传失败，请重试', icon: 'none' })
         }
       }
@@ -148,6 +183,10 @@ Page({
       wx.showToast({ title: '请填写商品名称', icon: 'none' })
       return
     }
+    if (!f.categoryId) {
+      wx.showToast({ title: '请选择启用中的商品类目', icon: 'none' })
+      return
+    }
     if (f.imageUrl && !/^https?:\/\//.test(f.imageUrl)) {
       wx.showToast({ title: '主图未上传成功，请重新选择图片', icon: 'none' })
       return
@@ -158,6 +197,7 @@ Page({
       merchantId: store.getSession().merchantId,
       name: String(f.name).trim(),
       sku: f.sku,
+      categoryId: Number(f.categoryId),
       category: f.category,
       unit: f.unit,
       description: f.description,
@@ -186,21 +226,25 @@ Page({
     } else {
       body.price = Number(f.price)
       body.pointsGrant = Number(f.pointsGrant) || 0
-      body.pointsRatio = f.pointsRatio
+      body.pointsRatio = f.pointsRatio || ''
       if (!Number.isFinite(body.price) || body.price < 0) {
-        wx.showToast({ title: '请填写供货价', icon: 'none' })
+        wx.showToast({ title: '请填写采购价', icon: 'none' })
         return
       }
     }
     this.setData({ saving: true })
     try {
-      await api.saveMerchantGoods(body)
-      this.setData({ saving: false })
+      wx.showLoading({ title: '保存中' })
+      const res = await api.merchantSaveGoods(body)
+      wx.hideLoading()
+      if (res && res.id && !this.data.goodsId) this.setData({ goodsId: String(res.id) })
       wx.showToast({ title: '已保存', icon: 'success' })
-      setTimeout(() => wx.navigateBack(), 400)
+      setTimeout(() => wx.navigateBack({ fail: () => {} }), 400)
     } catch (e) {
+      wx.hideLoading()
+      wx.showToast({ title: (e && e.message) || '保存失败', icon: 'none' })
+    } finally {
       this.setData({ saving: false })
-      wx.showToast({ title: e.message || '保存失败', icon: 'none' })
     }
   }
 })

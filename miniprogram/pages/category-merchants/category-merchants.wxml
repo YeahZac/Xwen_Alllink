@@ -1,35 +1,35 @@
 <view class="page cat-merchants">
   <view class="head surface">
-    <text class="head__title">{{categoryName || '关联商家'}}</text>
-    <text class="head__sub">{{roleLabel ? roleLabel + ' · ' : ''}}已签约可收款商家</text>
+    <text class="head__title">{{categoryName || '类目商品'}}</text>
+    <text class="head__sub">{{roleLabel ? roleLabel + ' · ' : ''}}该类目下在售商品</text>
   </view>
 
   <view wx:if="{{loading}}" class="empty-state">
-    <text class="empty-state__title">正在加载商家</text>
+    <text class="empty-state__title">正在加载商品</text>
   </view>
 
-  <view wx:elif="{{!stores.length}}" class="empty-state surface">
-    <text class="empty-state__title">暂无关联商家</text>
-    <text class="empty-state__desc">该类目下还没有完成收款签约的门店</text>
+  <view wx:elif="{{!goods.length}}" class="empty-state surface">
+    <text class="empty-state__title">暂无关联商品</text>
+    <text class="empty-state__desc">商家上架并绑定该类目后，将在此展示</text>
   </view>
 
-  <view wx:else class="store-grid">
+  <view wx:else class="goods-list">
     <view
-      wx:for="{{stores}}"
+      wx:for="{{goods}}"
       wx:key="id"
-      class="store-tile"
-      bindtap="openStore"
-      data-id="{{item.id}}"
+      class="goods-row surface"
+      bindtap="openGoods"
+      data-merchant-id="{{item.merchantId}}"
       data-role="{{item.role}}"
     >
-      <view class="store-tile__cover">
+      <view class="goods-row__cover">
         <image wx:if="{{item.coverImage}}" class="cover-img" src="{{item.coverImage}}" mode="aspectFill" />
         <view wx:else class="cover-fallback">{{item.initial}}</view>
       </view>
-      <view class="store-tile__body">
-        <text class="store-tile__name ellipsis-1">{{item.name}}</text>
-        <text class="store-tile__meta ellipsis-1">{{item.metaText || '附近门店'}}</text>
-        <text class="store-tile__addr ellipsis-1">{{item.address || item.city || '附近'}}</text>
+      <view class="goods-row__body">
+        <text class="goods-row__name ellipsis-1">{{item.name}}</text>
+        <text class="goods-row__price">{{item.priceText}}</text>
+        <text class="goods-row__meta ellipsis-1">{{item.metaText || '附近门店'}}</text>
       </view>
     </view>
   </view>

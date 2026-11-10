@@ -685,6 +685,14 @@ router.get('/goods-categories/:id/merchants', async (req, res, next) => {
   }
 })
 
+router.get('/goods-categories/:id/goods', async (req, res, next) => {
+  try {
+    res.json(ok(await categoryService.listGoodsByCategory(Number(req.params.id), req.query)))
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.get('/admin/goods-categories', ...adminOnly, requirePage('goods_categories'), async (req, res, next) => {
   try {
     res.json(ok(await categoryService.listCategories(req.query.role || '')))

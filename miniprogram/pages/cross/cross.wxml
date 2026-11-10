@@ -9,7 +9,7 @@
   <view class="cross-body">
     <ad-banner role="consumer" page-key="cross" height="240" force="{{true}}" />
 
-    <text class="cross-tip">选择商品类目，进入后查看关联商家</text>
+    <text class="cross-tip">选择商品类目，进入后查看对应商品</text>
 
     <view wx:if="{{loading}}" class="empty-state">
       <text class="empty-state__title">正在加载类目</text>

@@ -8,8 +8,18 @@ const { getCashRate, pointsToCash, listConfigs, setConfig } = require('./configS
 const { assertCanOnSale } = require('./merchantReady')
 const { assertProductionGoodsName } = require('../utils/goodsName')
 const { provenanceFields } = require('../utils/goodsProvenance')
+const categoryService = require('./categoryService')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链' }
+
+async function bindGoodsCategory(role, body, { allowEmpty = false } = {}) {
+  return categoryService.resolveActiveCategory(role, {
+    categoryId: body.categoryId,
+    category: body.category,
+    categoryName: body.categoryName,
+    allowEmpty
+  })
+}
 
 async function dashboard() {
   const one = async (sql) => {
@@ -252,7 +262,7 @@ async function listStallGoods({ merchantId, page, pageSize, limit } = {}) {
   try {
     list = await query(
       `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name, g.price,
-              g.points_grant AS pointsGrant, g.category, g.desc_text AS description,
+              g.points_grant AS pointsGrant, g.category, g.category_id AS categoryId, g.desc_text AS description,
               g.image_url AS imageUrl, g.stock, g.on_sale AS onSale, g.sku_code AS sku,
               g.sales_count AS sales, IFNULL(g.allow_remark, 1) AS allowRemark,
               (SELECT COUNT(*) FROM stall_goods_option_groups og WHERE og.goods_id = g.id) AS optionGroupCount
@@ -279,13 +289,15 @@ async function saveStallGoods(body, auth = null) {
   const merchantId = Number(body.merchantId)
   await assertMerchantForGoods(merchantId, 'stall')
   const name = assertProductionGoodsName(body.name)
+  const bound = await bindGoodsCategory('stall', body)
   const payload = {
     id: body.id ? Number(body.id) : 0,
     mid: merchantId,
     name,
     price: Number(body.price),
     pg: Number(body.pointsGrant) || 0,
-    cat: body.category || '主食',
+    cat: bound.category,
+    categoryId: bound.categoryId,
     unit: body.unit || '份',
     desc: body.description || body.desc || '',
     img: body.imageUrl || null,
@@ -302,7 +314,7 @@ async function saveStallGoods(body, auth = null) {
   if (payload.id) {
     try {
       await query(
-        `UPDATE stall_goods SET name=:name, price=:price, points_grant=:pg, category=:cat,
+        `UPDATE stall_goods SET name=:name, price=:price, points_grant=:pg, category=:cat, category_id=:categoryId,
          unit=:unit, desc_text=:desc, image_url=:img, stock=:stock, sku_code=IFNULL(:sku, sku_code),
          on_sale=:onSale, mix_enabled=:mix, allow_remark=:allowRemark
          WHERE id=:id AND merchant_id=:mid`,
@@ -320,7 +332,7 @@ async function saveStallGoods(body, auth = null) {
         throw e
       }
     }
-    return { id: payload.id }
+    return { id: payload.id, categoryId: payload.categoryId, category: payload.cat }
   }
   const prov = provenanceFields({
     source: body.dataSource || 'manual',
@@ -338,9 +350,9 @@ async function saveStallGoods(body, auth = null) {
   try {
     r = await query(
       `INSERT INTO stall_goods
-        (merchant_id, name, sku_code, price, points_grant, category, unit, desc_text, image_url, stock, on_sale,
+        (merchant_id, name, sku_code, price, points_grant, category, category_id, unit, desc_text, image_url, stock, on_sale,
          mix_enabled, allow_remark, data_source, created_by_type, created_by_id, created_by_name)
-       VALUES (:mid, :name, :sku, :price, :pg, :cat, :unit, :desc, :img, :stock, :onSale,
+       VALUES (:mid, :name, :sku, :price, :pg, :cat, :categoryId, :unit, :desc, :img, :stock, :onSale,
          :mix, :allowRemark, :dataSource, :createdByType, :createdById, :createdByName)`,
       payload
     )
@@ -361,7 +373,7 @@ async function saveStallGoods(body, auth = null) {
       id
     })
   }
-  return { id }
+  return { id, categoryId: payload.categoryId, category: payload.cat }
 }
 
 async function listCrossGoods({ merchantId, page, pageSize, limit } = {}) {
@@ -381,6 +393,7 @@ async function listCrossGoods({ merchantId, page, pageSize, limit } = {}) {
     list = await query(
       `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name,
               g.points_need AS pointsNeed, g.cash_price AS cashPrice, g.stock,
+              g.category, g.category_id AS categoryId,
               g.desc_text AS description, g.image_url AS imageUrl, g.on_sale AS onSale,
               g.sku_code AS sku, g.sales_count AS sales
        FROM cross_goods g JOIN merchants m ON m.id=g.merchant_id${where}
@@ -406,13 +419,15 @@ async function saveCrossGoods(body, auth = null) {
   const merchantId = Number(body.merchantId)
   await assertMerchantForGoods(merchantId, 'cross')
   const name = assertProductionGoodsName(body.name)
+  const bound = await bindGoodsCategory('cross', body)
   const payload = {
     id: body.id ? Number(body.id) : 0,
     mid: merchantId,
     name,
     pn: Number(body.pointsNeed) || 0,
     cp: Number(body.cashPrice) || 0,
-    cat: body.category || '服务',
+    cat: bound.category,
+    categoryId: bound.categoryId,
     desc: body.description || body.desc || '',
     img: body.imageUrl || null,
     stock: Number(body.stock) || 9999,
@@ -425,7 +440,7 @@ async function saveCrossGoods(body, auth = null) {
   if (payload.id) {
     try {
       await query(
-        `UPDATE cross_goods SET name=:name, points_need=:pn, cash_price=:cp, category=:cat,
+        `UPDATE cross_goods SET name=:name, points_need=:pn, cash_price=:cp, category=:cat, category_id=:categoryId,
          desc_text=:desc, image_url=:img, stock=:stock, sku_code=IFNULL(:sku, sku_code),
          on_sale=:onSale, allow_mix=:mix
          WHERE id=:id AND merchant_id=:mid`,
@@ -434,7 +449,7 @@ async function saveCrossGoods(body, auth = null) {
     } catch (e) {
       if (e && e.code === 'ER_BAD_FIELD_ERROR') {
         await query(
-          `UPDATE cross_goods SET name=:name, points_need=:pn, cash_price=:cp, desc_text=:desc,
+          `UPDATE cross_goods SET name=:name, points_need=:pn, cash_price=:cp, category=:cat, desc_text=:desc,
            image_url=:img, on_sale=:onSale
            WHERE id=:id AND merchant_id=:mid`,
           payload
@@ -443,7 +458,7 @@ async function saveCrossGoods(body, auth = null) {
         throw e
       }
     }
-    return { id: payload.id }
+    return { id: payload.id, categoryId: payload.categoryId, category: payload.cat }
   }
   const prov = provenanceFields({ source: body.dataSource || 'manual', name, sku: payload.sku, auth })
   Object.assign(payload, {
@@ -456,9 +471,9 @@ async function saveCrossGoods(body, auth = null) {
   try {
     r = await query(
       `INSERT INTO cross_goods
-        (merchant_id, name, sku_code, category, points_need, cash_price, desc_text, image_url, stock, on_sale, allow_mix,
+        (merchant_id, name, sku_code, category, category_id, points_need, cash_price, desc_text, image_url, stock, on_sale, allow_mix,
          data_source, created_by_type, created_by_id, created_by_name)
-       VALUES (:mid, :name, :sku, :cat, :pn, :cp, :desc, :img, :stock, :onSale, :mix,
+       VALUES (:mid, :name, :sku, :cat, :categoryId, :pn, :cp, :desc, :img, :stock, :onSale, :mix,
          :dataSource, :createdByType, :createdById, :createdByName)`,
       payload
     )
@@ -480,7 +495,7 @@ async function saveCrossGoods(body, auth = null) {
       { id }
     )
   }
-  return { id }
+  return { id, categoryId: payload.categoryId, category: payload.cat }
 }
 
 async function listSupplyGoodsAdmin({ merchantId, page, pageSize, limit } = {}) {
@@ -495,14 +510,28 @@ async function listSupplyGoodsAdmin({ merchantId, page, pageSize, limit } = {}) 
     `SELECT COUNT(*) AS c FROM supply_goods g JOIN merchants m ON m.id=g.merchant_id${where}`,
     params
   )
-  const list = await query(
-    `SELECT g.id, g.merchant_id AS merchantId, m.name AS vendor, g.name, g.price, g.stock,
-            g.points_grant AS pointsGrant, g.points_ratio_text AS pointsRatio,
-            g.image_url AS imageUrl, g.status, g.sku_code AS sku, g.sales_count AS sales
-     FROM supply_goods g JOIN merchants m ON m.id=g.merchant_id${where}
-     ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
-    params
-  )
+  let list
+  try {
+    list = await query(
+      `SELECT g.id, g.merchant_id AS merchantId, m.name AS vendor, g.name, g.price, g.stock,
+              g.points_grant AS pointsGrant, g.points_ratio_text AS pointsRatio,
+              g.category, g.category_id AS categoryId,
+              g.image_url AS imageUrl, g.status, g.sku_code AS sku, g.sales_count AS sales
+       FROM supply_goods g JOIN merchants m ON m.id=g.merchant_id${where}
+       ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
+  } catch (e) {
+    if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+    list = await query(
+      `SELECT g.id, g.merchant_id AS merchantId, m.name AS vendor, g.name, g.price, g.stock,
+              g.points_grant AS pointsGrant, g.points_ratio_text AS pointsRatio,
+              g.image_url AS imageUrl, g.status, g.sku_code AS sku, g.sales_count AS sales
+       FROM supply_goods g JOIN merchants m ON m.id=g.merchant_id${where}
+       ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
+      params
+    )
+  }
   return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
@@ -510,6 +539,7 @@ async function saveSupplyGoods(body, auth = null) {
   const merchantId = Number(body.merchantId)
   await assertMerchantForGoods(merchantId, 'supply')
   const name = assertProductionGoodsName(body.name)
+  const bound = await bindGoodsCategory('supply', body)
   const payload = {
     id: body.id ? Number(body.id) : 0,
     mid: merchantId,
@@ -518,7 +548,8 @@ async function saveSupplyGoods(body, auth = null) {
     stock: Number(body.stock) || 0,
     pg: Number(body.pointsGrant) || 0,
     ratio: body.pointsRatio || '',
-    cat: body.category || '原料',
+    cat: bound.category,
+    categoryId: bound.categoryId,
     desc: body.description || body.desc || '',
     img: body.imageUrl || null,
     sku: String(body.sku || '').trim() || null,
@@ -532,7 +563,7 @@ async function saveSupplyGoods(body, auth = null) {
     try {
       await query(
         `UPDATE supply_goods SET name=:name, price=:price, stock=:stock, points_grant=:pg,
-         points_ratio_text=:ratio, category=:cat, desc_text=:desc, image_url=:img,
+         points_ratio_text=:ratio, category=:cat, category_id=:categoryId, desc_text=:desc, image_url=:img,
          sku_code=IFNULL(:sku, sku_code), status=:status
          WHERE id=:id AND merchant_id=:mid`,
         payload
@@ -541,14 +572,14 @@ async function saveSupplyGoods(body, auth = null) {
       if (e && e.code === 'ER_BAD_FIELD_ERROR') {
         await query(
           `UPDATE supply_goods SET name=:name, price=:price, stock=:stock, points_grant=:pg,
-           points_ratio_text=:ratio, image_url=:img, status=:status WHERE id=:id AND merchant_id=:mid`,
+           points_ratio_text=:ratio, category=:cat, image_url=:img, status=:status WHERE id=:id AND merchant_id=:mid`,
           payload
         )
       } else {
         throw e
       }
     }
-    return { id: payload.id }
+    return { id: payload.id, categoryId: payload.categoryId, category: payload.cat }
   }
   const prov = provenanceFields({ source: body.dataSource || 'manual', name, sku: payload.sku, auth })
   Object.assign(payload, {
@@ -561,9 +592,9 @@ async function saveSupplyGoods(body, auth = null) {
   try {
     r = await query(
       `INSERT INTO supply_goods
-        (merchant_id, name, sku_code, category, price, stock, points_grant, points_ratio_text, desc_text, image_url, status,
+        (merchant_id, name, sku_code, category, category_id, price, stock, points_grant, points_ratio_text, desc_text, image_url, status,
          data_source, created_by_type, created_by_id, created_by_name)
-       VALUES (:mid, :name, :sku, :cat, :price, :stock, :pg, :ratio, :desc, :img, :status,
+       VALUES (:mid, :name, :sku, :cat, :categoryId, :price, :stock, :pg, :ratio, :desc, :img, :status,
          :dataSource, :createdByType, :createdById, :createdByName)`,
       payload
     )
@@ -585,7 +616,7 @@ async function saveSupplyGoods(body, auth = null) {
       { id }
     )
   }
-  return { id }
+  return { id, categoryId: payload.categoryId, category: payload.cat }
 }
 
 /* ---------- orders ---------- */

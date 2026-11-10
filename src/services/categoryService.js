@@ -79,7 +79,36 @@ async function getCategoryById(id) {
   return hit
 }
 
-/** 类目名与门店经营类目宽松匹配（支持「门店餐饮」对「餐饮」） */
+/**
+ * 新建/编辑商品时解析启用中的类目。
+ * 优先 categoryId；否则按名称在同角色启用类目中匹配。
+ */
+async function resolveActiveCategory(role, { categoryId, category, categoryName, allowEmpty = false } = {}) {
+  const r = normalizeRole(role)
+  const cats = await listCategories(r, { activeOnly: true })
+  const cid = Number(categoryId) || 0
+  if (cid) {
+    const hit = cats.find((c) => Number(c.id) === cid)
+    if (!hit) throw new HttpError(400, '请选择当前启用的商品类目')
+    return { categoryId: Number(hit.id), category: hit.name }
+  }
+  const name = String(categoryName || category || '').trim()
+  if (!name) {
+    if (allowEmpty) return { categoryId: null, category: '' }
+    if (!cats.length) throw new HttpError(400, '暂无启用类目，请先在运营台「商品类目」中添加并启用')
+    throw new HttpError(400, '请选择商品类目')
+  }
+  const hit = cats.find((c) => String(c.name) === name)
+  if (!hit) {
+    throw new HttpError(
+      400,
+      `类目「${name}」未启用或不属于当前角色，请从启用类目中选择`
+    )
+  }
+  return { categoryId: Number(hit.id), category: hit.name }
+}
+
+/** 类目名与门店经营类目宽松匹配（兼容旧数据） */
 function merchantMatchesCategory(merchant, cat) {
   if (!merchant || !cat) return false
   if (String(merchant.role || '') !== String(cat.role || '')) return false
@@ -93,10 +122,24 @@ function merchantMatchesCategory(merchant, cat) {
   return keys.some((k) => name.includes(k) && biz.includes(k))
 }
 
+function goodsMatchesCategory(goods, cat) {
+  if (!goods || !cat) return false
+  const cid = Number(goods.categoryId || goods.category_id) || 0
+  if (cid && cid === Number(cat.id)) return true
+  const name = String(goods.category || '').trim()
+  return Boolean(name && name === String(cat.name || '').trim())
+}
+
 async function listMerchantsByCategory(categoryId, opts = {}) {
   const cat = await getCategoryById(categoryId)
   if (Number(cat.status) === 0) throw new HttpError(404, '类目已停用')
   const role = cat.role
+  const goodsTable =
+    role === 'cross' ? 'cross_goods' : role === 'supply' ? 'supply_goods' : 'stall_goods'
+  const saleSql =
+    role === 'supply'
+      ? 'IFNULL(g.status,0)=1'
+      : 'IFNULL(g.on_sale,0)=1'
   let rows
   try {
     rows = await query(
@@ -106,15 +149,23 @@ async function listMerchantsByCategory(categoryId, opts = {}) {
               CASE WHEN m.status=1 THEN 1 ELSE 0 END AS open,
               IFNULL(NULLIF(m.biz_type,''), '') AS bizType,
               IFNULL(NULLIF(m.biz_type,''), '') AS category,
-              IFNULL(NULLIF(m.biz_type,''), '') AS tag
+              IFNULL(NULLIF(m.biz_type,''), '') AS tag,
+              (
+                SELECT COUNT(*) FROM ${goodsTable} g
+                WHERE g.merchant_id=m.id AND g.deleted_at IS NULL AND ${saleSql}
+                  AND (
+                    g.category_id=:cid
+                    OR (IFNULL(g.category_id,0)=0 AND g.category=:cname)
+                  )
+              ) AS goodsCount
        FROM merchants m
        WHERE m.role=:role AND m.status=1 AND m.deleted_at IS NULL
          AND ${PAY_READY_SQL}
        ORDER BY m.id DESC`,
-      { role }
+      { role, cid: Number(cat.id), cname: cat.name }
     )
   } catch (e) {
-    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || /Unknown column.*wx_sub_mch/i.test(String(e.message || ''))))) {
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || /Unknown column.*wx_sub_mch|category_id/i.test(String(e.message || ''))))) {
       throw e
     }
     rows = await query(
@@ -124,25 +175,199 @@ async function listMerchantsByCategory(categoryId, opts = {}) {
               CASE WHEN m.status=1 THEN 1 ELSE 0 END AS open,
               IFNULL(NULLIF(m.biz_type,''), '') AS bizType,
               IFNULL(NULLIF(m.biz_type,''), '') AS category,
-              IFNULL(NULLIF(m.biz_type,''), '') AS tag
+              IFNULL(NULLIF(m.biz_type,''), '') AS tag,
+              (
+                SELECT COUNT(*) FROM ${goodsTable} g
+                WHERE g.merchant_id=m.id AND g.deleted_at IS NULL AND ${saleSql}
+                  AND g.category=:cname
+              ) AS goodsCount
        FROM merchants m
        WHERE m.role=:role AND m.status=1 AND m.deleted_at IS NULL
+         AND ${PAY_READY_SQL}
        ORDER BY m.id DESC`,
-      { role }
+      { role, cname: cat.name }
+    ).catch(async () =>
+      query(
+        `SELECT m.id, m.name, m.city, m.address, m.latitude, m.longitude, m.role, m.status,
+                m.cover_hue AS coverHue, m.cover_url AS coverImage, m.materials_json AS materialsJson,
+                LEFT(m.name,1) AS initial,
+                CASE WHEN m.status=1 THEN 1 ELSE 0 END AS open,
+                IFNULL(NULLIF(m.biz_type,''), '') AS bizType,
+                IFNULL(NULLIF(m.biz_type,''), '') AS category,
+                IFNULL(NULLIF(m.biz_type,''), '') AS tag, 0 AS goodsCount
+         FROM merchants m
+         WHERE m.role=:role AND m.status=1 AND m.deleted_at IS NULL
+         ORDER BY m.id DESC`,
+        { role }
+      )
     )
   }
-  const matched = rows.filter((m) => merchantMatchesCategory(m, cat)).map((m) => {
-    const enriched = enrichCoverRow(m)
-    return {
-      ...enriched,
-      role,
-      roleLabel: ROLE_ACTION[role] || ROLE_LABEL[role] || role,
-      categoryName: cat.name
-    }
-  })
+  const matched = rows
+    .filter((m) => Number(m.goodsCount) > 0 || merchantMatchesCategory(m, cat))
+    .map((m) => {
+      const enriched = enrichCoverRow(m)
+      return {
+        ...enriched,
+        role,
+        roleLabel: ROLE_ACTION[role] || ROLE_LABEL[role] || role,
+        categoryName: cat.name,
+        goodsCount: Number(m.goodsCount) || 0
+      }
+    })
   return {
     category: cat,
     list: applyGeo(matched, opts)
+  }
+}
+
+/** C 端分类详情：按类目列出上架商品（绑定 category_id 或同名 category） */
+async function listGoodsByCategory(categoryId, opts = {}) {
+  const cat = await getCategoryById(categoryId)
+  if (Number(cat.status) === 0) throw new HttpError(404, '类目已停用')
+  const role = cat.role
+  const limit = Math.min(Math.max(Number(opts.limit) || 100, 1), 200)
+  let rows = []
+  if (role === 'stall') {
+    try {
+      rows = await query(
+        `SELECT g.id, g.name, g.price, g.points_grant AS pointsGrant, g.category, g.category_id AS categoryId,
+                g.image_url AS coverImage, g.image_url AS imageUrl, g.sku_code AS sku, g.stock,
+                m.id AS merchantId, m.name AS shopName, m.city, m.address, m.role,
+                m.cover_url AS shopCover, m.cover_hue AS coverHue, m.materials_json AS materialsJson
+         FROM stall_goods g
+         JOIN merchants m ON m.id=g.merchant_id
+         WHERE g.deleted_at IS NULL AND IFNULL(g.on_sale,0)=1
+           AND m.status=1 AND m.deleted_at IS NULL AND m.role='stall'
+           AND ${PAY_READY_SQL}
+           AND (g.category_id=:cid OR (IFNULL(g.category_id,0)=0 AND g.category=:cname))
+         ORDER BY g.id DESC LIMIT ${limit}`,
+        { cid: Number(cat.id), cname: cat.name }
+      )
+    } catch (e) {
+      if (!/Unknown column.*category_id|wx_sub/i.test(String(e.message || ''))) throw e
+      rows = await query(
+        `SELECT g.id, g.name, g.price, g.points_grant AS pointsGrant, g.category, NULL AS categoryId,
+                g.image_url AS coverImage, g.image_url AS imageUrl, g.sku_code AS sku, g.stock,
+                m.id AS merchantId, m.name AS shopName, m.city, m.address, m.role,
+                m.cover_url AS shopCover, m.cover_hue AS coverHue, m.materials_json AS materialsJson
+         FROM stall_goods g
+         JOIN merchants m ON m.id=g.merchant_id
+         WHERE g.deleted_at IS NULL AND IFNULL(g.on_sale,0)=1
+           AND m.status=1 AND m.deleted_at IS NULL AND m.role='stall'
+           AND ${PAY_READY_SQL}
+           AND g.category=:cname
+         ORDER BY g.id DESC LIMIT ${limit}`,
+        { cname: cat.name }
+      )
+    }
+  } else if (role === 'cross') {
+    try {
+      rows = await query(
+        `SELECT g.id, g.name, g.points_need AS pointsNeed, g.cash_price AS cashPrice, g.price,
+                g.category, g.category_id AS categoryId,
+                g.image_url AS coverImage, g.image_url AS imageUrl, g.sku_code AS sku, g.stock,
+                m.id AS merchantId, m.name AS shopName, m.city, m.address, m.role,
+                m.cover_url AS shopCover, m.cover_hue AS coverHue, m.materials_json AS materialsJson
+         FROM cross_goods g
+         JOIN merchants m ON m.id=g.merchant_id
+         WHERE g.deleted_at IS NULL AND IFNULL(g.on_sale,0)=1
+           AND m.status=1 AND m.deleted_at IS NULL AND m.role='cross'
+           AND ${PAY_READY_SQL}
+           AND (g.category_id=:cid OR (IFNULL(g.category_id,0)=0 AND g.category=:cname))
+         ORDER BY g.id DESC LIMIT ${limit}`,
+        { cid: Number(cat.id), cname: cat.name }
+      )
+    } catch (e) {
+      if (!/Unknown column/i.test(String(e.message || ''))) throw e
+      rows = await query(
+        `SELECT g.id, g.name, g.points_need AS pointsNeed, g.cash_price AS cashPrice,
+                g.category, NULL AS categoryId,
+                g.image_url AS coverImage, g.image_url AS imageUrl, g.sku_code AS sku,
+                m.id AS merchantId, m.name AS shopName, m.city, m.address, m.role,
+                m.cover_url AS shopCover, m.cover_hue AS coverHue, m.materials_json AS materialsJson
+         FROM cross_goods g
+         JOIN merchants m ON m.id=g.merchant_id
+         WHERE g.deleted_at IS NULL AND IFNULL(g.on_sale,0)=1
+           AND m.status=1 AND m.deleted_at IS NULL AND m.role='cross'
+           AND ${PAY_READY_SQL}
+           AND g.category=:cname
+         ORDER BY g.id DESC LIMIT ${limit}`,
+        { cname: cat.name }
+      )
+    }
+  } else {
+    try {
+      rows = await query(
+        `SELECT g.id, g.name, g.price, g.points_grant AS pointsGrant, g.category, g.category_id AS categoryId,
+                g.image_url AS coverImage, g.image_url AS imageUrl, g.sku_code AS sku, g.stock,
+                m.id AS merchantId, m.name AS shopName, m.city, m.address, m.role,
+                m.cover_url AS shopCover, m.cover_hue AS coverHue, m.materials_json AS materialsJson
+         FROM supply_goods g
+         JOIN merchants m ON m.id=g.merchant_id
+         WHERE g.deleted_at IS NULL AND IFNULL(g.status,0)=1
+           AND m.status=1 AND m.deleted_at IS NULL AND m.role='supply'
+           AND ${PAY_READY_SQL}
+           AND (g.category_id=:cid OR (IFNULL(g.category_id,0)=0 AND g.category=:cname))
+         ORDER BY g.id DESC LIMIT ${limit}`,
+        { cid: Number(cat.id), cname: cat.name }
+      )
+    } catch (e) {
+      if (!/Unknown column/i.test(String(e.message || ''))) throw e
+      rows = await query(
+        `SELECT g.id, g.name, g.price, g.points_grant AS pointsGrant, g.category, NULL AS categoryId,
+                g.image_url AS coverImage, g.image_url AS imageUrl, g.sku_code AS sku, g.stock,
+                m.id AS merchantId, m.name AS shopName, m.city, m.address, m.role,
+                m.cover_url AS shopCover, m.cover_hue AS coverHue, m.materials_json AS materialsJson
+         FROM supply_goods g
+         JOIN merchants m ON m.id=g.merchant_id
+         WHERE g.deleted_at IS NULL AND IFNULL(g.status,0)=1
+           AND m.status=1 AND m.deleted_at IS NULL AND m.role='supply'
+           AND ${PAY_READY_SQL}
+           AND g.category=:cname
+         ORDER BY g.id DESC LIMIT ${limit}`,
+        { cname: cat.name }
+      )
+    }
+  }
+
+  const list = rows.map((r) => {
+    const enriched = enrichCoverRow({
+      ...r,
+      coverImage: r.coverImage || r.shopCover,
+      materialsJson: r.materialsJson
+    })
+    const price =
+      r.price != null
+        ? Number(r.price)
+        : r.cashPrice != null
+          ? Number(r.cashPrice)
+          : null
+    return {
+      id: Number(r.id),
+      name: r.name,
+      price,
+      cashPrice: r.cashPrice != null ? Number(r.cashPrice) : null,
+      pointsNeed: r.pointsNeed != null ? Number(r.pointsNeed) : null,
+      pointsGrant: r.pointsGrant != null ? Number(r.pointsGrant) : null,
+      category: r.category || cat.name,
+      categoryId: r.categoryId != null ? Number(r.categoryId) : Number(cat.id),
+      coverImage: enriched.coverImage || r.coverImage || '',
+      imageUrl: enriched.coverImage || r.imageUrl || '',
+      sku: r.sku || '',
+      stock: r.stock,
+      merchantId: Number(r.merchantId),
+      shopName: r.shopName,
+      city: r.city,
+      address: r.address,
+      role,
+      roleLabel: ROLE_ACTION[role] || ROLE_LABEL[role] || role
+    }
+  })
+
+  return {
+    category: cat,
+    list,
+    total: list.length
   }
 }
 
@@ -225,6 +450,9 @@ module.exports = {
   listCategories,
   listPublicCategories,
   listMerchantsByCategory,
+  listGoodsByCategory,
+  resolveActiveCategory,
+  goodsMatchesCategory,
   getCategoryById,
   saveCategory,
   deleteCategory,

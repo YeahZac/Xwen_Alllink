@@ -25,9 +25,9 @@
       <input class="field__input" data-key="sku" value="{{form.sku}}" bindinput="onField" placeholder="留空自动生成" />
     </view>
     <view class="field">
-      <text class="field__label">分类</text>
-      <picker range="{{catOptions}}" bindchange="onCat">
-        <view class="field__pick">{{form.category}}</view>
+      <text class="field__label">商品类目 <text class="req">*</text></text>
+      <picker range="{{catOptions}}" range-key="name" value="{{catIndex}}" bindchange="onCat">
+        <view class="field__pick">{{form.category || '请选择启用中的类目'}}</view>
       </picker>
     </view>
     <view class="field" wx:if="{{role === 'stall'}}">

@@ -1346,12 +1346,14 @@ async function showStoreDetail(id, listReload) {
     if (typeof listReload === 'function') listReload()
   }
 
-  const editGoods = (g) => {
+  const editGoods = async (g) => {
     const isCross = d.role === 'cross'
+    const catField = await categorySelectHtml(d.role, g)
     openModal(
       `编辑商品 · ${g.name}`,
       field('name', '品名', g.name) +
         field('sku', 'SKU', g.sku || g.skuCode || '') +
+        catField +
         field('price', isCross ? '现金价' : '价格', g.price, 'number') +
         (isCross ? field('pointsNeed', '所需积分', g.pointsNeed || 0, 'number') : '') +
         (d.role !== 'cross' ? field('pointsGrant', '赠送积分额度', g.pointsGrant || 0, 'number') : '') +
@@ -1362,11 +1364,18 @@ async function showStoreDetail(id, listReload) {
         }) +
         mediaField('imageUrl', '商品图', g.imageUrl || '', 'goods'),
       async () => {
+        const cat = readCategorySelect()
+        if (!cat.categoryId) {
+          alert('请选择启用中的商品类目')
+          throw new Error('请选择启用中的商品类目')
+        }
         await api(`/admin/ops/skus/${d.role}/${g.id}`, {
           method: 'PUT',
           body: JSON.stringify({
             name: formVal('name'),
             sku: formVal('sku'),
+            categoryId: cat.categoryId,
+            category: cat.category,
             price: Number(formVal('price')),
             pointsNeed: Number(formVal('pointsNeed') || g.pointsNeed || 0),
             pointsGrant: Number(formVal('pointsGrant') || g.pointsGrant || 0),
@@ -1519,40 +1528,52 @@ async function showStoreDetail(id, listReload) {
 
   const btnAdd = document.getElementById('btnAddGoods')
   if (btnAdd) {
-    btnAdd.onclick = () => {
-      const isCross = d.role === 'cross'
-      openModal(
-        `新增商品 · ${d.name}`,
-        (d.catalogReady
-          ? ''
-          : '<p class="muted">该店尚未进件完成或支付未就绪：可先保存为下架草稿；上架将被拦截。</p>') +
-          field('name', '品名', '') +
-          field('sku', 'SKU（可空自动生成）', '') +
-          field('price', isCross ? '现金价' : '价格', '0', 'number') +
-          (isCross ? field('pointsNeed', '所需积分', '0', 'number') : field('pointsGrant', '赠送积分额度', '0', 'number')) +
-          field('stock', '库存', '100', 'number') +
-          selectOnOff('onSale', d.catalogReady ? 1 : 0, { onLabel: '上架', offLabel: '下架' }) +
-          mediaField('imageUrl', '商品图', '', 'goods'),
-        async () => {
-          await api(`/admin/ops/skus/${d.role}`, {
-            method: 'POST',
-            body: JSON.stringify({
-              merchantId: id,
-              name: formVal('name'),
-              sku: formVal('sku'),
-              price: Number(formVal('price')),
-              pointsNeed: Number(formVal('pointsNeed') || 0),
-              pointsGrant: Number(formVal('pointsGrant') || 0),
-              stock: Number(formVal('stock')),
-              onSale: Number(formVal('onSale')),
-              imageUrl: formVal('imageUrl')
+    btnAdd.onclick = () =>
+      runAction(async () => {
+        const isCross = d.role === 'cross'
+        const catField = await categorySelectHtml(d.role, {})
+        openModal(
+          `新增商品 · ${d.name}`,
+          (d.catalogReady
+            ? ''
+            : '<p class="muted">该店尚未进件完成或支付未就绪：可先保存为下架草稿；上架将被拦截。</p>') +
+            field('name', '品名', '') +
+            field('sku', 'SKU（可空自动生成）', '') +
+            catField +
+            field('price', isCross ? '现金价' : '价格', '0', 'number') +
+            (isCross
+              ? field('pointsNeed', '所需积分', '0', 'number')
+              : field('pointsGrant', '赠送积分额度', '0', 'number')) +
+            field('stock', '库存', '100', 'number') +
+            selectOnOff('onSale', d.catalogReady ? 1 : 0, { onLabel: '上架', offLabel: '下架' }) +
+            mediaField('imageUrl', '商品图', '', 'goods'),
+          async () => {
+            const cat = readCategorySelect()
+            if (!cat.categoryId) {
+              alert('请选择启用中的商品类目')
+              throw new Error('请选择启用中的商品类目')
+            }
+            await api(`/admin/ops/skus/${d.role}`, {
+              method: 'POST',
+              body: JSON.stringify({
+                merchantId: id,
+                name: formVal('name'),
+                sku: formVal('sku'),
+                categoryId: cat.categoryId,
+                category: cat.category,
+                price: Number(formVal('price')),
+                pointsNeed: Number(formVal('pointsNeed') || 0),
+                pointsGrant: Number(formVal('pointsGrant') || 0),
+                stock: Number(formVal('stock')),
+                onSale: Number(formVal('onSale')),
+                imageUrl: formVal('imageUrl')
+              })
             })
-          })
-          await refresh()
-        },
-        true
-      )
-    }
+            await refresh()
+          },
+          true
+        )
+      })
   }
 }
 
@@ -2760,7 +2781,7 @@ function openCategoryModal(row, reload) {
       mediaField('imageUrl', '小程序类目封面图', r.imageUrl || '', 'category') +
       field('sortOrder', '排序（越小越靠前）', r.sortOrder ?? 10, 'number') +
       selectOnOff('status', r.status ?? 1, { onLabel: '启用', offLabel: '停用' }) +
-      `<p class="muted">启用中的类目都会出现在小程序分类首页；点击类目进入关联商家二级列表。</p>`,
+      `<p class="muted">启用中的类目会出现在小程序「分类」；新建门店商品须选择启用类目，点击类目可查看该类目下的上架商品。</p>`,
     async () => {
       await api('/admin/goods-categories', {
         method: 'POST',
@@ -2778,23 +2799,44 @@ function openCategoryModal(row, reload) {
   )
 }
 
+async function categorySelectHtml(role, g = {}) {
+  const cats = await api(`/admin/goods-categories?role=${encodeURIComponent(role)}`).catch(() => [])
+  const enabled = (cats || []).filter((c) => Number(c.status) === 1)
+  const selectedCatId = g.categoryId || ''
+  const catOptions =
+    enabled.length > 0
+      ? `<option value="">请选择启用类目</option>` +
+        enabled
+          .map((c) => {
+            const selected =
+              String(selectedCatId) === String(c.id) ||
+              (!selectedCatId && String(g.category || '') === String(c.name))
+            return `<option value="${esc(c.id)}" data-name="${esc(c.name)}" ${
+              selected ? 'selected' : ''
+            }>${esc(c.name)}</option>`
+          })
+          .join('')
+      : `<option value="">（请先在商品类目中添加并启用）</option>`
+  const roleLabel = role === 'stall' ? '地摊' : role === 'cross' ? '异业门店' : '供应链'
+  return `<label>商品类目（${roleLabel}·仅启用中）<select id="f_categoryId">${catOptions}</select></label>`
+}
+
+function readCategorySelect() {
+  const catSel = $('f_categoryId')
+  const categoryId = catSel ? Number(catSel.value || 0) : 0
+  const category =
+    catSel && catSel.selectedOptions && catSel.selectedOptions[0]
+      ? catSel.selectedOptions[0].getAttribute('data-name') ||
+        catSel.selectedOptions[0].textContent
+      : ''
+  return { categoryId, category }
+}
+
 async function editGoods(type, g, reload) {
   const isNew = !g || !g.id
   g = g || { merchantId: '', name: '', onSale: 1, status: 1, imageUrl: '', category: '' }
   const shops = await loadStoreOptions(type)
-  const cats = await api(`/admin/goods-categories?role=${encodeURIComponent(type)}`).catch(() => [])
-  const enabled = (cats || []).filter((c) => Number(c.status) === 1)
-  const catOptions =
-    enabled.length > 0
-      ? enabled
-          .map(
-            (c) =>
-              `<option value="${esc(c.name)}" ${String(g.category || '') === String(c.name) ? 'selected' : ''}>${esc(c.name)}</option>`
-          )
-          .join('')
-      : `<option value="${esc(g.category || '')}">${esc(g.category || '（请先在商品类目中添加）')}</option>`
-  const roleLabel = type === 'stall' ? '地摊' : type === 'cross' ? '异业门店' : '供应链'
-  const catField = `<label>类目（${roleLabel}角色通用，非某家店专属）<select id="f_category">${catOptions}</select></label>`
+  const catField = await categorySelectHtml(type, g)
   const storeField = `<label>所属门店（必选）<select id="f_merchantId">${storeOptionHtml(
     shops,
     g.merchantId
@@ -2833,13 +2875,19 @@ async function editGoods(type, g, reload) {
       alert('请选择所属门店')
       throw new Error('请选择所属门店')
     }
+    const cat = readCategorySelect()
+    if (!cat.categoryId) {
+      alert('请选择启用中的商品类目')
+      throw new Error('请选择启用中的商品类目')
+    }
     const body = {
       id: g.id,
       merchantId,
       name: formVal('name'),
       price: Number(formVal('price') || 0),
       pointsGrant: Number(formVal('pointsGrant') || 0),
-      category: $('f_category') ? $('f_category').value : formVal('category'),
+      categoryId: cat.categoryId,
+      category: cat.category,
       stock: Number(formVal('stock') || 0),
       onSale: Number(formVal('onSale') || 0),
       allowRemark: Number(formVal('allowRemark') || 0),

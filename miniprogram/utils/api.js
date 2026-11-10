@@ -205,6 +205,13 @@ const api = {
       timeout: opts.timeout || 25000
     }),
 
+  categoryGoods: (id, q, opts = {}) =>
+    request({
+      path: `/goods-categories/${id}/goods${toQuery(q)}`,
+      auth: false,
+      timeout: opts.timeout || 25000
+    }),
+
   crossStore: (id) => request({ path: `/cross-stores/${id}`, auth: false }),
 
   supplyGoods: () => request({ path: '/supply/goods', auth: false }),

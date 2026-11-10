@@ -485,18 +485,38 @@ async function getStoreDetail(merchantId) {
 
   const goodsTable =
     m.role === 'stall' ? 'stall_goods' : m.role === 'cross' ? 'cross_goods' : 'supply_goods'
-  const goods = await query(
-    `SELECT id, name, sku_code AS skuCode, image_url AS imageUrl, sales_count AS salesCount, stock,
-            ${
-              m.role === 'cross'
-                ? 'cash_price AS price, points_need AS pointsNeed, on_sale AS onSale'
-                : m.role === 'supply'
-                  ? 'price, points_grant AS pointsGrant, status AS onSale'
-                  : 'price, points_grant AS pointsGrant, on_sale AS onSale'
-            }
-     FROM ${goodsTable} WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC LIMIT 100`,
-    { id: merchantId }
-  )
+  let goods
+  try {
+    goods = await query(
+      `SELECT id, name, sku_code AS skuCode, image_url AS imageUrl, sales_count AS salesCount, stock,
+              category, category_id AS categoryId,
+              ${
+                m.role === 'cross'
+                  ? 'cash_price AS price, points_need AS pointsNeed, on_sale AS onSale'
+                  : m.role === 'supply'
+                    ? 'price, points_grant AS pointsGrant, status AS onSale'
+                    : 'price, points_grant AS pointsGrant, on_sale AS onSale'
+              }
+       FROM ${goodsTable} WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC LIMIT 100`,
+      { id: merchantId }
+    )
+  } catch (e) {
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || /Unknown column.*category/i.test(String(e.message || ''))))) {
+      throw e
+    }
+    goods = await query(
+      `SELECT id, name, sku_code AS skuCode, image_url AS imageUrl, sales_count AS salesCount, stock,
+              ${
+                m.role === 'cross'
+                  ? 'cash_price AS price, points_need AS pointsNeed, on_sale AS onSale'
+                  : m.role === 'supply'
+                    ? 'price, points_grant AS pointsGrant, status AS onSale'
+                    : 'price, points_grant AS pointsGrant, on_sale AS onSale'
+              }
+       FROM ${goodsTable} WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC LIMIT 100`,
+      { id: merchantId }
+    )
+  }
 
   const coverUrl = resolveMerchantCover(m.cover_url, materials)
   const bizOwnerAdminId = m.biz_owner_admin_id != null ? Number(m.biz_owner_admin_id) : null
@@ -988,6 +1008,12 @@ async function createSku(type, body = {}, auth = null) {
   const img = body.imageUrl || null
   const onSale = body.onSale === 0 ? 0 : 1
   if (onSale) await assertCanOnSale(merchantId)
+  const categoryService = require('./categoryService')
+  const bound = await categoryService.resolveActiveCategory(role, {
+    categoryId: body.categoryId,
+    category: body.category,
+    allowEmpty: false
+  })
   const prov = provenanceFields({
     source: body.dataSource || (isTestGoodsName(name) ? 'test' : 'manual'),
     name,
@@ -998,7 +1024,9 @@ async function createSku(type, body = {}, auth = null) {
     dataSource: prov.dataSource,
     createdByType: prov.createdByType,
     createdById: prov.createdById,
-    createdByName: prov.createdByName
+    createdByName: prov.createdByName,
+    cat: bound.category,
+    categoryId: bound.categoryId
   }
   let insertId = 0
   async function insertWithProvenance(sqlWith, params, sqlFallback) {
@@ -1014,9 +1042,9 @@ async function createSku(type, body = {}, auth = null) {
   if (role === 'stall') {
     insertId = await insertWithProvenance(
       `INSERT INTO stall_goods
-        (merchant_id, name, sku_code, price, points_grant, category, desc_text, image_url, stock, on_sale,
+        (merchant_id, name, sku_code, price, points_grant, category, category_id, desc_text, image_url, stock, on_sale,
          data_source, created_by_type, created_by_id, created_by_name)
-       VALUES (:mid, :name, :sku, :price, :pg, :cat, :desc, :img, :stock, :onSale,
+       VALUES (:mid, :name, :sku, :price, :pg, :cat, :categoryId, :desc, :img, :stock, :onSale,
          :dataSource, :createdByType, :createdById, :createdByName)`,
       {
         mid: merchantId,
@@ -1024,7 +1052,6 @@ async function createSku(type, body = {}, auth = null) {
         sku,
         price: Number(body.price) || 0,
         pg: Number(body.pointsGrant) || 0,
-        cat: body.category || '主食',
         desc: body.desc || '',
         img,
         stock: Number(body.stock) || 9999,
@@ -1041,7 +1068,7 @@ async function createSku(type, body = {}, auth = null) {
           sku,
           price: Number(body.price) || 0,
           pg: Number(body.pointsGrant) || 0,
-          cat: body.category || '主食',
+          cat: provenance.cat,
           desc: body.desc || '',
           img,
           stock: Number(body.stock) || 9999,
@@ -1057,9 +1084,9 @@ async function createSku(type, body = {}, auth = null) {
   } else if (role === 'cross') {
     insertId = await insertWithProvenance(
       `INSERT INTO cross_goods
-        (merchant_id, name, sku_code, points_need, cash_price, desc_text, image_url, stock, on_sale,
+        (merchant_id, name, sku_code, category, category_id, points_need, cash_price, desc_text, image_url, stock, on_sale,
          data_source, created_by_type, created_by_id, created_by_name)
-       VALUES (:mid, :name, :sku, :pn, :cp, :desc, :img, :stock, :onSale,
+       VALUES (:mid, :name, :sku, :cat, :categoryId, :pn, :cp, :desc, :img, :stock, :onSale,
          :dataSource, :createdByType, :createdById, :createdByName)`,
       {
         mid: merchantId,
@@ -1098,9 +1125,9 @@ async function createSku(type, body = {}, auth = null) {
   } else {
     insertId = await insertWithProvenance(
       `INSERT INTO supply_goods
-        (merchant_id, name, sku_code, price, stock, points_grant, image_url, status,
+        (merchant_id, name, sku_code, category, category_id, price, stock, points_grant, image_url, status,
          data_source, created_by_type, created_by_id, created_by_name)
-       VALUES (:mid, :name, :sku, :price, :stock, :pg, :img, :st,
+       VALUES (:mid, :name, :sku, :cat, :categoryId, :price, :stock, :pg, :img, :st,
          :dataSource, :createdByType, :createdById, :createdByName)`,
       {
         mid: merchantId,
@@ -1115,12 +1142,13 @@ async function createSku(type, body = {}, auth = null) {
       },
       {
         sql: `INSERT INTO supply_goods
-          (merchant_id, name, sku_code, price, stock, points_grant, image_url, status)
-         VALUES (:mid, :name, :sku, :price, :stock, :pg, :img, :st)`,
+          (merchant_id, name, sku_code, category, price, stock, points_grant, image_url, status)
+         VALUES (:mid, :name, :sku, :cat, :price, :stock, :pg, :img, :st)`,
         params: {
           mid: merchantId,
           name,
           sku,
+          cat: provenance.cat,
           price: Number(body.price) || 0,
           stock: Number(body.stock) || 0,
           pg: Number(body.pointsGrant) || 0,
@@ -1262,61 +1290,129 @@ async function softDeleteGoods(type, id) {
 }
 
 async function saveSku(type, body) {
-  const table = type === 'stall' ? 'stall_goods' : type === 'cross' ? 'cross_goods' : 'supply_goods'
   if (!body.id) throw new HttpError(400, '缺少商品ID')
   const onSale = body.onSale === 0 ? 0 : 1
   if (onSale) await assertGoodsCanOnSale(type, body.id)
   const safeName = body.name != null ? assertProductionGoodsName(body.name) : null
-  if (type === 'stall') {
-    await query(
-      `UPDATE stall_goods SET name=:n, sku_code=:sku, price=:p, points_grant=:pg, stock=:s,
-       sales_count=:sales, image_url=:img, on_sale=:onSale WHERE id=:id`,
-      {
-        id: body.id,
-        n: safeName != null ? safeName : body.name,
-        sku: body.sku || null,
-        p: Number(body.price),
-        pg: Number(body.pointsGrant) || 0,
-        s: Number(body.stock) || 0,
-        sales: Number(body.sales) || 0,
-        img: body.imageUrl || null,
-        onSale
-      }
-    )
-  } else if (type === 'cross') {
-    await query(
-      `UPDATE cross_goods SET name=:n, sku_code=:sku, points_need=:pn, cash_price=:cp,
-       stock=:s, sales_count=:sales, image_url=:img, on_sale=:onSale WHERE id=:id`,
-      {
-        id: body.id,
-        n: safeName != null ? safeName : body.name,
-        sku: body.sku || null,
-        pn: Number(body.pointsNeed) || 0,
-        cp: Number(body.price || body.cashPrice) || 0,
-        s: Number(body.stock) || 0,
-        sales: Number(body.sales) || 0,
-        img: body.imageUrl || null,
-        onSale
-      }
-    )
-  } else {
-    await query(
-      `UPDATE supply_goods SET name=:n, sku_code=:sku, price=:p, stock=:s, points_grant=:pg,
-       sales_count=:sales, image_url=:img, status=:st WHERE id=:id`,
-      {
-        id: body.id,
-        n: safeName != null ? safeName : body.name,
-        sku: body.sku || null,
-        p: Number(body.price),
-        s: Number(body.stock) || 0,
-        pg: Number(body.pointsGrant) || 0,
-        sales: Number(body.sales) || 0,
-        img: body.imageUrl || null,
-        st: onSale
-      }
-    )
+  const categoryService = require('./categoryService')
+  let bound = null
+  if (body.categoryId != null || body.category != null || body.categoryName != null) {
+    bound = await categoryService.resolveActiveCategory(type, {
+      categoryId: body.categoryId,
+      category: body.category,
+      categoryName: body.categoryName,
+      allowEmpty: false
+    })
   }
-  return { id: Number(body.id) }
+  const base = {
+    id: body.id,
+    n: safeName != null ? safeName : body.name,
+    sku: body.sku || null,
+    img: body.imageUrl || null,
+    onSale,
+    cat: bound ? bound.category : null,
+    categoryId: bound ? bound.categoryId : null
+  }
+  if (type === 'stall') {
+    const params = {
+      ...base,
+      p: Number(body.price),
+      pg: Number(body.pointsGrant) || 0,
+      s: Number(body.stock) || 0,
+      sales: Number(body.sales) || 0
+    }
+    try {
+      if (bound) {
+        await query(
+          `UPDATE stall_goods SET name=:n, sku_code=:sku, price=:p, points_grant=:pg, stock=:s,
+           sales_count=:sales, image_url=:img, on_sale=:onSale, category=:cat, category_id=:categoryId
+           WHERE id=:id`,
+          params
+        )
+      } else {
+        await query(
+          `UPDATE stall_goods SET name=:n, sku_code=:sku, price=:p, points_grant=:pg, stock=:s,
+           sales_count=:sales, image_url=:img, on_sale=:onSale WHERE id=:id`,
+          params
+        )
+      }
+    } catch (e) {
+      if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+      await query(
+        `UPDATE stall_goods SET name=:n, sku_code=:sku, price=:p, points_grant=:pg, stock=:s,
+         sales_count=:sales, image_url=:img, on_sale=:onSale WHERE id=:id`,
+        params
+      )
+    }
+  } else if (type === 'cross') {
+    const params = {
+      ...base,
+      pn: Number(body.pointsNeed) || 0,
+      cp: Number(body.price || body.cashPrice) || 0,
+      s: Number(body.stock) || 0,
+      sales: Number(body.sales) || 0
+    }
+    try {
+      if (bound) {
+        await query(
+          `UPDATE cross_goods SET name=:n, sku_code=:sku, points_need=:pn, cash_price=:cp,
+           stock=:s, sales_count=:sales, image_url=:img, on_sale=:onSale, category=:cat, category_id=:categoryId
+           WHERE id=:id`,
+          params
+        )
+      } else {
+        await query(
+          `UPDATE cross_goods SET name=:n, sku_code=:sku, points_need=:pn, cash_price=:cp,
+           stock=:s, sales_count=:sales, image_url=:img, on_sale=:onSale WHERE id=:id`,
+          params
+        )
+      }
+    } catch (e) {
+      if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+      await query(
+        `UPDATE cross_goods SET name=:n, sku_code=:sku, points_need=:pn, cash_price=:cp,
+         stock=:s, sales_count=:sales, image_url=:img, on_sale=:onSale WHERE id=:id`,
+        params
+      )
+    }
+  } else {
+    const params = {
+      ...base,
+      p: Number(body.price),
+      s: Number(body.stock) || 0,
+      pg: Number(body.pointsGrant) || 0,
+      sales: Number(body.sales) || 0,
+      st: onSale
+    }
+    try {
+      if (bound) {
+        await query(
+          `UPDATE supply_goods SET name=:n, sku_code=:sku, price=:p, stock=:s, points_grant=:pg,
+           sales_count=:sales, image_url=:img, status=:st, category=:cat, category_id=:categoryId
+           WHERE id=:id`,
+          params
+        )
+      } else {
+        await query(
+          `UPDATE supply_goods SET name=:n, sku_code=:sku, price=:p, stock=:s, points_grant=:pg,
+           sales_count=:sales, image_url=:img, status=:st WHERE id=:id`,
+          params
+        )
+      }
+    } catch (e) {
+      if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+      await query(
+        `UPDATE supply_goods SET name=:n, sku_code=:sku, price=:p, stock=:s, points_grant=:pg,
+         sales_count=:sales, image_url=:img, status=:st WHERE id=:id`,
+        params
+      )
+    }
+  }
+  return {
+    id: Number(body.id),
+    categoryId: bound ? bound.categoryId : undefined,
+    category: bound ? bound.category : undefined
+  }
 }
 
 /**
