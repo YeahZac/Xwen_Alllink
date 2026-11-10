@@ -1045,12 +1045,123 @@ function normalizeBannerPagePath(raw) {
   return p
 }
 
-function assertBannerPayload(body) {
-  const roleScope = String(body.roleScope || '').trim()
-  if (!BANNER_ROLES[roleScope]) throw new HttpError(400, '请选择展示端')
-  const pageKey = String(body.pageKey || '').trim()
+/** 展平全部可选展示槽位：端 + 位置 */
+function listBannerPlacementSlots() {
+  const slots = []
+  Object.keys(BANNER_PAGES).forEach((roleScope) => {
+    ;(BANNER_PAGES[roleScope] || []).forEach((p) => {
+      slots.push({
+        key: `${roleScope}:${p.key}`,
+        roleScope,
+        pageKey: p.key,
+        roleLabel: BANNER_ROLES[roleScope] || roleScope,
+        pageLabel: p.label,
+        label: `${BANNER_ROLES[roleScope] || roleScope} · ${p.label}`
+      })
+    })
+  })
+  return slots
+}
+
+function placementLabel(roleScope, pageKey) {
   const pages = BANNER_PAGES[roleScope] || []
-  if (!pages.some((p) => p.key === pageKey)) throw new HttpError(400, '请选择展示位置')
+  const pageMeta = pages.find((p) => p.key === pageKey)
+  const roleLabel = BANNER_ROLES[roleScope] || roleScope
+  const pageLabel = pageMeta ? pageMeta.label : pageKey || '—'
+  return `${roleLabel} · ${pageLabel}`
+}
+
+function parseBannerPlacements(body) {
+  const slots = listBannerPlacementSlots()
+  const slotMap = new Map(slots.map((s) => [s.key, s]))
+  let raw = body.placements
+  if (!Array.isArray(raw) || !raw.length) {
+    // 兼容 placementKeys: ['consumer:index', ...]
+    if (Array.isArray(body.placementKeys) && body.placementKeys.length) {
+      raw = body.placementKeys.map((k) => {
+        const key = String(k || '').trim()
+        const hit = slotMap.get(key)
+        return hit
+          ? { roleScope: hit.roleScope, pageKey: hit.pageKey }
+          : { roleScope: key.split(':')[0], pageKey: key.split(':').slice(1).join(':') }
+      })
+    } else if (body.roleScope && body.pageKey) {
+      // 兼容旧单选
+      raw = [{ roleScope: body.roleScope, pageKey: body.pageKey }]
+    } else {
+      raw = []
+    }
+  }
+  const seen = new Set()
+  const placements = []
+  raw.forEach((item) => {
+    const roleScope = String((item && item.roleScope) || '').trim()
+    const pageKey = String((item && item.pageKey) || '').trim()
+    const key = `${roleScope}:${pageKey}`
+    if (!slotMap.has(key) || seen.has(key)) return
+    seen.add(key)
+    placements.push({
+      key,
+      roleScope,
+      pageKey,
+      roleLabel: BANNER_ROLES[roleScope] || roleScope,
+      pageLabel: (BANNER_PAGES[roleScope] || []).find((p) => p.key === pageKey)?.label || pageKey,
+      label: placementLabel(roleScope, pageKey)
+    })
+  })
+  if (!placements.length) throw new HttpError(400, '请至少选择一个展示位置')
+  return placements
+}
+
+async function replaceBannerPlacements(bannerId, placements) {
+  const bid = Number(bannerId)
+  if (!bid) return
+  await query('DELETE FROM banner_placements WHERE banner_id=:id', { id: bid })
+  for (const p of placements) {
+    await query(
+      `INSERT INTO banner_placements (banner_id, role_scope, page_key)
+       VALUES (:bid, :role, :page)`,
+      { bid, role: p.roleScope, page: p.pageKey }
+    )
+  }
+}
+
+async function loadBannerPlacementsMap(bannerIds) {
+  const ids = (bannerIds || []).map(Number).filter(Boolean)
+  if (!ids.length) return new Map()
+  try {
+    const rows = await query(
+      `SELECT banner_id AS bannerId, role_scope AS roleScope, page_key AS pageKey
+       FROM banner_placements
+       WHERE banner_id IN (${ids.map((_, i) => `:id${i}`).join(',')})
+       ORDER BY role_scope, page_key, id`,
+      Object.fromEntries(ids.map((id, i) => [`id${i}`, id]))
+    )
+    const map = new Map()
+    rows.forEach((r) => {
+      const list = map.get(Number(r.bannerId)) || []
+      list.push({
+        key: `${r.roleScope}:${r.pageKey}`,
+        roleScope: r.roleScope,
+        pageKey: r.pageKey,
+        roleLabel: BANNER_ROLES[r.roleScope] || r.roleScope,
+        pageLabel: (BANNER_PAGES[r.roleScope] || []).find((p) => p.key === r.pageKey)?.label || r.pageKey,
+        label: placementLabel(r.roleScope, r.pageKey)
+      })
+      map.set(Number(r.bannerId), list)
+    })
+    return map
+  } catch (e) {
+    if (e && (e.code === 'ER_NO_SUCH_TABLE' || e.code === 'ER_BAD_FIELD_ERROR')) return new Map()
+    throw e
+  }
+}
+
+function assertBannerPayload(body) {
+  const placements = parseBannerPlacements(body)
+  // 兼容旧列：取第一个位置写入 banners.role_scope / page_key
+  const roleScope = placements[0].roleScope
+  const pageKey = placements[0].pageKey
   // 跳转名称可选；未填则存空串（Banner 遮罩不显示标题）
   const title = String(body.title || body.jumpName || '').trim().slice(0, 64)
   const imageUrl = String(body.imageUrl || '').trim()
@@ -1080,6 +1191,7 @@ function assertBannerPayload(body) {
   return {
     roleScope,
     pageKey,
+    placements,
     title,
     imageUrl,
     linkType,
@@ -1093,48 +1205,85 @@ function assertBannerPayload(body) {
 }
 
 async function listAllBanners({ roleScope, pageKey } = {}) {
-  const params = {}
-  let where = 'WHERE 1=1'
-  if (roleScope) {
-    where += ' AND role_scope=:role'
-    params.role = roleScope
-  }
-  if (pageKey) {
-    where += ' AND page_key=:page'
-    params.page = pageKey
-  }
+  const role = String(roleScope || '').trim()
+  const page = String(pageKey || '').trim()
   let rows
   try {
-    rows = await query(
-      `SELECT id, role_scope AS roleScope, page_key AS pageKey, title, title AS jumpName,
-              sub_title AS subTitle, image_url AS imageUrl, link_url AS linkUrl,
-              link_type AS linkType, link_appid AS linkAppid, link_image_url AS linkImageUrl,
-              remark, sort_order AS sortOrder, status,
-              start_at AS startAt, end_at AS endAt
-       FROM banners ${where}
-       ORDER BY role_scope, page_key, sort_order, id`,
-      params
-    )
+    // 有 placements 表：按「包含该位置」筛选；无筛选项则列出全部 Banner
+    if (role || page) {
+      rows = await query(
+        `SELECT DISTINCT b.id, b.role_scope AS roleScope, b.page_key AS pageKey, b.title, b.title AS jumpName,
+                b.sub_title AS subTitle, b.image_url AS imageUrl, b.link_url AS linkUrl,
+                b.link_type AS linkType, b.link_appid AS linkAppid, b.link_image_url AS linkImageUrl,
+                b.remark, b.sort_order AS sortOrder, b.status,
+                b.start_at AS startAt, b.end_at AS endAt
+         FROM banners b
+         LEFT JOIN banner_placements p ON p.banner_id = b.id
+         WHERE (
+           (p.id IS NOT NULL AND (:role = '' OR p.role_scope = :role) AND (:page = '' OR p.page_key = :page))
+           OR (p.id IS NULL AND (:role = '' OR b.role_scope = :role) AND (:page = '' OR b.page_key = :page))
+         )
+         ORDER BY b.sort_order, b.id`,
+        { role, page }
+      )
+    } else {
+      rows = await query(
+        `SELECT id, role_scope AS roleScope, page_key AS pageKey, title, title AS jumpName,
+                sub_title AS subTitle, image_url AS imageUrl, link_url AS linkUrl,
+                link_type AS linkType, link_appid AS linkAppid, link_image_url AS linkImageUrl,
+                remark, sort_order AS sortOrder, status,
+                start_at AS startAt, end_at AS endAt
+         FROM banners
+         ORDER BY sort_order, id`
+      )
+    }
   } catch (e) {
-    if (!e || e.code !== 'ER_BAD_FIELD_ERROR') throw e
+    if (!(e && (e.code === 'ER_NO_SUCH_TABLE' || e.code === 'ER_BAD_FIELD_ERROR'))) throw e
+    const params = {}
+    let where = 'WHERE 1=1'
+    if (role) {
+      where += ' AND role_scope=:role'
+      params.role = role
+    }
+    if (page) {
+      where += ' AND page_key=:page'
+      params.page = page
+    }
     rows = await query(
       `SELECT id, role_scope AS roleScope, page_key AS pageKey, title, title AS jumpName,
               sub_title AS subTitle, image_url AS imageUrl, link_url AS linkUrl,
               link_type AS linkType, sort_order AS sortOrder, status
        FROM banners ${where}
-       ORDER BY role_scope, page_key, sort_order, id`,
+       ORDER BY sort_order, id`,
       params
     )
   }
+  const placeMap = await loadBannerPlacementsMap(rows.map((r) => r.id))
   return rows.map((r) => {
     const linkType = normalizeBannerLinkType(r.linkType)
-    const pages = BANNER_PAGES[r.roleScope] || []
-    const pageMeta = pages.find((p) => p.key === r.pageKey)
+    let placements = placeMap.get(Number(r.id)) || []
+    if (!placements.length && r.roleScope && r.pageKey) {
+      placements = [
+        {
+          key: `${r.roleScope}:${r.pageKey}`,
+          roleScope: r.roleScope,
+          pageKey: r.pageKey,
+          roleLabel: BANNER_ROLES[r.roleScope] || r.roleScope,
+          pageLabel: (BANNER_PAGES[r.roleScope] || []).find((p) => p.key === r.pageKey)?.label || r.pageKey,
+          label: placementLabel(r.roleScope, r.pageKey)
+        }
+      ]
+    }
     return {
       ...r,
       linkType,
+      placements,
+      placementKeys: placements.map((p) => p.key),
+      placementLabels: placements.map((p) => p.label),
       roleLabel: BANNER_ROLES[r.roleScope] || r.roleScope,
-      pageLabel: pageMeta ? pageMeta.label : r.pageKey || '—',
+      pageLabel: placements.length
+        ? placements.map((p) => p.label).join('、')
+        : placementLabel(r.roleScope, r.pageKey),
       linkTypeLabel: BANNER_LINK_TYPES[linkType] || linkType,
       remark: r.remark || r.subTitle || '',
       linkAppid: r.linkAppid || '',
@@ -1147,6 +1296,7 @@ function bannerMeta() {
   return {
     roles: Object.keys(BANNER_ROLES).map((key) => ({ key, label: BANNER_ROLES[key] })),
     pages: BANNER_PAGES,
+    placementSlots: listBannerPlacementSlots(),
     linkTypes: Object.keys(BANNER_LINK_TYPES).map((key) => ({
       key,
       label: BANNER_LINK_TYPES[key]
@@ -1157,7 +1307,8 @@ function bannerMeta() {
 
 async function saveBanner(body) {
   const p = assertBannerPayload(body)
-  if (body.id) {
+  let bannerId = body.id ? Number(body.id) : 0
+  if (bannerId) {
     try {
       await query(
         `UPDATE banners SET role_scope=:role, page_key=:page, title=:title, sub_title=:remark,
@@ -1165,7 +1316,7 @@ async function saveBanner(body) {
          remark=:remark, sort_order=:sort, status=:status, start_at=NULL, end_at=NULL
          WHERE id=:id`,
         {
-          id: Number(body.id),
+          id: bannerId,
           role: p.roleScope,
           page: p.pageKey,
           title: p.title,
@@ -1186,7 +1337,7 @@ async function saveBanner(body) {
          image_url=:img, link_url=:link, link_type=:lt, sort_order=:sort, status=:status
          WHERE id=:id`,
         {
-          id: Number(body.id),
+          id: bannerId,
           role: p.roleScope,
           page: p.pageKey,
           title: p.title,
@@ -1199,56 +1350,68 @@ async function saveBanner(body) {
         }
       )
     }
-    return { id: Number(body.id) }
+  } else {
+    try {
+      const r = await query(
+        `INSERT INTO banners
+          (role_scope, page_key, title, sub_title, image_url, link_url, link_type, link_appid,
+           link_image_url, remark, sort_order, status)
+         VALUES
+          (:role, :page, :title, :remark, :img, :link, :lt, :appid, :limg, :remark, :sort, :status)`,
+        {
+          role: p.roleScope,
+          page: p.pageKey,
+          title: p.title,
+          remark: p.remark,
+          img: p.imageUrl,
+          link: p.linkUrl,
+          lt: p.linkType,
+          appid: p.linkAppid || null,
+          limg: p.linkImageUrl || null,
+          sort: p.sortOrder,
+          status: p.status
+        }
+      )
+      bannerId = r.insertId
+    } catch (e) {
+      if (!e || e.code !== 'ER_BAD_FIELD_ERROR') throw e
+      const r = await query(
+        `INSERT INTO banners
+          (role_scope, page_key, title, sub_title, image_url, link_url, link_type, sort_order, status)
+         VALUES
+          (:role, :page, :title, :remark, :img, :link, :lt, :sort, :status)`,
+        {
+          role: p.roleScope,
+          page: p.pageKey,
+          title: p.title,
+          remark: p.remark,
+          img: p.imageUrl,
+          link: p.linkUrl,
+          lt: p.linkType,
+          sort: p.sortOrder,
+          status: p.status
+        }
+      )
+      bannerId = r.insertId
+    }
   }
   try {
-    const r = await query(
-      `INSERT INTO banners
-        (role_scope, page_key, title, sub_title, image_url, link_url, link_type, link_appid,
-         link_image_url, remark, sort_order, status)
-       VALUES
-        (:role, :page, :title, :remark, :img, :link, :lt, :appid, :limg, :remark, :sort, :status)`,
-      {
-        role: p.roleScope,
-        page: p.pageKey,
-        title: p.title,
-        remark: p.remark,
-        img: p.imageUrl,
-        link: p.linkUrl,
-        lt: p.linkType,
-        appid: p.linkAppid || null,
-        limg: p.linkImageUrl || null,
-        sort: p.sortOrder,
-        status: p.status
-      }
-    )
-    return { id: r.insertId }
+    await replaceBannerPlacements(bannerId, p.placements)
   } catch (e) {
-    if (!e || e.code !== 'ER_BAD_FIELD_ERROR') throw e
-    const r = await query(
-      `INSERT INTO banners
-        (role_scope, page_key, title, sub_title, image_url, link_url, link_type, sort_order, status)
-       VALUES
-        (:role, :page, :title, :remark, :img, :link, :lt, :sort, :status)`,
-      {
-        role: p.roleScope,
-        page: p.pageKey,
-        title: p.title,
-        remark: p.remark,
-        img: p.imageUrl,
-        link: p.linkUrl,
-        lt: p.linkType,
-        sort: p.sortOrder,
-        status: p.status
-      }
-    )
-    return { id: r.insertId }
+    if (!(e && (e.code === 'ER_NO_SUCH_TABLE' || e.code === 'ER_BAD_FIELD_ERROR'))) throw e
   }
+  return { id: Number(bannerId), placements: p.placements }
 }
 
 async function deleteBanner(id) {
-  await query('DELETE FROM banners WHERE id=:id', { id })
-  return { id: Number(id) }
+  const bid = Number(id)
+  try {
+    await query('DELETE FROM banner_placements WHERE banner_id=:id', { id: bid })
+  } catch (e) {
+    if (!(e && (e.code === 'ER_NO_SUCH_TABLE' || e.code === 'ER_BAD_FIELD_ERROR'))) throw e
+  }
+  await query('DELETE FROM banners WHERE id=:id', { id: bid })
+  return { id: bid }
 }
 
 async function setBannerStatus(id, status) {

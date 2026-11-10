@@ -276,6 +276,11 @@ async function ensureSchema() {
     console.warn('[schema] stall_goods.points_usable', e.message)
   }
   try {
+    await runSqlStatements('50_banner_placements.sql', 'banner placements')
+  } catch (e) {
+    console.warn('[schema] banner placements', e.message)
+  }
+  try {
     await addColumn(
       'admin_accounts',
       'user_id',

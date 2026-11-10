@@ -28,38 +28,58 @@ async function listBanners(role, page) {
   const slot = String(page || '').trim()
   let rows
   try {
+    // 优先按 banner_placements 命中「一端一位置」；同一 Banner 可出现在多个槽位
     rows = await query(
-      `SELECT id, role_scope AS role, page_key AS pageKey, title, title AS jumpName,
-              IFNULL(NULLIF(remark,''), sub_title) AS sub, image_url AS image,
-              link_url AS link, link_type AS linkType, link_appid AS linkAppid,
-              link_image_url AS linkImageUrl, sort_order AS sortOrder
-       FROM banners
-       WHERE role_scope = :scope AND status = 1
-         AND (start_at IS NULL OR start_at <= NOW())
-         AND (end_at IS NULL OR end_at >= NOW())
-         AND (:slot = '' OR page_key = :slot OR page_key IS NULL OR page_key = '')
-       ORDER BY sort_order ASC, id ASC`,
+      `SELECT DISTINCT b.id, :scope AS role, :slot AS pageKey, b.title, b.title AS jumpName,
+              IFNULL(NULLIF(b.remark,''), b.sub_title) AS sub, b.image_url AS image,
+              b.link_url AS link, b.link_type AS linkType, b.link_appid AS linkAppid,
+              b.link_image_url AS linkImageUrl, b.sort_order AS sortOrder
+       FROM banners b
+       INNER JOIN banner_placements p ON p.banner_id = b.id
+       WHERE b.status = 1
+         AND (b.start_at IS NULL OR b.start_at <= NOW())
+         AND (b.end_at IS NULL OR b.end_at >= NOW())
+         AND p.role_scope = :scope
+         AND (:slot = '' OR p.page_key = :slot)
+       ORDER BY b.sort_order ASC, b.id ASC`,
       { scope, slot }
     )
-    if (slot && rows.some((row) => row.pageKey)) {
-      rows = rows.filter((row) => row.pageKey === slot)
-    }
   } catch (e) {
-    if (!e || e.code !== 'ER_BAD_FIELD_ERROR') throw e
-    rows = await query(
-      `SELECT id, role_scope AS role, page_key AS pageKey, title, title AS jumpName,
-              sub_title AS sub, image_url AS image,
-              link_url AS link, link_type AS linkType, sort_order AS sortOrder
-       FROM banners
-       WHERE role_scope = :scope AND status = 1
-         AND (start_at IS NULL OR start_at <= NOW())
-         AND (end_at IS NULL OR end_at >= NOW())
-         AND (:slot = '' OR page_key = :slot OR page_key IS NULL OR page_key = '')
-       ORDER BY sort_order ASC, id ASC`,
-      { scope, slot }
-    )
-    if (slot && rows.some((row) => row.pageKey)) {
-      rows = rows.filter((row) => row.pageKey === slot)
+    if (!(e && (e.code === 'ER_NO_SUCH_TABLE' || e.code === 'ER_BAD_FIELD_ERROR'))) throw e
+    try {
+      rows = await query(
+        `SELECT id, role_scope AS role, page_key AS pageKey, title, title AS jumpName,
+                IFNULL(NULLIF(remark,''), sub_title) AS sub, image_url AS image,
+                link_url AS link, link_type AS linkType, link_appid AS linkAppid,
+                link_image_url AS linkImageUrl, sort_order AS sortOrder
+         FROM banners
+         WHERE role_scope = :scope AND status = 1
+           AND (start_at IS NULL OR start_at <= NOW())
+           AND (end_at IS NULL OR end_at >= NOW())
+           AND (:slot = '' OR page_key = :slot OR page_key IS NULL OR page_key = '')
+         ORDER BY sort_order ASC, id ASC`,
+        { scope, slot }
+      )
+      if (slot && rows.some((row) => row.pageKey)) {
+        rows = rows.filter((row) => row.pageKey === slot)
+      }
+    } catch (e2) {
+      if (!e2 || e2.code !== 'ER_BAD_FIELD_ERROR') throw e2
+      rows = await query(
+        `SELECT id, role_scope AS role, page_key AS pageKey, title, title AS jumpName,
+                sub_title AS sub, image_url AS image,
+                link_url AS link, link_type AS linkType, sort_order AS sortOrder
+         FROM banners
+         WHERE role_scope = :scope AND status = 1
+           AND (start_at IS NULL OR start_at <= NOW())
+           AND (end_at IS NULL OR end_at >= NOW())
+           AND (:slot = '' OR page_key = :slot OR page_key IS NULL OR page_key = '')
+         ORDER BY sort_order ASC, id ASC`,
+        { scope, slot }
+      )
+      if (slot && rows.some((row) => row.pageKey)) {
+        rows = rows.filter((row) => row.pageKey === slot)
+      }
     }
   }
   const pack = BANNER_IMAGES[scope] || BANNER_IMAGES.consumer
