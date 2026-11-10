@@ -1373,7 +1373,13 @@ async function showStoreDetail(id, listReload) {
         <td>${thumb(g.imageUrl || g.image_url)}</td>
         <td>${esc(g.name)}</td>
         <td><code>${esc(g.sku || g.skuCode || '-')}</code></td>
-        <td>${g.price ?? '-'}${g.pointsNeed != null ? ` / ${g.pointsNeed}积分` : ''}</td>
+        <td>${g.price ?? '-'}${
+          g.pointsNeed != null
+            ? ` / ${g.pointsNeed}积分`
+            : g.pointsUsable != null
+              ? ` · 可用${g.pointsUsable}积分`
+              : ''
+        }</td>
         <td>${g.stock ?? '-'}</td>
         <td>${switchControl({
           on: Number(g.onSale) === 1,
@@ -1439,6 +1445,13 @@ async function showStoreDetail(id, listReload) {
         field('price', isCross ? '现金价' : '价格', g.price, 'number') +
         (isCross ? field('pointsNeed', '所需积分', g.pointsNeed || 0, 'number') : '') +
         (d.role !== 'cross' ? field('pointsGrant', '赠送积分额度', g.pointsGrant || 0, 'number') : '') +
+        (d.role === 'stall'
+          ? field('pointsUsable', '可用积分（抵现上限/件）', g.pointsUsable || 0, 'number') +
+            selectOnOff('mixEnabled', Number(g.mixEnabled) === 0 ? 0 : 1, {
+              onLabel: '允许积分抵现',
+              offLabel: '关闭抵现'
+            })
+          : '') +
         field('stock', '库存', g.stock || 0, 'number') +
         selectOnOff('onSale', Number(g.onSale) === 1 ? 1 : 0, {
           onLabel: '上架',
@@ -1461,6 +1474,8 @@ async function showStoreDetail(id, listReload) {
             price: Number(formVal('price')),
             pointsNeed: Number(formVal('pointsNeed') || g.pointsNeed || 0),
             pointsGrant: Number(formVal('pointsGrant') || g.pointsGrant || 0),
+            pointsUsable: Number(formVal('pointsUsable') || g.pointsUsable || 0),
+            mixEnabled: Number(formVal('mixEnabled') ?? (g.mixEnabled === 0 ? 0 : 1)),
             stock: Number(formVal('stock')),
             onSale: Number(formVal('onSale')),
             imageUrl: formVal('imageUrl')
@@ -1625,7 +1640,14 @@ async function showStoreDetail(id, listReload) {
             field('price', isCross ? '现金价' : '价格', '0', 'number') +
             (isCross
               ? field('pointsNeed', '所需积分', '0', 'number')
-              : field('pointsGrant', '赠送积分额度', '0', 'number')) +
+              : field('pointsGrant', '赠送积分额度', '0', 'number') +
+                (d.role === 'stall'
+                  ? field('pointsUsable', '可用积分（抵现上限/件）', '0', 'number') +
+                    selectOnOff('mixEnabled', 1, {
+                      onLabel: '允许积分抵现',
+                      offLabel: '关闭抵现'
+                    })
+                  : '')) +
             field('stock', '库存', '100', 'number') +
             selectOnOff('onSale', d.catalogReady ? 1 : 0, { onLabel: '上架', offLabel: '下架' }) +
             mediaField('imageUrl', '商品图', '', 'goods'),
@@ -1646,6 +1668,8 @@ async function showStoreDetail(id, listReload) {
                 price: Number(formVal('price')),
                 pointsNeed: Number(formVal('pointsNeed') || 0),
                 pointsGrant: Number(formVal('pointsGrant') || 0),
+                pointsUsable: Number(formVal('pointsUsable') || 0),
+                mixEnabled: Number(formVal('mixEnabled') ?? 1),
                 stock: Number(formVal('stock')),
                 onSale: Number(formVal('onSale')),
                 imageUrl: formVal('imageUrl')
@@ -1813,6 +1837,13 @@ async function renderGoodsSku() {
             (g.goodsType === 'cross'
               ? field('pointsNeed', '所需积分', g.pointsNeed || 0, 'number')
               : field('pointsGrant', '赠送积分', g.pointsGrant || 0, 'number')) +
+            (g.goodsType === 'stall'
+              ? field('pointsUsable', '可用积分（抵现/件）', g.pointsUsable || 0, 'number') +
+                selectOnOff('mixEnabled', Number(g.mixEnabled) === 0 ? 0 : 1, {
+                  onLabel: '允许积分抵现',
+                  offLabel: '关闭抵现'
+                })
+              : '') +
             selectOnOff('onSale', g.onSale ?? 1, { onLabel: '上架', offLabel: '下架' }) +
             mediaField('imageUrl', '商品图', g.imageUrl || '', 'goods'),
           async () => {
@@ -1829,7 +1860,9 @@ async function renderGoodsSku() {
                 onSale: Number(formVal('onSale')),
                 imageUrl: formVal('imageUrl'),
                 pointsNeed: Number(formVal('pointsNeed') || g.pointsNeed || 0),
-                pointsGrant: Number(formVal('pointsGrant') || g.pointsGrant || 0)
+                pointsGrant: Number(formVal('pointsGrant') || g.pointsGrant || 0),
+                pointsUsable: Number(formVal('pointsUsable') || g.pointsUsable || 0),
+                mixEnabled: Number(formVal('mixEnabled') ?? (g.mixEnabled === 0 ? 0 : 1))
               })
             })
             load()

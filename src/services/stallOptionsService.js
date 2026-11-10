@@ -160,11 +160,25 @@ async function saveGoodsOptionGroups(goodsId, groups) {
 
 /** 校验选项并计算单价/积分；返回行快照 */
 async function resolveStallLine(conn, { merchantId, goodsId, optionIds, qty, itemRemark }) {
-  const [grows] = await conn.execute(
-    `SELECT id, name, price, points_grant FROM stall_goods
-     WHERE id=? AND merchant_id=? AND on_sale=1 AND deleted_at IS NULL`,
-    [goodsId, merchantId]
-  )
+  let grows
+  try {
+    ;[grows] = await conn.execute(
+      `SELECT id, name, price, points_grant,
+              IFNULL(mix_enabled, 1) AS mix_enabled,
+              IFNULL(points_usable, 0) AS points_usable
+       FROM stall_goods
+       WHERE id=? AND merchant_id=? AND on_sale=1 AND deleted_at IS NULL`,
+      [goodsId, merchantId]
+    )
+  } catch (e) {
+    if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+    ;[grows] = await conn.execute(
+      `SELECT id, name, price, points_grant, 1 AS mix_enabled, 0 AS points_usable
+       FROM stall_goods
+       WHERE id=? AND merchant_id=? AND on_sale=1 AND deleted_at IS NULL`,
+      [goodsId, merchantId]
+    )
+  }
   if (!grows.length) throw new HttpError(400, '商品无效')
   const g = grows[0]
   const [groups] = await conn.execute(
@@ -237,11 +251,15 @@ async function resolveStallLine(conn, { merchantId, goodsId, optionIds, qty, ite
     priceDelta: Number(o.priceDelta) || 0,
     pointsDelta: Number(o.pointsDelta) || 0
   }))
+  const mixOn = Number(g.mix_enabled) !== 0
+  const pointsUsable = mixOn ? Math.max(0, Math.floor(Number(g.points_usable) || 0)) : 0
   return {
     goodsId: g.id,
     name: g.name,
     price: unitPrice,
     pointsGrant: unitPoints,
+    pointsUsable,
+    mixEnabled: mixOn ? 1 : 0,
     qty: q,
     optionsText,
     optionsJson,

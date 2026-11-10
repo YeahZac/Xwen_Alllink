@@ -1041,18 +1041,26 @@ async function createSku(type, body = {}, auth = null) {
     }
   }
   if (role === 'stall') {
+    const price = Number(body.price) || 0
+    if (onSale && price < 0.01) throw new HttpError(400, '上架商品售价须至少 ¥0.01')
+    const pu = Math.max(0, Math.floor(Number(body.pointsUsable) || 0))
+    const mix = body.mixEnabled === 0 || body.mixEnabled === '0' ? 0 : 1
     insertId = await insertWithProvenance(
       `INSERT INTO stall_goods
         (merchant_id, name, sku_code, price, points_grant, category, category_id, desc_text, image_url, stock, on_sale,
+         mix_enabled, points_usable,
          data_source, created_by_type, created_by_id, created_by_name)
        VALUES (:mid, :name, :sku, :price, :pg, :cat, :categoryId, :desc, :img, :stock, :onSale,
+         :mix, :pu,
          :dataSource, :createdByType, :createdById, :createdByName)`,
       {
         mid: merchantId,
         name,
         sku,
-        price: Number(body.price) || 0,
+        price,
         pg: Number(body.pointsGrant) || 0,
+        pu,
+        mix,
         desc: body.desc || '',
         img,
         stock: Number(body.stock) || 9999,
@@ -1067,7 +1075,7 @@ async function createSku(type, body = {}, auth = null) {
           mid: merchantId,
           name,
           sku,
-          price: Number(body.price) || 0,
+          price,
           pg: Number(body.pointsGrant) || 0,
           cat: provenance.cat,
           desc: body.desc || '',
@@ -1193,6 +1201,8 @@ function mapSkuRow(g, t, typeLabel) {
     price: g.price != null ? g.price : g.cash_price,
     pointsNeed: g.points_need,
     pointsGrant: g.points_grant,
+    pointsUsable: g.points_usable != null ? g.points_usable : undefined,
+    mixEnabled: g.mix_enabled != null ? g.mix_enabled : undefined,
     stock: g.stock,
     sales: g.sales_count || 0,
     onSale: g.on_sale != null ? g.on_sale : g.status,
@@ -1351,24 +1361,31 @@ async function saveSku(type, body) {
     categoryId: bound ? bound.categoryId : null
   }
   if (type === 'stall') {
+    const price = Number(body.price)
+    if (!Number.isFinite(price) || price < 0) throw new HttpError(400, '请填写正确的售价')
+    if (onSale && price < 0.01) throw new HttpError(400, '上架商品售价须至少 ¥0.01')
     const params = {
       ...base,
-      p: Number(body.price),
+      p: price,
       pg: Number(body.pointsGrant) || 0,
+      pu: Math.max(0, Math.floor(Number(body.pointsUsable) || 0)),
+      mix: body.mixEnabled === 0 || body.mixEnabled === '0' ? 0 : 1,
       s: Number(body.stock) || 0,
       sales: Number(body.sales) || 0
     }
     try {
       if (bound) {
         await query(
-          `UPDATE stall_goods SET name=:n, sku_code=:sku, price=:p, points_grant=:pg, stock=:s,
+          `UPDATE stall_goods SET name=:n, sku_code=:sku, price=:p, points_grant=:pg, points_usable=:pu,
+           mix_enabled=:mix, stock=:s,
            sales_count=:sales, image_url=:img, on_sale=:onSale, category=:cat, category_id=:categoryId
            WHERE id=:id`,
           params
         )
       } else {
         await query(
-          `UPDATE stall_goods SET name=:n, sku_code=:sku, price=:p, points_grant=:pg, stock=:s,
+          `UPDATE stall_goods SET name=:n, sku_code=:sku, price=:p, points_grant=:pg, points_usable=:pu,
+           mix_enabled=:mix, stock=:s,
            sales_count=:sales, image_url=:img, on_sale=:onSale WHERE id=:id`,
           params
         )

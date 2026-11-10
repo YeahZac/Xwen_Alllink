@@ -30,9 +30,9 @@ Page({
             ...g,
             onSale: g.onSale ? 1 : 0,
             coverImage: g.imageUrl || '',
-            line: `SKU ${g.sku || '—'} · ¥${g.price} · 划拨 ${g.pointsGrant || 0} 积分 · ${
-              optN > 0 ? `规格${optN}组` : '未配规格'
-            } · 销量 ${g.sales || 0}`,
+            line: `SKU ${g.sku || '—'} · ¥${g.price} · 可用${g.pointsUsable || 0}积分 · 划拨 ${
+              g.pointsGrant || 0
+            } · ${optN > 0 ? `规格${optN}组` : '未配规格'} · 销量 ${g.sales || 0}`,
             statusLabel: g.onSale ? '在售' : '下架'
           }
         })
@@ -158,6 +158,32 @@ Page({
         try {
           await this.saveGoods(g, { pointsGrant: Math.floor(pointsGrant) })
           wx.showToast({ title: '赠分已更新', icon: 'success' })
+          this.onShow()
+        } catch (err) {
+          wx.showToast({ title: err.message || '保存失败', icon: 'none' })
+        }
+      }
+    })
+  },
+  onPointsUsable(e) {
+    const id = e.currentTarget.dataset.id
+    const g = this.data.list.find((x) => String(x.id) === String(id))
+    if (!g) return
+    wx.showModal({
+      title: '修改可用积分',
+      editable: true,
+      placeholderText: `当前可用 ${g.pointsUsable || 0}（抵现上限/件）`,
+      confirmText: '保存',
+      success: async (result) => {
+        if (!result.confirm) return
+        const pointsUsable = Number(result.content)
+        if (!Number.isFinite(pointsUsable) || pointsUsable < 0) {
+          wx.showToast({ title: '请输入正确的积分', icon: 'none' })
+          return
+        }
+        try {
+          await this.saveGoods(g, { pointsUsable: Math.floor(pointsUsable) })
+          wx.showToast({ title: '可用积分已更新', icon: 'success' })
           this.onShow()
         } catch (err) {
           wx.showToast({ title: err.message || '保存失败', icon: 'none' })

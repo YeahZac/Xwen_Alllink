@@ -30,6 +30,7 @@
         <button class="btn-ghost sm" size="mini" data-id="{{item.id}}" bindtap="onFullEdit">编辑</button>
         <button class="btn-ghost sm" size="mini" data-id="{{item.id}}" bindtap="onPrice">改价格</button>
         <button class="btn-ghost sm" size="mini" wx:if="{{role === 'cross'}}" data-id="{{item.id}}" bindtap="onPoints">改积分</button>
+        <button class="btn-ghost sm" size="mini" wx:if="{{role === 'stall'}}" data-id="{{item.id}}" bindtap="onPointsUsable">改可用积分</button>
         <button class="btn-ghost sm" size="mini" wx:if="{{role === 'stall'}}" data-id="{{item.id}}" bindtap="onPointsGrant">改赠分</button>
         <button class="btn-ghost sm" size="mini" wx:if="{{role === 'stall'}}" data-id="{{item.id}}" bindtap="onOptions">规格</button>
         <button class="btn-ghost sm" size="mini" data-id="{{item.id}}" bindtap="onEdit">

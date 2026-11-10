@@ -2,11 +2,13 @@ const store = require('../../utils/store')
 const api = require('../../utils/api')
 const { requestWxPay, isCancelError } = require('../../utils/pay')
 
+const MIN_CASH = 0.01
+
 Page({
   data: {
     stall: {},
     items: [],
-    summary: { totalPrice: 0, totalPoints: 0, totalQty: 0 },
+    summary: { totalPrice: 0, totalPoints: 0, totalUsablePoints: 0, totalQty: 0 },
     cashRateText: '',
     points: 0,
     pointsUse: 0,
@@ -14,6 +16,7 @@ Page({
     offsetCash: '0.00',
     cashDue: '0.00',
     payLabel: '微信支付',
+    mixHint: '',
     paying: false,
     loading: true,
     orderRemark: '',
@@ -39,6 +42,23 @@ Page({
     try {
       this.setData({ loading: true })
       const data = await api.stallMenu(cart.stallId)
+      const menuById = {}
+      ;((data && data.menu) || []).forEach((g) => {
+        menuById[String(g.id)] = g
+      })
+      // 用最新菜单回填「可用积分 / 是否可抵现」，避免购物车陈旧
+      cart.items = cart.items.map((i) => {
+        const g = menuById[String(i.id)]
+        if (!g) return i
+        const mixOn = g.mixEnabled === 0 || g.mixEnabled === '0' ? 0 : 1
+        return {
+          ...i,
+          pointsUsable: mixOn ? Math.max(0, Math.floor(Number(g.pointsUsable) || 0)) : 0,
+          mixEnabled: mixOn,
+          pointsGrant: Number(g.pointsGrant) || i.pointsGrant || 0
+        }
+      })
+      store.setCart(cart)
       const summary = store.cartSummary(cart)
       let points = store.getConsumerPoints()
       try {
@@ -59,31 +79,55 @@ Page({
         cashRateText: `1 积分 = ¥${Number(store.getCashRate()).toFixed(2)}`,
         loading: false
       })
-      this.recompute(Math.min(points, store.cashToPoints(summary.totalPrice)))
+      this.recompute(this.calcMaxPoints(points, summary))
     } catch (e) {
       this.setData({ loading: false })
       wx.showToast({ title: e.message || '加载失败', icon: 'none' })
     }
   },
+  calcMaxPoints(balance, summary) {
+    const totalFen = Math.round((Number(summary.totalPrice) || 0) * 100)
+    if (totalFen < 1) return 0
+    const maxOffsetFen = totalFen - 1
+    const rate = Number(store.getCashRate()) || 0.01
+    let byCash = Math.max(0, Math.floor(maxOffsetFen / 100 / rate + 1e-9))
+    while (byCash > 0 && Math.round(byCash * rate * 100) > maxOffsetFen) byCash -= 1
+    const byGoods = Math.max(0, Math.floor(Number(summary.totalUsablePoints) || 0))
+    const byBalance = Math.max(0, Math.floor(Number(balance) || 0))
+    return Math.min(byBalance, byGoods, byCash)
+  },
   recompute(n) {
-    const total = Number(this.data.summary.totalPrice) || 0
-    const maxPoints = Math.min(Number(this.data.points) || 0, store.cashToPoints(total))
+    const totalFen = Math.round((Number(this.data.summary.totalPrice) || 0) * 100)
+    const maxPoints = this.calcMaxPoints(this.data.points, this.data.summary)
     let pointsUse = Math.max(0, Math.floor(Number(n) || 0))
     if (pointsUse > maxPoints) pointsUse = maxPoints
-    const offsetCash = store.pointsToCash(pointsUse)
-    const cashDue = Math.round(Math.max(0, total - offsetCash) * 100) / 100
+    const rate = Number(store.getCashRate()) || 0.01
+    const maxOffsetFen = Math.max(0, totalFen - 1)
+    while (pointsUse > 0 && Math.round(pointsUse * rate * 100) > maxOffsetFen) {
+      pointsUse -= 1
+    }
+    const offsetFen = Math.round(pointsUse * rate * 100)
+    const cashFen = Math.max(1, totalFen - offsetFen)
+    const offsetCash = offsetFen / 100
+    const cashDue = cashFen / 100
     let payLabel = `微信支付 ¥${cashDue.toFixed(2)}`
-    if (pointsUse > 0 && cashDue > 0) {
+    if (pointsUse > 0) {
       payLabel = `积分抵 ¥${offsetCash.toFixed(2)} + 微信 ¥${cashDue.toFixed(2)}`
-    } else if (cashDue <= 0) {
-      payLabel = `积分全额抵扣 ${pointsUse}`
+    }
+    let mixHint = '组合支付须保留至少 ¥0.01 现金，不可全额积分为 0 元单。'
+    if (maxPoints <= 0) {
+      mixHint =
+        Number(this.data.summary.totalUsablePoints) <= 0
+          ? '本单商品未配置可用积分或未开启抵现，将全额微信支付。'
+          : '当前积分不足或订单金额过低，将全额微信支付。'
     }
     this.setData({
       maxPoints,
       pointsUse,
       offsetCash: offsetCash.toFixed(2),
       cashDue: cashDue.toFixed(2),
-      payLabel
+      payLabel,
+      mixHint
     })
   },
   onPointsInput(e) {
@@ -184,6 +228,16 @@ Page({
   },
   async onPay() {
     if (this.data.paying) return
+    const total = Number(this.data.summary.totalPrice) || 0
+    if (!(total >= MIN_CASH)) {
+      wx.showToast({ title: `订单金额须至少 ¥${MIN_CASH.toFixed(2)}`, icon: 'none' })
+      return
+    }
+    const cashDue = Number(this.data.cashDue) || 0
+    if (!(cashDue >= MIN_CASH)) {
+      wx.showToast({ title: '微信支付须至少 ¥0.01，请减少积分抵扣', icon: 'none' })
+      return
+    }
     // 若已有待支付单，优先继续支付，避免重复建单
     if (this.data.pendingOrderNo) {
       await this.continuePay(this.data.pendingOrderNo)
@@ -205,19 +259,24 @@ Page({
       })
       if (result.orderNo) this.setData({ pendingOrderNo: result.orderNo })
 
-      // 模拟/已支付/0 元：直接成功；现金额兼容 cashPaid / cashAmount
-      const cashDue =
+      // 模拟/已支付：直接成功；现金额兼容 cashPaid / cashAmount（后端保证 ≥0.01）
+      const paidCash =
         result.cashPaid != null
           ? Number(result.cashPaid)
           : result.cashAmount != null
             ? Number(result.cashAmount)
             : 0
-      if (result.simulated || result.payStatus === 'paid' || !(cashDue > 0)) {
+      if (result.simulated || result.payStatus === 'paid') {
         const paid = await requestWxPay(result)
         store.clearCart()
         await store.refreshProfile().catch(() => {})
         this.setData({ pendingOrderNo: '', paying: false })
         this.showPaySuccess(paid || result)
+        return
+      }
+      if (!(paidCash > 0)) {
+        this.setData({ paying: false })
+        wx.showToast({ title: '支付金额异常，请重试', icon: 'none' })
         return
       }
 

@@ -280,6 +280,18 @@ async function patchGoods(type, id, body = {}) {
     sets.push('points_grant=:pg')
     params.pg = pg
   }
+  if (body.pointsUsable !== undefined) {
+    const pu = Math.floor(Number(body.pointsUsable))
+    if (!Number.isFinite(pu) || pu < 0) throw new HttpError(400, '可用积分无效')
+    if (role !== 'stall') throw new HttpError(400, '仅点餐商品可改可用积分')
+    sets.push('points_usable=:pu')
+    params.pu = pu
+  }
+  if (body.mixEnabled !== undefined) {
+    if (role !== 'stall') throw new HttpError(400, '仅点餐商品可改积分抵现开关')
+    sets.push('mix_enabled=:mix')
+    params.mix = body.mixEnabled === 0 || body.mixEnabled === '0' ? 0 : 1
+  }
   if (body.pointsNeed !== undefined) {
     const pn = Math.floor(Number(body.pointsNeed))
     if (!Number.isFinite(pn) || pn < 0) throw new HttpError(400, '积分数量无效')
@@ -291,6 +303,7 @@ async function patchGoods(type, id, body = {}) {
     const price = Number(body.price)
     if (!Number.isFinite(price) || price < 0) throw new HttpError(400, '价格无效')
     if (role === 'cross') throw new HttpError(400, '异业商品请改现金价')
+    if (role === 'stall' && price > 0 && price < 0.01) throw new HttpError(400, '售价须至少 ¥0.01')
     sets.push('price=:price')
     params.price = price
   }
@@ -338,7 +351,17 @@ async function patchGoods(type, id, body = {}) {
     merchantId,
     role,
     patched: Object.keys(body).filter((k) =>
-      ['pointsGrant', 'pointsNeed', 'price', 'cashPrice', 'stock', 'onSale', 'status'].includes(k)
+      [
+        'pointsGrant',
+        'pointsUsable',
+        'mixEnabled',
+        'pointsNeed',
+        'price',
+        'cashPrice',
+        'stock',
+        'onSale',
+        'status'
+      ].includes(k)
     )
   }
 }
@@ -362,6 +385,7 @@ async function listStallGoods({ merchantId, page, pageSize, limit } = {}) {
               g.points_grant AS pointsGrant, g.category, g.category_id AS categoryId, g.unit,
               g.desc_text AS description, g.image_url AS imageUrl, g.stock, g.on_sale AS onSale,
               g.sku_code AS sku, g.sales_count AS sales, IFNULL(g.mix_enabled,1) AS mixEnabled,
+              IFNULL(g.points_usable, 0) AS pointsUsable,
               IFNULL(g.allow_remark, 1) AS allowRemark,
               (SELECT COUNT(*) FROM stall_goods_option_groups og WHERE og.goods_id = g.id) AS optionGroupCount
        FROM stall_goods g JOIN merchants m ON m.id=g.merchant_id${where}
@@ -374,7 +398,7 @@ async function listStallGoods({ merchantId, page, pageSize, limit } = {}) {
       `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name, g.price,
               g.points_grant AS pointsGrant, g.category, g.desc_text AS description,
               g.image_url AS imageUrl, g.stock, g.on_sale AS onSale, g.sku_code AS sku,
-              g.sales_count AS sales, 1 AS mixEnabled, 1 AS allowRemark, 0 AS optionGroupCount
+              g.sales_count AS sales, 1 AS mixEnabled, 0 AS pointsUsable, 1 AS allowRemark, 0 AS optionGroupCount
        FROM stall_goods g JOIN merchants m ON m.id=g.merchant_id${where}
        ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
       params
@@ -396,12 +420,15 @@ async function saveStallGoods(body, auth = null) {
   }
   const name = assertProductionGoodsName(body.name)
   const bound = await bindGoodsCategory('stall', body)
+  const pointsUsable = Math.max(0, Math.floor(Number(body.pointsUsable) || 0))
+  if (!Number.isFinite(pointsUsable)) throw new HttpError(400, '可用积分无效')
   const payload = {
     id,
     mid: merchantId,
     name,
     price: Number(body.price),
     pg: Number(body.pointsGrant) || 0,
+    pu: pointsUsable,
     cat: bound.category,
     categoryId: bound.categoryId,
     unit: body.unit || '份',
@@ -417,10 +444,14 @@ async function saveStallGoods(body, auth = null) {
   if (!Number.isFinite(payload.price) || payload.price < 0) {
     throw new HttpError(400, '请填写正确的售价')
   }
+  if (payload.onSale && payload.price < 0.01) {
+    throw new HttpError(400, '上架商品售价须至少 ¥0.01（组合支付需保留现金）')
+  }
   if (payload.id) {
     try {
       const r = await query(
-        `UPDATE stall_goods SET name=:name, price=:price, points_grant=:pg, category=:cat, category_id=:categoryId,
+        `UPDATE stall_goods SET name=:name, price=:price, points_grant=:pg, points_usable=:pu,
+         category=:cat, category_id=:categoryId,
          unit=:unit, desc_text=:desc, image_url=:img, stock=:stock, sku_code=IFNULL(:sku, sku_code),
          on_sale=:onSale, mix_enabled=:mix, allow_remark=:allowRemark
          WHERE id=:id AND merchant_id=:mid AND deleted_at IS NULL`,
@@ -464,9 +495,9 @@ async function saveStallGoods(body, auth = null) {
     r = await query(
       `INSERT INTO stall_goods
         (merchant_id, name, sku_code, price, points_grant, category, category_id, unit, desc_text, image_url, stock, on_sale,
-         mix_enabled, allow_remark, data_source, created_by_type, created_by_id, created_by_name)
+         mix_enabled, points_usable, allow_remark, data_source, created_by_type, created_by_id, created_by_name)
        VALUES (:mid, :name, :sku, :price, :pg, :cat, :categoryId, :unit, :desc, :img, :stock, :onSale,
-         :mix, :allowRemark, :dataSource, :createdByType, :createdById, :createdByName)`,
+         :mix, :pu, :allowRemark, :dataSource, :createdByType, :createdById, :createdByName)`,
       payload
     )
   } catch (e) {

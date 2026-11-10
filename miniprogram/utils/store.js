@@ -608,6 +608,7 @@ function addToCart(stallId, goods, qty = 1) {
   const found = cart.items.find((i) => String(i.lineKey || i.id) === String(lineKey))
   if (found) found.qty += qty
   else {
+    const mixOn = goods.mixEnabled === 0 || goods.mixEnabled === '0' ? 0 : 1
     cart.items.push({
       id: goods.id,
       lineKey,
@@ -617,6 +618,8 @@ function addToCart(stallId, goods, qty = 1) {
       remark,
       price: Number(goods.price) || 0,
       pointsGrant: Number(goods.pointsGrant) || 0,
+      pointsUsable: mixOn ? Math.max(0, Math.floor(Number(goods.pointsUsable) || 0)) : 0,
+      mixEnabled: mixOn,
       qty
     })
   }
@@ -642,6 +645,7 @@ function cartSummary(cart) {
   return {
     totalPrice: Math.round(items.reduce((s, i) => s + Number(i.price) * i.qty, 0) * 100) / 100,
     totalPoints: items.reduce((s, i) => s + (Number(i.pointsGrant) || 0) * i.qty, 0),
+    totalUsablePoints: items.reduce((s, i) => s + (Number(i.pointsUsable) || 0) * i.qty, 0),
     totalQty: items.reduce((s, i) => s + i.qty, 0)
   }
 }

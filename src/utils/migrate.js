@@ -257,6 +257,25 @@ async function ensureSchema() {
     console.warn('[schema] purge seed categories', e.message)
   }
   try {
+    const added = await addColumn(
+      'stall_goods',
+      'points_usable',
+      "`points_usable` INT NOT NULL DEFAULT 0 COMMENT '单件可用积分（抵现上限）' AFTER `mix_enabled`"
+    )
+    if (added) {
+      await pool.query(
+        `UPDATE stall_goods
+         SET points_usable = GREATEST(0, FLOOR(price / 0.01) - 1)
+         WHERE IFNULL(mix_enabled, 1) = 1
+           AND IFNULL(points_usable, 0) = 0
+           AND price >= 0.01
+           AND deleted_at IS NULL`
+      )
+    }
+  } catch (e) {
+    console.warn('[schema] stall_goods.points_usable', e.message)
+  }
+  try {
     await addColumn(
       'admin_accounts',
       'user_id',

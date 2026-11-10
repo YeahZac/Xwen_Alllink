@@ -25,6 +25,7 @@ Page({
       cashPrice: '',
       pointsNeed: '',
       pointsGrant: '',
+      pointsUsable: '',
       pointsRatio: '',
       stock: '9999',
       onSale: 1,
@@ -107,6 +108,7 @@ Page({
           cashPrice: g.cashPrice != null ? String(g.cashPrice) : '',
           pointsNeed: g.pointsNeed != null ? String(g.pointsNeed) : '',
           pointsGrant: g.pointsGrant != null ? String(g.pointsGrant) : '',
+          pointsUsable: g.pointsUsable != null ? String(g.pointsUsable) : '',
           pointsRatio: g.pointsRatio || '',
           stock: g.stock != null ? String(g.stock) : form.stock,
           onSale: g.onSale === 0 ? 0 : 1,
@@ -212,8 +214,13 @@ Page({
     if (role === 'stall') {
       body.price = Number(f.price)
       body.pointsGrant = Number(f.pointsGrant) || 0
+      body.pointsUsable = Math.max(0, Math.floor(Number(f.pointsUsable) || 0))
       if (!Number.isFinite(body.price) || body.price < 0) {
         wx.showToast({ title: '请填写售价', icon: 'none' })
+        return
+      }
+      if (body.onSale && body.price < 0.01) {
+        wx.showToast({ title: '上架售价须≥0.01元', icon: 'none' })
         return
       }
     } else if (role === 'cross') {

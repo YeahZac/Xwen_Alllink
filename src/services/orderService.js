@@ -32,6 +32,51 @@ function cashToPoints(cash, rate) {
   return Math.max(0, Math.floor(Number(cash || 0) / r))
 }
 
+/** 组合支付最低现金：禁止 0 元 / 负金额微信收款 */
+const MIN_STALL_CASH = 0.01
+
+/** 在「最多抵现 maxOffsetYuan」约束下，按汇率算出最多可用积分（按分避免浮点） */
+function maxPointsForCashOffset(maxOffsetYuan, rate) {
+  const r = Number(rate) || 0.01
+  if (r <= 0) return 0
+  const maxFen = Math.max(0, Math.round(Number(maxOffsetYuan || 0) * 100))
+  let n = Math.max(0, Math.floor(maxFen / 100 / r + 1e-9))
+  while (n > 0 && Math.round(n * r * 100) > maxFen) n -= 1
+  return n
+}
+
+/** 点餐积分抵现封顶：余额 ∩ 商品可用积分 ∩ 留足最低现金后的可抵额度 */
+function clampStallPointsSpend({ pointsUse, balance, goodsUsableCap, totalAmount, rate }) {
+  const totalFen = Math.round(Number(totalAmount || 0) * 100)
+  const minFen = Math.round(MIN_STALL_CASH * 100)
+  if (totalFen < minFen) {
+    throw new HttpError(400, `订单金额须至少 ¥${MIN_STALL_CASH.toFixed(2)}`)
+  }
+  const maxOffsetFen = totalFen - minFen
+  const maxOffset = maxOffsetFen / 100
+  const byCash = maxPointsForCashOffset(maxOffset, rate)
+  const byGoods = Math.max(0, Math.floor(Number(goodsUsableCap) || 0))
+  const byBalance = Math.max(0, Math.floor(Number(balance) || 0))
+  const cap = Math.min(byBalance, byGoods, byCash)
+  let pointsSpend = Math.max(0, Math.floor(Number(pointsUse) || 0))
+  if (pointsSpend > cap) pointsSpend = cap
+  const r = Number(rate) || 0.01
+  while (pointsSpend > 0 && Math.round(pointsSpend * r * 100) > maxOffsetFen) {
+    pointsSpend -= 1
+  }
+  const offsetFen = Math.round(pointsSpend * r * 100)
+  const cashFen = totalFen - offsetFen
+  if (cashFen < minFen || cashFen < 0) {
+    throw new HttpError(400, '组合支付须保留至少 ¥0.01 现金，请减少积分抵扣')
+  }
+  return {
+    pointsSpend,
+    offset: offsetFen / 100,
+    cashPaid: cashFen / 100,
+    maxPoints: cap
+  }
+}
+
 /**
  * 抽成落到 commissionService（角色 × 价格区间 × 规则版本）
  * bizType 同时是计费角色口径：stall / cross / purchase(=supply 出货)
@@ -205,24 +250,33 @@ async function getStallMenu(merchantId) {
     goods = await query(
       `SELECT id, name, price, points_grant AS pointsGrant, category, desc_text AS \`desc\`,
               image_url AS coverImage, image_url AS imageUrl, stock, sku_code AS sku,
-              IFNULL(allow_remark, 1) AS allowRemark
+              IFNULL(allow_remark, 1) AS allowRemark,
+              IFNULL(mix_enabled, 1) AS mixEnabled,
+              IFNULL(points_usable, 0) AS pointsUsable
        FROM stall_goods
        WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL
          AND ${C_END_EXCLUDE_TEST_NAME_SQL}`,
       { id: merchantId }
     )
   } catch (e) {
-    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('allow_remark')))) {
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || String(e.message || '').includes('allow_remark') || String(e.message || '').includes('points_usable') || String(e.message || '').includes('mix_enabled')))) {
       throw e
     }
     goods = await query(
       `SELECT id, name, price, points_grant AS pointsGrant, category, desc_text AS \`desc\`,
-              image_url AS coverImage, image_url AS imageUrl, stock, sku_code AS sku, 1 AS allowRemark
+              image_url AS coverImage, image_url AS imageUrl, stock, sku_code AS sku, 1 AS allowRemark,
+              1 AS mixEnabled, 0 AS pointsUsable
        FROM stall_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
       { id: merchantId }
     )
     goods = goods.filter((g) => !isTestGoodsName(g.name))
   }
+  goods = goods.map((g) => ({
+    ...g,
+    mixEnabled: Number(g.mixEnabled) === 0 ? 0 : 1,
+    pointsUsable:
+      Number(g.mixEnabled) === 0 ? 0 : Math.max(0, Math.floor(Number(g.pointsUsable) || 0))
+  }))
   const menu = await stallOptionsService.attachMenuOptions(goods)
   return { stall: merchants[0], menu }
 }
@@ -305,6 +359,7 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
   const preview = await withTransaction(async (conn) => {
     let totalAmount = 0
     let pointsWant = 0
+    let goodsUsableCap = 0
     const lines = []
     for (const it of items) {
       const line = await stallOptionsService.resolveStallLine(conn, {
@@ -316,6 +371,7 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
       })
       totalAmount += Number(line.price) * line.qty
       pointsWant += Number(line.pointsGrant) * line.qty
+      goodsUsableCap += Number(line.pointsUsable || 0) * line.qty
       lines.push(line)
     }
     totalAmount = round2(totalAmount)
@@ -325,11 +381,13 @@ async function createAndPayStallOrder({ userId, merchantId, items, pointsUse = 0
     ])
     if (!urows.length) throw new HttpError(404, '用户不存在')
     const balance = Number(urows[0].points_balance) || 0
-    const cap = Math.min(balance, cashToPoints(totalAmount, rate))
-    let pointsSpend = Math.max(0, Math.floor(Number(pointsUse) || 0))
-    if (pointsSpend > cap) pointsSpend = cap
-    const offset = round2(pointsToCash(pointsSpend, rate))
-    const cashPaid = round2(Math.max(0, totalAmount - offset))
+    const { pointsSpend, offset, cashPaid } = clampStallPointsSpend({
+      pointsUse,
+      balance,
+      goodsUsableCap,
+      totalAmount,
+      rate
+    })
     // SKU 未配赠积分时，按实付现金汇率回落（与扫码收款一致，满足验收 D5）
     if (!pointsWant && cashPaid > 0) {
       pointsWant = cashToPoints(cashPaid, rate)

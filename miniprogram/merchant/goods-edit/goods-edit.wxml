@@ -51,6 +51,10 @@
         <input class="field__input" type="number" data-key="pointsGrant" value="{{form.pointsGrant}}" bindinput="onField" placeholder="出餐后从额度池划拨" />
       </view>
       <view class="field">
+        <text class="field__label">可用积分（抵现上限/件）</text>
+        <input class="field__input" type="number" data-key="pointsUsable" value="{{form.pointsUsable}}" bindinput="onField" placeholder="用户下单最多可抵多少积分" />
+      </view>
+      <view class="field">
         <text class="field__label">库存</text>
         <input class="field__input" type="number" data-key="stock" value="{{form.stock}}" bindinput="onField" />
       </view>
@@ -58,6 +62,7 @@
         <text class="field__label">允许积分抵现 + 微信支付</text>
         <text class="chip {{form.mixEnabled ? 'chip--soft' : 'chip--off'}}">{{form.mixEnabled ? '已开启' : '关闭'}}</text>
       </view>
+      <text class="muted opts-hint">组合支付须保留至少 ¥0.01 现金，不可全额积分为 0 元单</text>
       <view class="field row-between" bindtap="toggle" data-key="allowRemark">
         <text class="field__label">点餐允许填写备注</text>
         <text class="chip {{form.allowRemark ? 'chip--soft' : 'chip--off'}}">{{form.allowRemark ? '已开启' : '关闭'}}</text>

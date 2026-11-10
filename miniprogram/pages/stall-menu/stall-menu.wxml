@@ -50,7 +50,7 @@
             <text class="dish__name ellipsis-1">{{g.name}}</text>
             <text class="dish__sku muted" wx:if="{{g.sku}}">SKU {{g.sku}}</text>
             <text class="dish__desc muted ellipsis-1">
-              {{g.desc || '现做'}} · 可得 {{g.pointsGrant}} 积分
+              {{g.desc || '现做'}} · 可得 {{g.pointsGrant}} 积分{{g.pointsUsable > 0 ? ' · 可用抵 ' + g.pointsUsable : ''}}
             </text>
             <text class="dish__opts muted ellipsis-1" wx:if="{{g.optionHint}}">可选 {{g.optionHint}}</text>
             <view class="dish__foot">

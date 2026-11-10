@@ -265,6 +265,8 @@ Page({
         name: g.name,
         price: unit.price,
         pointsGrant: unit.pointsGrant,
+        pointsUsable: g.pointsUsable,
+        mixEnabled: g.mixEnabled,
         optionsText: unit.optionsText,
         optionIds: unit.optionIds,
         remark: this.data.sheetAllowRemark ? this.data.sheetRemark : ''

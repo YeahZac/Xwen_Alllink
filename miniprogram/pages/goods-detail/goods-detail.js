@@ -132,6 +132,8 @@ Page({
         name: g.name,
         price: unit.price,
         pointsGrant: unit.pointsGrant,
+        pointsUsable: g.pointsUsable,
+        mixEnabled: g.mixEnabled,
         optionsText: unit.optionsText,
         // 演示规格无真实 optionId，避免后端报「规格无效」
         optionIds: demoSpecs ? [] : unit.optionIds || []
