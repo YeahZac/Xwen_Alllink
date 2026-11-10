@@ -141,6 +141,9 @@ function applyAuthResult(data) {
     needPhone: data.needPhone != null ? !!data.needPhone : !(data.phone || cur.phone),
     points: data.points != null ? data.points : cur.points || 0,
     poolBalance: data.poolBalance != null ? data.poolBalance : cur.poolBalance || 0,
+    isLead: data.isLead != null ? !!data.isLead : displayRole === 'lead' || !!cur.isLead,
+    isPartner: data.isPartner != null ? !!data.isPartner : !!cur.isPartner,
+    isFounder: data.isFounder != null ? !!data.isFounder : !!cur.isFounder,
     loginAt: Date.now()
   }
   setSession(session)
@@ -266,14 +269,15 @@ async function refreshProfile() {
   if (data.cashRate) setCashRate(data.cashRate)
   // profile 偶发缺 role 时保留本地身份，避免 isLoggedIn / 路由被打空
   const role = data.role != null && data.role !== '' ? data.role : cur.role
+  const displayRole =
+    data.displayRole ||
+    (isMerchantRole(role) ? 'merchant' : role) ||
+    cur.displayRole ||
+    ''
   const session = {
     ...cur,
     role,
-    displayRole:
-      data.displayRole ||
-      (isMerchantRole(role) ? 'merchant' : role) ||
-      cur.displayRole ||
-      '',
+    displayRole,
     shopType: data.shopType || (isMerchantRole(role) ? role : '') || cur.shopType || '',
     shopTypeLabel: data.shopTypeLabel || cur.shopTypeLabel || '',
     name: data.name || data.shopName || cur.name,
@@ -287,7 +291,10 @@ async function refreshProfile() {
     gender: data.gender != null ? Number(data.gender) : cur.gender || 0,
     needPhone: data.needPhone != null ? !!data.needPhone : !data.phone && !cur.phone,
     points: data.points != null ? data.points : cur.points,
-    poolBalance: data.poolBalance != null ? data.poolBalance : cur.poolBalance
+    poolBalance: data.poolBalance != null ? data.poolBalance : cur.poolBalance,
+    isLead: data.isLead != null ? !!data.isLead : displayRole === 'lead' || !!cur.isLead,
+    isPartner: data.isPartner != null ? !!data.isPartner : !!cur.isPartner,
+    isFounder: data.isFounder != null ? !!data.isFounder : !!cur.isFounder
   }
   setSession(session)
   return session
@@ -422,9 +429,23 @@ function routeAfterLogin() {
   try {
     const ref = wx.getStorageSync('wy_pending_ref')
     if (ref) {
-      wx.removeStorageSync('wy_pending_ref')
-      // 切换登录 / 脏 scene 常带无效码；绑定失败静默，勿打断登录流程
-      api.bindReferral(String(ref)).catch(() => {})
+      // 成功后再清；失败保留，避免商户 JWT / 冷启动把有效邀请码吃掉
+      api
+        .bindReferral(String(ref))
+        .then(() => {
+          try {
+            wx.removeStorageSync('wy_pending_ref')
+          } catch (_) {}
+        })
+        .catch((err) => {
+          const msg = String((err && err.message) || '')
+          // 明确无效码丢弃；临时身份/网络错误则保留下次再试
+          if (/无效|不存在|不能填写自己|已绑定/i.test(msg)) {
+            try {
+              wx.removeStorageSync('wy_pending_ref')
+            } catch (_) {}
+          }
+        })
     }
   } catch (e) {}
   if (resumePendingPay()) return

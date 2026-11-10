@@ -183,6 +183,11 @@ Page({
       if (boot.session && boot.session.needPhone) return
       // 无手机号的半会话也不自动跳走
       if (boot.session && !boot.session.phone) return
+      // 扫码收款必须消费者身份：非 consumer 不自动 resume，避免商户死循环回 scan-pay
+      if (fromScan) {
+        const role = boot.session && boot.session.role
+        if (role && role !== 'consumer') return
+      }
       store.routeAfterLogin()
     } catch (_) {
       /* 留在登录页，可点先逛逛 */

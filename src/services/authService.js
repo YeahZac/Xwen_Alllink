@@ -377,7 +377,8 @@ async function getProfile(auth) {
     try {
       rows = await query(
         `SELECT id, nickname, invite_code, points_balance, phone, avatar_url, gender,
-                IFNULL(is_partner,0) AS is_partner, IFNULL(is_founder,0) AS is_founder
+                IFNULL(is_partner,0) AS is_partner, IFNULL(is_founder,0) AS is_founder,
+                IFNULL(is_lead,0) AS is_lead
          FROM users WHERE id = :id`,
         { id: auth.userId }
       )
@@ -390,6 +391,7 @@ async function getProfile(auth) {
     // 清库/删用户后旧 JWT 仍可能有效：用 401 让端上清会话并重新登录，而不是卡在「用户不存在」
     if (!rows.length) throw new HttpError(401, '登录已失效，请重新登录')
     const u = rows[0]
+    const isLead = !!(Number(auth.isLead) || Number(u.is_lead))
     const base = {
       userId: u.id,
       name: u.nickname,
@@ -403,13 +405,24 @@ async function getProfile(auth) {
       cashValue: pointsToCash(u.points_balance, rate),
       cashRate: rate,
       isPartner: !!Number(u.is_partner),
-      isFounder: !!Number(u.is_founder)
+      isFounder: !!Number(u.is_founder),
+      isLead
     }
     if (auth.role === 'partner') {
       return { ...base, role: 'partner', shopName: '区域合伙人', displayRole: 'partner' }
     }
     if (auth.role === 'founder') {
-      return { ...base, role: 'founder', shopName: '平台总控', displayRole: 'founder' }
+      // JWT 以 lead 切入时保持 displayRole=lead，避免 refreshProfile 把负责人刷成创始人
+      if (Number(auth.isLead) || (isLead && !Number(u.is_founder))) {
+        return {
+          ...base,
+          role: 'founder',
+          shopName: '平台负责人',
+          displayRole: 'lead',
+          isLead: true
+        }
+      }
+      return { ...base, role: 'founder', shopName: '平台总控', displayRole: 'founder', isLead: false }
     }
     return { ...base, role: 'consumer', displayRole: 'consumer' }
   }

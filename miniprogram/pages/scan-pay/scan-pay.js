@@ -228,6 +228,11 @@ Page({
   },
   goLogin() {
     this.persist(true)
+    // 清掉商户 JWT，避免登录页 resume 仍以商家身份回收款页形成死循环
+    if (typeof store.beginLoginFlow === 'function') {
+      store.beginLoginFlow('from=scanpay')
+      return
+    }
     wx.navigateTo({ url: '/pages/login/login?from=scanpay' })
   },
   onPay() {

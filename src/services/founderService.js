@@ -10,8 +10,7 @@ async function assertFounder(auth) {
   if (auth.role !== 'founder') throw new HttpError(403, '仅创始人/负责人可操作')
   const uid = Number(auth.userId) || 0
   if (!uid) throw new HttpError(403, '仅创始人/负责人可操作')
-  // lead 会话已带 isLead；纯 lead 账号 is_founder=0 也应能进总控只读/审核流
-  if (Number(auth.isLead)) return
+  // 始终查库：撤销 is_lead / is_founder 后旧 JWT 不得继续放行
   try {
     const rows = await query(
       `SELECT IFNULL(is_founder,0) AS is_founder, IFNULL(is_lead,0) AS is_lead
