@@ -1364,12 +1364,21 @@ async function saveSku(type, body) {
     const price = Number(body.price)
     if (!Number.isFinite(price) || price < 0) throw new HttpError(400, '请填写正确的售价')
     if (onSale && price < 0.01) throw new HttpError(400, '上架商品售价须至少 ¥0.01')
+    const { clampPointsUsable, maxPointsUsableForPrice } = require('../utils/pointsUsable')
+    const mix = body.mixEnabled === 0 || body.mixEnabled === '0' ? 0 : 1
+    let pu = clampPointsUsable(body.pointsUsable, price)
+    const priceCap = maxPointsUsableForPrice(price)
+    if (mix && pu <= 0 && priceCap > 0) pu = priceCap
+    if (mix && pu <= 0) {
+      throw new HttpError(400, '已开启积分抵现，请填写「最大可抵扣积分」（须大于 0）')
+    }
+    if (!mix) pu = 0
     const params = {
       ...base,
       p: price,
       pg: Number(body.pointsGrant) || 0,
-      pu: Math.max(0, Math.floor(Number(body.pointsUsable) || 0)),
-      mix: body.mixEnabled === 0 || body.mixEnabled === '0' ? 0 : 1,
+      pu,
+      mix,
       s: Number(body.stock) || 0,
       sales: Number(body.sales) || 0
     }

@@ -1449,7 +1449,13 @@ async function showStoreDetail(id, listReload) {
         (isCross ? field('pointsNeed', '所需积分', g.pointsNeed || 0, 'number') : '') +
         (d.role !== 'cross' ? field('pointsGrant', '赠送积分额度', g.pointsGrant || 0, 'number') : '') +
         (d.role === 'stall'
-          ? field('pointsUsable', '可用积分（抵现上限/件）', g.pointsUsable || 0, 'number') +
+          ? field(
+              'pointsUsable',
+              '最大可抵扣积分',
+              g.pointsUsable != null ? g.pointsUsable : 0,
+              'number',
+              '开启积分抵现时须大于 0'
+            ) +
             selectOnOff('mixEnabled', Number(g.mixEnabled) === 0 ? 0 : 1, {
               onLabel: '允许积分抵现',
               offLabel: '关闭抵现'
@@ -1841,7 +1847,13 @@ async function renderGoodsSku() {
               ? field('pointsNeed', '所需积分', g.pointsNeed || 0, 'number')
               : field('pointsGrant', '赠送积分', g.pointsGrant || 0, 'number')) +
             (g.goodsType === 'stall'
-              ? field('pointsUsable', '可用积分（抵现/件）', g.pointsUsable || 0, 'number') +
+              ? field(
+                  'pointsUsable',
+                  '最大可抵扣积分',
+                  g.pointsUsable != null ? g.pointsUsable : 0,
+                  'number',
+                  '开启积分抵现时须大于 0'
+                ) +
                 selectOnOff('mixEnabled', Number(g.mixEnabled) === 0 ? 0 : 1, {
                   onLabel: '允许积分抵现',
                   offLabel: '关闭抵现'
@@ -2989,9 +3001,21 @@ async function editGoods(type, g, reload) {
 
   let fields = storeField + field('name', '品名', g.name) + catField
   if (type === 'stall') {
+    const mixDefault = Number(g.mixEnabled) === 0 ? 0 : 1
     fields +=
-      field('price', '价格', g.price || '', 'number') +
-      field('pointsGrant', '分出积分', g.pointsGrant || 0, 'number') +
+      field('price', '价格', g.price || '', 'number', '上架售价须 ≥ ¥0.01') +
+      field('pointsGrant', '分出积分', g.pointsGrant || 0, 'number', '顾客消费后从本店额度池分出') +
+      field(
+        'pointsUsable',
+        '最大可抵扣积分',
+        g.pointsUsable != null ? g.pointsUsable : 0,
+        'number',
+        '开启积分抵现时必填且须大于 0；会按售价自动封顶（须留 ¥0.01 现金）'
+      ) +
+      selectOnOff('mixEnabled', mixDefault, {
+        onLabel: '允许积分抵现',
+        offLabel: '关闭抵现'
+      }) +
       field('stock', '库存', g.stock || 9999, 'number') +
       selectOnOff('onSale', g.onSale ?? 1, { onLabel: '上架', offLabel: '下架' }) +
       selectOnOff('allowRemark', g.allowRemark ?? 1, { onLabel: '允许备注', offLabel: '关闭备注' }) +
@@ -3042,6 +3066,15 @@ async function editGoods(type, g, reload) {
       pointsRatio: formVal('pointsRatio'),
       status: Number(formVal('status') || 0),
       imageUrl: formVal('imageUrl')
+    }
+    if (type === 'stall') {
+      const mixEnabled = Number(formVal('mixEnabled') || 0)
+      const pointsUsable = Math.floor(Number(formVal('pointsUsable') || 0))
+      body.mixEnabled = mixEnabled
+      body.pointsUsable = pointsUsable
+      if (mixEnabled && pointsUsable <= 0) {
+        throw new Error('已开启积分抵现，请填写「最大可抵扣积分」（须大于 0）')
+      }
     }
     await api(`/admin/goods/${type}`, { method: 'POST', body: JSON.stringify(body) })
     reload()

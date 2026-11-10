@@ -430,11 +430,41 @@ async function saveStallGoods(body, auth = null) {
   const { clampPointsUsable, maxPointsUsableForPrice } = require('../utils/pointsUsable')
   const priceNum = Number(body.price)
   const priceCap = maxPointsUsableForPrice(priceNum)
-  let mixOn = body.mixEnabled === 0 ? 0 : 1
+
+  // 更新时：表单未带积分抵现字段则沿用库内值，避免「只改价格」被 mix 默认开启误拦
+  let existedStall = null
+  if (id) {
+    const existedRows = await query(
+      `SELECT IFNULL(mix_enabled,1) AS mix_enabled, IFNULL(points_usable,0) AS points_usable,
+              IFNULL(points_grant,0) AS points_grant
+       FROM stall_goods WHERE id=:id AND merchant_id=:mid AND deleted_at IS NULL LIMIT 1`,
+      { id, mid: merchantId }
+    )
+    existedStall = existedRows[0] || null
+  }
+  const mixProvided = body.mixEnabled !== undefined && body.mixEnabled !== null && body.mixEnabled !== ''
+  const puProvided = body.pointsUsable !== undefined && body.pointsUsable !== null && body.pointsUsable !== ''
+  let mixOn = mixProvided
+    ? body.mixEnabled === 0 || body.mixEnabled === '0'
+      ? 0
+      : 1
+    : existedStall
+      ? Number(existedStall.mix_enabled) === 0
+        ? 0
+        : 1
+      : 1
   if (mixOn && priceCap <= 0) {
     throw new HttpError(400, '售价过低无法开启积分抵现（须留至少 ¥0.01 现金）')
   }
-  let pointsUsable = clampPointsUsable(body.pointsUsable, priceNum)
+  let pointsUsable = puProvided
+    ? clampPointsUsable(body.pointsUsable, priceNum)
+    : existedStall
+      ? clampPointsUsable(existedStall.points_usable, priceNum)
+      : 0
+  // 开启抵现但未填/为 0：按售价自动给可抵上限，避免运营台旧表单只改价时报错
+  if (mixOn && pointsUsable <= 0 && priceCap > 0) {
+    pointsUsable = priceCap
+  }
   if (mixOn && pointsUsable <= 0) {
     throw new HttpError(400, '已开启积分抵现，请填写「最大可抵扣积分」（须大于 0）')
   }
@@ -444,7 +474,12 @@ async function saveStallGoods(body, auth = null) {
     mid: merchantId,
     name,
     price: priceNum,
-    pg: Number(body.pointsGrant) || 0,
+    pg:
+      body.pointsGrant !== undefined && body.pointsGrant !== null && body.pointsGrant !== ''
+        ? Number(body.pointsGrant) || 0
+        : existedStall
+          ? Number(existedStall.points_grant) || 0
+          : 0,
     pu: pointsUsable,
     cat: bound.category,
     categoryId: bound.categoryId,
