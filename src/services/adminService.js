@@ -7,6 +7,7 @@ const catalogService = require('./catalogService')
 const { getCashRate, pointsToCash, listConfigs, setConfig } = require('./configService')
 const { assertCanOnSale } = require('./merchantReady')
 const { assertProductionGoodsName } = require('../utils/goodsName')
+const { provenanceFields } = require('../utils/goodsProvenance')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链' }
 
@@ -274,7 +275,7 @@ async function listStallGoods({ merchantId, page, pageSize, limit } = {}) {
   return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
-async function saveStallGoods(body) {
+async function saveStallGoods(body, auth = null) {
   const merchantId = Number(body.merchantId)
   await assertMerchantForGoods(merchantId, 'stall')
   const name = assertProductionGoodsName(body.name)
@@ -321,12 +322,26 @@ async function saveStallGoods(body) {
     }
     return { id: payload.id }
   }
+  const prov = provenanceFields({
+    source: body.dataSource || 'manual',
+    name,
+    sku: payload.sku,
+    auth
+  })
+  Object.assign(payload, {
+    dataSource: prov.dataSource,
+    createdByType: prov.createdByType,
+    createdById: prov.createdById,
+    createdByName: prov.createdByName
+  })
   let r
   try {
     r = await query(
       `INSERT INTO stall_goods
-        (merchant_id, name, sku_code, price, points_grant, category, unit, desc_text, image_url, stock, on_sale, mix_enabled, allow_remark)
-       VALUES (:mid, :name, :sku, :price, :pg, :cat, :unit, :desc, :img, :stock, :onSale, :mix, :allowRemark)`,
+        (merchant_id, name, sku_code, price, points_grant, category, unit, desc_text, image_url, stock, on_sale,
+         mix_enabled, allow_remark, data_source, created_by_type, created_by_id, created_by_name)
+       VALUES (:mid, :name, :sku, :price, :pg, :cat, :unit, :desc, :img, :stock, :onSale,
+         :mix, :allowRemark, :dataSource, :createdByType, :createdById, :createdByName)`,
       payload
     )
   } catch (e) {
@@ -387,7 +402,7 @@ async function listCrossGoods({ merchantId, page, pageSize, limit } = {}) {
   return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
-async function saveCrossGoods(body) {
+async function saveCrossGoods(body, auth = null) {
   const merchantId = Number(body.merchantId)
   await assertMerchantForGoods(merchantId, 'cross')
   const name = assertProductionGoodsName(body.name)
@@ -430,12 +445,21 @@ async function saveCrossGoods(body) {
     }
     return { id: payload.id }
   }
+  const prov = provenanceFields({ source: body.dataSource || 'manual', name, sku: payload.sku, auth })
+  Object.assign(payload, {
+    dataSource: prov.dataSource,
+    createdByType: prov.createdByType,
+    createdById: prov.createdById,
+    createdByName: prov.createdByName
+  })
   let r
   try {
     r = await query(
       `INSERT INTO cross_goods
-        (merchant_id, name, sku_code, category, points_need, cash_price, desc_text, image_url, stock, on_sale, allow_mix)
-       VALUES (:mid, :name, :sku, :cat, :pn, :cp, :desc, :img, :stock, :onSale, :mix)`,
+        (merchant_id, name, sku_code, category, points_need, cash_price, desc_text, image_url, stock, on_sale, allow_mix,
+         data_source, created_by_type, created_by_id, created_by_name)
+       VALUES (:mid, :name, :sku, :cat, :pn, :cp, :desc, :img, :stock, :onSale, :mix,
+         :dataSource, :createdByType, :createdById, :createdByName)`,
       payload
     )
   } catch (e) {
@@ -482,7 +506,7 @@ async function listSupplyGoodsAdmin({ merchantId, page, pageSize, limit } = {}) 
   return pageResult(list, Number(countRows[0]?.c) || 0, paging)
 }
 
-async function saveSupplyGoods(body) {
+async function saveSupplyGoods(body, auth = null) {
   const merchantId = Number(body.merchantId)
   await assertMerchantForGoods(merchantId, 'supply')
   const name = assertProductionGoodsName(body.name)
@@ -526,12 +550,21 @@ async function saveSupplyGoods(body) {
     }
     return { id: payload.id }
   }
+  const prov = provenanceFields({ source: body.dataSource || 'manual', name, sku: payload.sku, auth })
+  Object.assign(payload, {
+    dataSource: prov.dataSource,
+    createdByType: prov.createdByType,
+    createdById: prov.createdById,
+    createdByName: prov.createdByName
+  })
   let r
   try {
     r = await query(
       `INSERT INTO supply_goods
-        (merchant_id, name, sku_code, category, price, stock, points_grant, points_ratio_text, desc_text, image_url, status)
-       VALUES (:mid, :name, :sku, :cat, :price, :stock, :pg, :ratio, :desc, :img, :status)`,
+        (merchant_id, name, sku_code, category, price, stock, points_grant, points_ratio_text, desc_text, image_url, status,
+         data_source, created_by_type, created_by_id, created_by_name)
+       VALUES (:mid, :name, :sku, :cat, :price, :stock, :pg, :ratio, :desc, :img, :status,
+         :dataSource, :createdByType, :createdById, :createdByName)`,
       payload
     )
   } catch (e) {

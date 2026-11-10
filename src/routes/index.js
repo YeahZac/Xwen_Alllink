@@ -597,7 +597,7 @@ router.get('/admin/goods/stall', ...adminOnly, requirePage('goods'), async (req,
 
 router.post('/admin/goods/stall', ...adminOnly, requirePage('goods'), async (req, res, next) => {
   try {
-    res.json(ok(await adminService.saveStallGoods(req.body)))
+    res.json(ok(await adminService.saveStallGoods(req.body, req.auth)))
   } catch (e) {
     next(e)
   }
@@ -633,7 +633,7 @@ router.get('/admin/goods/cross', ...adminOnly, requirePage('goods'), async (req,
 
 router.post('/admin/goods/cross', ...adminOnly, requirePage('goods'), async (req, res, next) => {
   try {
-    res.json(ok(await adminService.saveCrossGoods(req.body)))
+    res.json(ok(await adminService.saveCrossGoods(req.body, req.auth)))
   } catch (e) {
     next(e)
   }
@@ -649,7 +649,7 @@ router.get('/admin/goods/supply', ...adminOnly, requirePage('goods'), async (req
 
 router.post('/admin/goods/supply', ...adminOnly, requirePage('goods'), async (req, res, next) => {
   try {
-    res.json(ok(await adminService.saveSupplyGoods(req.body)))
+    res.json(ok(await adminService.saveSupplyGoods(req.body, req.auth)))
   } catch (e) {
     next(e)
   }
@@ -1526,6 +1526,7 @@ router.get(
             type: req.query.type,
             merchantId: req.query.merchantId,
             shopName: req.query.shopName,
+            dataSource: req.query.dataSource,
             includeDeleted: req.query.includeDeleted === '1',
             page: req.query.page,
             pageSize: req.query.pageSize,
@@ -1545,7 +1546,45 @@ router.post(
   requireAnyPage(GOODS_EDIT_PAGES, { edit: true }),
   async (req, res, next) => {
     try {
-      res.json(ok(await opsService.createSku(req.params.type, req.body || {})))
+      res.json(ok(await opsService.createSku(req.params.type, req.body || {}, req.auth)))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.get(
+  '/admin/ops/goods-cleanup/preview',
+  ...adminOnly,
+  requireAnyPage(GOODS_EDIT_PAGES, { edit: false }),
+  async (req, res, next) => {
+    try {
+      const sources = String(req.query.sources || 'test')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      res.json(ok(await opsService.previewGoodsCleanup({ sources })))
+    } catch (e) {
+      next(e)
+    }
+  }
+)
+
+router.post(
+  '/admin/ops/goods-cleanup/purge',
+  ...adminOnly,
+  requireAnyPage(GOODS_EDIT_PAGES, { edit: true }),
+  async (req, res, next) => {
+    try {
+      const body = req.body || {}
+      res.json(
+        ok(
+          await opsService.purgeGoodsBySource({
+            sources: body.sources || ['test'],
+            confirm: body.confirm === true || body.confirm === 1 || body.confirm === '1'
+          })
+        )
+      )
     } catch (e) {
       next(e)
     }
@@ -2322,7 +2361,9 @@ router.post(
   requireRoles('stall', 'cross', 'supply'),
   async (req, res, next) => {
     try {
-      res.json(ok(await merchantPortalService.saveGoods(req.auth.merchantId, req.auth.role, req.body)))
+      res.json(
+        ok(await merchantPortalService.saveGoods(req.auth.merchantId, req.auth.role, req.body, req.auth))
+      )
     } catch (e) {
       next(e)
     }

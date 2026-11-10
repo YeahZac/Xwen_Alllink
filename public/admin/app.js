@@ -1571,9 +1571,22 @@ async function renderGoodsSku() {
       <label for="gShop">店铺名称</label>
       <select id="gShop"><option value="">全部店铺</option></select>
       <input id="gShopName" placeholder="搜索店名" style="min-width:140px" />
+      <label for="gSource">数据来源</label>
+      <select id="gSource">
+        <option value="">全部来源</option>
+        <option value="manual">人工维护</option>
+        <option value="placeholder">系统占位</option>
+        <option value="system">系统自动</option>
+        <option value="test">测试数据</option>
+      </select>
       <button class="btn" id="btnReload">查询</button>
+      ${
+        editable
+          ? '<button class="btn danger" id="btnCleanupTest">一键清理测试/系统数据</button>'
+          : ''
+      }
     </div>
-    <p class="muted">上架门槛：二级商户进件已完成 + 支付配置就绪后才能上架；上架商品后才会进入小程序首页/分类。</p>
+    <p class="muted">上架门槛：二级商户进件已完成 + 支付配置就绪后才能上架。列表展示「数据来源」与「创建人」；上线后请用「一键清理」清除测试数据（默认不清系统占位「到店消费」）。</p>
     <div id="list"></div>`
 
   const refreshShops = async () => {
@@ -1612,6 +1625,7 @@ async function renderGoodsSku() {
     const type = $('gType').value
     const merchantId = $('gShop').value
     const shopName = ($('gShopName').value || '').trim()
+    const dataSource = $('gSource').value
     const qs = new URLSearchParams({
       page: String(pageState.page),
       pageSize: String(pageState.pageSize)
@@ -1619,20 +1633,43 @@ async function renderGoodsSku() {
     if (type) qs.set('type', type)
     if (merchantId) qs.set('merchantId', merchantId)
     if (shopName) qs.set('shopName', shopName)
+    if (dataSource) qs.set('dataSource', dataSource)
     const data = unwrapList(await api(`/admin/ops/skus?${qs}`))
     pageState.page = data.page
     const rows = data.list
     $('list').innerHTML =
       table(
-        ['预览', '供应商类型', '店铺名称', 'SKU', '品名', '价格', '销量', '库存', '上架', '操作'],
+        [
+          '预览',
+          '供应商类型',
+          '店铺名称',
+          'SKU',
+          '品名',
+          '数据来源',
+          '创建人',
+          '价格',
+          '销量',
+          '库存',
+          '上架',
+          '操作'
+        ],
         rows
           .map(
             (g) => {
               const on = Number(g.onSale) === 1
+              const src = g.dataSourceLabel || g.dataSource || '人工维护'
+              const srcTone =
+                g.dataSource === 'test'
+                  ? 'badge warn'
+                  : g.dataSource === 'placeholder' || g.dataSource === 'system'
+                    ? 'badge'
+                    : 'badge soft'
               return `<tr class="${on ? '' : 'is-off'}">
         <td>${thumb(g.imageUrl)}</td>
         <td>${esc(g.goodsTypeLabel || g.goodsType)}</td><td>${esc(g.shopName)}</td>
         <td><code>${esc(g.sku)}</code></td><td>${esc(g.name)}</td>
+        <td><span class="${srcTone}">${esc(src)}</span></td>
+        <td class="muted">${esc(g.createdByLabel || '-')}</td>
         <td>${g.price}</td><td>${g.sales}</td><td>${g.stock ?? '-'}</td>
         <td>${switchControl({
           on,
@@ -1706,6 +1743,43 @@ async function renderGoodsSku() {
     pageState.page = 1
     runAction(load)
   }
+  const btnCleanup = $('btnCleanupTest')
+  if (btnCleanup) {
+    btnCleanup.onclick = () =>
+      runAction(async () => {
+        const preview = await api('/admin/ops/goods-cleanup/preview?sources=test,system')
+        const total = Number(preview.total) || 0
+        const lines = [
+          `将清理「测试数据 + 系统自动」共 ${total} 条（软删除，不下架人工维护商品）。`,
+          `测试 ${preview.bySource?.test || 0} · 系统自动 ${preview.bySource?.system || 0}`,
+          '系统占位「到店消费」默认保留；如需一并清理请到接口传 sources 含 placeholder。',
+          '',
+          ...(preview.samples || [])
+            .slice(0, 8)
+            .map(
+              (s) =>
+                `· [${s.dataSourceLabel}] ${s.shopName} / ${s.name} (${s.sku || '-'}) · ${
+                  s.createdByLabel || '-'
+                }`
+            )
+        ]
+        if (
+          !confirmDanger(
+            (lines.join('\n') || '确认清理？') + (total ? '\n\n确认后立即执行。' : '\n\n当前无匹配数据。')
+          )
+        ) {
+          return
+        }
+        if (!total) return
+        const res = await api('/admin/ops/goods-cleanup/purge', {
+          method: 'POST',
+          body: JSON.stringify({ sources: ['test', 'system'], confirm: true })
+        })
+        alert(`已清理 ${res.affected || 0} 条`)
+        pageState.page = 1
+        await load()
+      })
+  }
   $('gType').onchange = () =>
     runAction(async () => {
       pageState.page = 1
@@ -1713,6 +1787,10 @@ async function renderGoodsSku() {
       await load()
     })
   $('gShop').onchange = () => {
+    pageState.page = 1
+    runAction(load)
+  }
+  $('gSource').onchange = () => {
     pageState.page = 1
     runAction(load)
   }

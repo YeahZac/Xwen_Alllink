@@ -458,6 +458,8 @@ tr:hover td { background: #fafbfc; }
 .badge.approved, .badge.paid, .badge.ok { background: #ecfdf5; color: #047857; }
 .badge.rejected, .badge.danger { background: #fef2f2; color: #b91c1c; }
 .badge.closed { background: #f1f5f9; color: #64748b; }
+.badge.warn { background: #fff7ed; color: #c2410c; }
+.badge.soft { background: #f1f5f9; color: #475569; }
 
 .panel {
   background: var(--panel);

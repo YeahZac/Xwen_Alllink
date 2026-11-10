@@ -332,23 +332,32 @@ async function listGoods(merchantId, role) {
   }
 }
 
-async function saveGoods(merchantId, role, body) {
+async function saveGoods(merchantId, role, body, auth = null) {
   const mid = Number(merchantId)
   if (!mid) throw new HttpError(400, '缺少商户ID')
   const rows = await query(
-    `SELECT id, role, status FROM merchants WHERE id=:id AND deleted_at IS NULL LIMIT 1`,
+    `SELECT id, role, status, name FROM merchants WHERE id=:id AND deleted_at IS NULL LIMIT 1`,
     { id: mid }
   )
   if (!rows.length) throw new HttpError(404, '门店不存在或已删除')
   if (Number(rows[0].status) !== 1) throw new HttpError(400, '门店已停业，无法维护商品')
   if (role && rows[0].role !== role) throw new HttpError(400, '门店角色与当前身份不符')
   const payload = { ...body, merchantId: mid }
-  if (rows[0].role === 'stall') return adminService.saveStallGoods(payload)
-  if (rows[0].role === 'cross') return adminService.saveCrossGoods(payload)
-  return adminService.saveSupplyGoods({
-    ...payload,
-    status: body.onSale === 0 ? 0 : body.status === 0 ? 0 : 1
-  })
+  const actor = {
+    ...(auth || {}),
+    merchantId: mid,
+    role: rows[0].role,
+    shopName: rows[0].name
+  }
+  if (rows[0].role === 'stall') return adminService.saveStallGoods(payload, actor)
+  if (rows[0].role === 'cross') return adminService.saveCrossGoods(payload, actor)
+  return adminService.saveSupplyGoods(
+    {
+      ...payload,
+      status: body.onSale === 0 ? 0 : body.status === 0 ? 0 : 1
+    },
+    actor
+  )
 }
 
 async function getGoods(merchantId, role, id) {

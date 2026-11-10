@@ -6,6 +6,13 @@ const { orderNo, shortCode } = require('../utils/id')
 const { assertCanOnSale, assertGoodsCanOnSale, evaluateMerchantReady } = require('./merchantReady')
 const { pickCoverFromLicenses, resolveMerchantCover, parseMaybeJson } = require('../utils/mediaPick')
 const { assertProductionGoodsName } = require('../utils/goodsName')
+const {
+  provenanceFields,
+  formatCreator,
+  SOURCE_LABEL,
+  normalizeSource
+} = require('../utils/goodsProvenance')
+const { isTestGoodsName } = require('../utils/goodsName')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链', consumer: 'C端用户' }
 const PLATFORM_ROLE_LABEL = { partner: '合伙人', founder: '创始人', lead: '负责人' }
@@ -964,7 +971,7 @@ async function updateMerchantMaterials(id, materials) {
 }
 
 /** 新建门店商品（运营台从门店详情创建） */
-async function createSku(type, body = {}) {
+async function createSku(type, body = {}, auth = null) {
   const merchantId = Number(body.merchantId)
   if (!merchantId) throw new HttpError(400, '缺少商户ID')
   const name = assertProductionGoodsName(body.name)
@@ -981,12 +988,36 @@ async function createSku(type, body = {}) {
   const img = body.imageUrl || null
   const onSale = body.onSale === 0 ? 0 : 1
   if (onSale) await assertCanOnSale(merchantId)
+  const prov = provenanceFields({
+    source: body.dataSource || (isTestGoodsName(name) ? 'test' : 'manual'),
+    name,
+    sku,
+    auth
+  })
+  const provenance = {
+    dataSource: prov.dataSource,
+    createdByType: prov.createdByType,
+    createdById: prov.createdById,
+    createdByName: prov.createdByName
+  }
   let insertId = 0
+  async function insertWithProvenance(sqlWith, params, sqlFallback) {
+    try {
+      const r = await query(sqlWith, params)
+      return r.insertId
+    } catch (e) {
+      if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+      const r = await query(sqlFallback.sql, sqlFallback.params)
+      return r.insertId
+    }
+  }
   if (role === 'stall') {
-    const r = await query(
+    insertId = await insertWithProvenance(
       `INSERT INTO stall_goods
-        (merchant_id, name, sku_code, price, points_grant, category, desc_text, image_url, stock, on_sale)
-       VALUES (:mid, :name, :sku, :price, :pg, :cat, :desc, :img, :stock, :onSale)`,
+        (merchant_id, name, sku_code, price, points_grant, category, desc_text, image_url, stock, on_sale,
+         data_source, created_by_type, created_by_id, created_by_name)
+       VALUES (:mid, :name, :sku, :price, :pg, :cat, :desc, :img, :stock, :onSale,
+         :dataSource, :createdByType, :createdById, :createdByName)`,
       {
         mid: merchantId,
         name,
@@ -997,20 +1028,39 @@ async function createSku(type, body = {}) {
         desc: body.desc || '',
         img,
         stock: Number(body.stock) || 9999,
-        onSale
+        onSale,
+        ...provenance
+      },
+      {
+        sql: `INSERT INTO stall_goods
+          (merchant_id, name, sku_code, price, points_grant, category, desc_text, image_url, stock, on_sale)
+         VALUES (:mid, :name, :sku, :price, :pg, :cat, :desc, :img, :stock, :onSale)`,
+        params: {
+          mid: merchantId,
+          name,
+          sku,
+          price: Number(body.price) || 0,
+          pg: Number(body.pointsGrant) || 0,
+          cat: body.category || '主食',
+          desc: body.desc || '',
+          img,
+          stock: Number(body.stock) || 9999,
+          onSale
+        }
       }
     )
-    insertId = r.insertId
     if (!sku && insertId) {
       await query(`UPDATE stall_goods SET sku_code=CONCAT('ST', LPAD(id,6,'0')) WHERE id=:id`, {
         id: insertId
       })
     }
   } else if (role === 'cross') {
-    const r = await query(
+    insertId = await insertWithProvenance(
       `INSERT INTO cross_goods
-        (merchant_id, name, sku_code, points_need, cash_price, desc_text, image_url, stock, on_sale)
-       VALUES (:mid, :name, :sku, :pn, :cp, :desc, :img, :stock, :onSale)`,
+        (merchant_id, name, sku_code, points_need, cash_price, desc_text, image_url, stock, on_sale,
+         data_source, created_by_type, created_by_id, created_by_name)
+       VALUES (:mid, :name, :sku, :pn, :cp, :desc, :img, :stock, :onSale,
+         :dataSource, :createdByType, :createdById, :createdByName)`,
       {
         mid: merchantId,
         name,
@@ -1020,20 +1070,38 @@ async function createSku(type, body = {}) {
         desc: body.desc || '',
         img,
         stock: Number(body.stock) || 9999,
-        onSale
+        onSale,
+        ...provenance
+      },
+      {
+        sql: `INSERT INTO cross_goods
+          (merchant_id, name, sku_code, points_need, cash_price, desc_text, image_url, stock, on_sale)
+         VALUES (:mid, :name, :sku, :pn, :cp, :desc, :img, :stock, :onSale)`,
+        params: {
+          mid: merchantId,
+          name,
+          sku,
+          pn: Number(body.pointsNeed) || 0,
+          cp: Number(body.price || body.cashPrice) || 0,
+          desc: body.desc || '',
+          img,
+          stock: Number(body.stock) || 9999,
+          onSale
+        }
       }
     )
-    insertId = r.insertId
     if (!sku && insertId) {
       await query(`UPDATE cross_goods SET sku_code=CONCAT('CR', LPAD(id,6,'0')) WHERE id=:id`, {
         id: insertId
       })
     }
   } else {
-    const r = await query(
+    insertId = await insertWithProvenance(
       `INSERT INTO supply_goods
-        (merchant_id, name, sku_code, price, stock, points_grant, image_url, status)
-       VALUES (:mid, :name, :sku, :price, :stock, :pg, :img, :st)`,
+        (merchant_id, name, sku_code, price, stock, points_grant, image_url, status,
+         data_source, created_by_type, created_by_id, created_by_name)
+       VALUES (:mid, :name, :sku, :price, :stock, :pg, :img, :st,
+         :dataSource, :createdByType, :createdById, :createdByName)`,
       {
         mid: merchantId,
         name,
@@ -1042,17 +1110,32 @@ async function createSku(type, body = {}) {
         stock: Number(body.stock) || 0,
         pg: Number(body.pointsGrant) || 0,
         img,
-        st: onSale
+        st: onSale,
+        ...provenance
+      },
+      {
+        sql: `INSERT INTO supply_goods
+          (merchant_id, name, sku_code, price, stock, points_grant, image_url, status)
+         VALUES (:mid, :name, :sku, :price, :stock, :pg, :img, :st)`,
+        params: {
+          mid: merchantId,
+          name,
+          sku,
+          price: Number(body.price) || 0,
+          stock: Number(body.stock) || 0,
+          pg: Number(body.pointsGrant) || 0,
+          img,
+          st: onSale
+        }
       }
     )
-    insertId = r.insertId
     if (!sku && insertId) {
       await query(`UPDATE supply_goods SET sku_code=CONCAT('SP', LPAD(id,6,'0')) WHERE id=:id`, {
         id: insertId
       })
     }
   }
-  return { id: insertId, merchantId, role }
+  return { id: insertId, merchantId, role, dataSource: provenance.dataSource }
 }
 
 async function softDeleteUser(id) {
@@ -1069,6 +1152,7 @@ async function setUserStatus(id, status) {
 }
 
 function mapSkuRow(g, t, typeLabel) {
+  const dataSource = normalizeSource(g.data_source, { name: g.name, sku: g.sku_code })
   return {
     id: g.id,
     goodsType: t,
@@ -1084,15 +1168,31 @@ function mapSkuRow(g, t, typeLabel) {
     sales: g.sales_count || 0,
     onSale: g.on_sale != null ? g.on_sale : g.status,
     imageUrl: g.image_url,
-    deletedAt: g.deleted_at
+    deletedAt: g.deleted_at,
+    dataSource,
+    dataSourceLabel: SOURCE_LABEL[dataSource] || dataSource,
+    createdByType: g.created_by_type || null,
+    createdById: g.created_by_id || null,
+    createdByName: g.created_by_name || null,
+    createdByLabel: formatCreator(g)
   }
 }
 
 /** 商品 SKU 列表（三类，分页） */
-async function listSkus({ type, merchantId, shopName, includeDeleted, page, pageSize, limit } = {}) {
+async function listSkus({
+  type,
+  merchantId,
+  shopName,
+  dataSource,
+  includeDeleted,
+  page,
+  pageSize,
+  limit
+} = {}) {
   const paging = parsePaging({ page, pageSize, limit }, { pageSize: 20, maxPageSize: 100 })
   const types = type ? [type] : ['stall', 'cross', 'supply']
   const typeLabel = { stall: '地摊', cross: '异业门店', supply: '供应链门店' }
+  const sourceFilter = String(dataSource || '').trim().toLowerCase()
 
   async function queryType(t, lim, off) {
     const table = t === 'stall' ? 'stall_goods' : t === 'cross' ? 'cross_goods' : 'supply_goods'
@@ -1107,6 +1207,10 @@ async function listSkus({ type, merchantId, shopName, includeDeleted, page, page
     if (shopName && String(shopName).trim()) {
       where += ` AND m.name LIKE :shopName`
       params.shopName = `%${String(shopName).trim()}%`
+    }
+    if (sourceFilter && ['manual', 'placeholder', 'system', 'test'].includes(sourceFilter)) {
+      where += ` AND IFNULL(g.data_source,'manual')=:dataSource`
+      params.dataSource = sourceFilter
     }
     const countRows = await query(
       `SELECT COUNT(*) AS c FROM ${table} g JOIN merchants m ON m.id=g.merchant_id${where}`,
@@ -1215,6 +1319,124 @@ async function saveSku(type, body) {
   return { id: Number(body.id) }
 }
 
+/**
+ * 预览可清理的系统/测试商品（不含人工维护；占位需显式勾选）
+ */
+async function previewGoodsCleanup({ sources } = {}) {
+  const wanted = Array.isArray(sources) && sources.length
+    ? sources.map((s) => String(s).toLowerCase()).filter((s) => ['test', 'system', 'placeholder'].includes(s))
+    : ['test']
+  const tables = [
+    { type: 'stall', table: 'stall_goods', saleCol: 'on_sale' },
+    { type: 'cross', table: 'cross_goods', saleCol: 'on_sale' },
+    { type: 'supply', table: 'supply_goods', saleCol: 'status' }
+  ]
+  const bySource = { test: 0, system: 0, placeholder: 0 }
+  const samples = []
+  for (const t of tables) {
+    let rows = []
+    try {
+      rows = await query(
+        `SELECT g.id, g.name, g.sku_code AS sku, g.data_source AS dataSource,
+                g.created_by_name AS createdByName, g.created_by_type AS createdByType,
+                m.name AS shopName, '${t.type}' AS goodsType
+         FROM ${t.table} g
+         JOIN merchants m ON m.id=g.merchant_id
+         WHERE g.deleted_at IS NULL
+           AND IFNULL(g.data_source,'manual') IN ('test','system','placeholder')
+         ORDER BY g.id DESC LIMIT 200`
+      )
+    } catch (e) {
+      if (e && e.code === 'ER_BAD_FIELD_ERROR') {
+        rows = await query(
+          `SELECT g.id, g.name, g.sku_code AS sku, m.name AS shopName, '${t.type}' AS goodsType
+           FROM ${t.table} g JOIN merchants m ON m.id=g.merchant_id
+           WHERE g.deleted_at IS NULL ORDER BY g.id DESC LIMIT 200`
+        )
+        rows = rows
+          .map((r) => ({
+            ...r,
+            dataSource: normalizeSource(null, { name: r.name, sku: r.sku })
+          }))
+          .filter((r) => ['test', 'system', 'placeholder'].includes(r.dataSource))
+      } else throw e
+    }
+    for (const r of rows) {
+      const src = normalizeSource(r.dataSource, { name: r.name, sku: r.sku })
+      if (!wanted.includes(src)) continue
+      bySource[src] = (bySource[src] || 0) + 1
+      if (samples.length < 50) {
+        samples.push({
+          id: r.id,
+          goodsType: t.type,
+          name: r.name,
+          sku: r.sku,
+          shopName: r.shopName,
+          dataSource: src,
+          dataSourceLabel: SOURCE_LABEL[src] || src,
+          createdByLabel: formatCreator(r)
+        })
+      }
+    }
+  }
+  const total = wanted.reduce((s, k) => s + (bySource[k] || 0), 0)
+  return { sources: wanted, bySource, total, samples }
+}
+
+/** 一键软删测试/系统自动商品；默认仅 test。占位「到店消费」须 sources 含 placeholder */
+async function purgeGoodsBySource({ sources, confirm } = {}) {
+  if (!confirm) throw new HttpError(400, '请确认清理操作（confirm=true）')
+  const wanted = Array.isArray(sources) && sources.length
+    ? sources.map((s) => String(s).toLowerCase()).filter((s) => ['test', 'system', 'placeholder'].includes(s))
+    : ['test']
+  if (!wanted.length) throw new HttpError(400, '请选择要清理的数据来源')
+  const preview = await previewGoodsCleanup({ sources: wanted })
+  const deleted = []
+  const tables = [
+    { type: 'stall', table: 'stall_goods', saleCol: 'on_sale' },
+    { type: 'cross', table: 'cross_goods', saleCol: 'on_sale' },
+    { type: 'supply', table: 'supply_goods', saleCol: 'status' }
+  ]
+  let affected = 0
+  for (const t of tables) {
+    try {
+      const placeholders = wanted.map((_, i) => `:s${i}`).join(',')
+      const params = {}
+      wanted.forEach((s, i) => {
+        params[`s${i}`] = s
+      })
+      const r = await query(
+        `UPDATE ${t.table}
+         SET ${t.saleCol}=0, deleted_at=NOW()
+         WHERE deleted_at IS NULL
+           AND IFNULL(data_source,'manual') IN (${placeholders})`,
+        params
+      )
+      affected += Number(r.affectedRows) || 0
+      deleted.push({ goodsType: t.type, affected: Number(r.affectedRows) || 0 })
+    } catch (e) {
+      if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+      // 无 provenance 列时按品名兜底清理测试数据
+      if (wanted.includes('test')) {
+        const r = await query(
+          `UPDATE ${t.table}
+           SET ${t.saleCol}=0, deleted_at=NOW()
+           WHERE deleted_at IS NULL
+             AND (
+               name LIKE '\\_\\_%' ESCAPE '\\\\'
+               OR LOWER(name) IN ('gate-draft','gate_draft')
+               OR name LIKE 'PAYTEST%'
+               OR name LIKE '测试小食%'
+             )`
+        )
+        affected += Number(r.affectedRows) || 0
+        deleted.push({ goodsType: t.type, affected: Number(r.affectedRows) || 0, fallback: true })
+      }
+    }
+  }
+  return { sources: wanted, affected, detail: deleted, previewTotal: preview.total }
+}
+
 module.exports = {
   bigScreen,
   trackVisit,
@@ -1233,6 +1455,8 @@ module.exports = {
   setGoodsOpen,
   softDeleteGoods,
   saveSku,
+  previewGoodsCleanup,
+  purgeGoodsBySource,
   resolveBizOwner,
   ROLE_LABEL
 }
