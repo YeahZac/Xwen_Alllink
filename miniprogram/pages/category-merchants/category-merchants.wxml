@@ -1,24 +1,24 @@
 <view class="page cat-merchants">
   <view class="head surface">
-    <text class="head__title">{{categoryName || '类目商品'}}</text>
-    <text class="head__sub">{{roleLabel ? roleLabel + ' · ' : ''}}该类目下在售商品</text>
+    <text class="head__title">{{categoryName || '类目商家'}}</text>
+    <text class="head__sub">{{roleLabel ? roleLabel + ' · ' : ''}}该类目下门店（每店只显示一次）</text>
   </view>
 
   <view wx:if="{{loading}}" class="empty-state">
-    <text class="empty-state__title">正在加载商品</text>
+    <text class="empty-state__title">正在加载门店</text>
   </view>
 
-  <view wx:elif="{{!goods.length}}" class="empty-state surface">
-    <text class="empty-state__title">暂无关联商品</text>
+  <view wx:elif="{{!merchants.length}}" class="empty-state surface">
+    <text class="empty-state__title">暂无关联门店</text>
     <text class="empty-state__desc">商家上架并绑定该类目后，将在此展示</text>
   </view>
 
   <view wx:else class="goods-list">
     <view
-      wx:for="{{goods}}"
-      wx:key="id"
+      wx:for="{{merchants}}"
+      wx:key="merchantId"
       class="goods-row surface"
-      bindtap="openGoods"
+      bindtap="openMerchant"
       data-merchant-id="{{item.merchantId}}"
       data-role="{{item.role}}"
     >
@@ -28,7 +28,7 @@
       </view>
       <view class="goods-row__body">
         <text class="goods-row__name ellipsis-1">{{item.name}}</text>
-        <text class="goods-row__price">{{item.priceText}}</text>
+        <text class="goods-row__price">{{item.countText}}</text>
         <text class="goods-row__meta ellipsis-1">{{item.metaText || '附近门店'}}</text>
       </view>
     </view>

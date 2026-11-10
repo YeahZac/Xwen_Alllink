@@ -7,78 +7,73 @@ Page({
     categoryId: '',
     categoryName: '',
     roleLabel: '',
-    goods: [],
+    merchants: [],
     loading: true
   },
   onLoad(q) {
     const categoryId = String((q && q.id) || '')
     const categoryName = decodeURIComponent((q && q.name) || '')
     this.setData({ categoryId, categoryName })
-    wx.setNavigationBarTitle({ title: categoryName || '类目商品' })
+    wx.setNavigationBarTitle({ title: categoryName || '类目商家' })
   },
   async onShow() {
     if (!store.ensureConsumerOrRedirect({ allowGuest: true })) return
-    await this.loadGoods()
+    await this.loadMerchants()
   },
-  async loadGoods() {
+  async loadMerchants() {
     const id = this.data.categoryId
     if (!id) {
-      this.setData({ loading: false, goods: [] })
+      this.setData({ loading: false, merchants: [] })
       return
     }
     this.setData({ loading: true })
     try {
-      const data = await api.categoryGoods(id, { limit: 100 }, { timeout: 25000 })
+      const data = await api.categoryMerchants(id, {}, { timeout: 25000 })
       const cat = (data && data.category) || {}
       const role = cat.role || 'cross'
-      const list = ((data && data.list) || []).map((g) => {
-        const itemRole = g.role || role
-        let priceText = ''
-        if (itemRole === 'cross') {
-          const pts = g.pointsNeed != null ? `${g.pointsNeed} 积分` : ''
-          const cash =
-            g.cashPrice != null || g.price != null
-              ? `¥${Number(g.cashPrice != null ? g.cashPrice : g.price).toFixed(2)}`
-              : ''
-          priceText = [pts, cash].filter(Boolean).join(' · ') || '兑换商品'
-        } else if (g.price != null) {
-          priceText = `¥${Number(g.price).toFixed(2)}`
-        } else {
-          priceText = '查看详情'
-        }
+      const seen = Object.create(null)
+      const list = []
+      for (const m of (data && data.list) || []) {
+        const merchantId = Number(m.id || m.merchantId)
+        if (!merchantId || seen[merchantId]) continue
+        seen[merchantId] = true
+        const itemRole = m.role || role
         const coverImage =
-          g.coverImage ||
-          g.imageUrl ||
+          m.coverImage ||
+          m.coverUrl ||
           coverPack.resolveCover({
-            ...g,
+            ...m,
             role: itemRole,
-            name: g.shopName || g.name
+            name: m.name || m.shopName
           })
-        return {
-          ...g,
+        const goodsCount = Number(m.goodsCount) || 0
+        list.push({
+          ...m,
+          merchantId,
           role: itemRole,
           coverImage,
-          initial: (g.name || g.shopName || '商').slice(0, 1),
-          priceText,
-          metaText: [g.shopName, g.city || g.address]
+          initial: String(m.name || m.shopName || m.initial || '商').slice(0, 1),
+          name: m.name || m.shopName || '门店',
+          countText: goodsCount > 0 ? `${goodsCount} 件在售` : '查看门店',
+          metaText: [m.city, m.address || m.distanceText]
             .map((v) => String(v || '').trim())
             .filter((v, i, arr) => v && arr.indexOf(v) === i)
             .join(' · ')
-        }
-      })
+        })
+      }
       this.setData({
         loading: false,
-        goods: list,
+        merchants: list,
         categoryName: cat.name || this.data.categoryName,
         roleLabel: cat.roleLabel || ''
       })
       if (cat.name) wx.setNavigationBarTitle({ title: cat.name })
     } catch (e) {
-      this.setData({ loading: false, goods: [] })
+      this.setData({ loading: false, merchants: [] })
       wx.showToast({ title: (e && e.message) || '加载失败', icon: 'none' })
     }
   },
-  openGoods(e) {
+  openMerchant(e) {
     const merchantId = e.currentTarget.dataset.merchantId
     const role = e.currentTarget.dataset.role
     if (!merchantId) return
