@@ -300,13 +300,9 @@ async function ensureSchema() {
   } catch (e) {
     console.warn('[schema] rbac bootstrap', e.message)
   }
-  try {
-    const mediaSyncService = require('../services/mediaSyncService')
-    const r = await mediaSyncService.syncAllMpStaticMedia()
-    console.log('[schema] mp-static media sync', JSON.stringify(r))
-  } catch (e) {
-    console.warn('[schema] mp-static media sync', e.message)
-  }
+  // 禁止在 ensureSchema / 服务启动时自动改写 Banner/门店/商品图：
+  // 旧版 mediaSync 会把商户真图误判为「旧 URL」整库覆盖成同一张 mp-static 图。
+  // 需要时请走运营台显式接口 POST /admin/media/sync-mp-static。
 }
 
 /** 开通深圳，并把门店迁到真实商场坐标 */

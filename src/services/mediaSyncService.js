@@ -1,6 +1,7 @@
 /**
- * 将库内 Banner / 门店封面 / 商品图统一切到本轮 mp-static 实景素材。
- * 不删除旧 COS 对象（可后台手工清）；只改数据库 URL。
+ * 将「明确的旧占位图 / 本地 assets」切到本轮 mp-static 实景素材。
+ * 严禁覆盖商户/运营已上传的真实 CDN 图片。
+ * 默认不在服务启动时自动执行；仅管理接口显式调用。
  */
 const { query } = require('../utils/db')
 
@@ -32,23 +33,31 @@ const BANNERS = {
   login: `${MP_STATIC}/8f773fae68a0ba0e.webp`
 }
 
+/**
+ * 仅「空图 / 本地 assets / 公开占位图服务」视为可替换旧图。
+ * 任何已上传的 https CDN（含商户真图）一律不覆盖。
+ */
 function isLegacyUrl(url) {
-  const s = String(url || '')
+  const s = String(url || '').trim()
   if (!s) return true
   if (/\/admin\/mp-static\//i.test(s)) return false
-  if (/\/assets\//i.test(s)) return true
-  if (/placehold|picsum|unsplash/i.test(s)) return true
-  if (/\/admin\/(banner|cover)\//i.test(s)) return true
-  if (/^https?:\/\//i.test(s)) return true
-  return true
+  if (/placehold\.co|picsum\.photos|unsplash\.com|dummyimage|via\.placeholder/i.test(s)) {
+    return true
+  }
+  if (/^\/assets\//i.test(s) || /\/assets\/placeholders\//i.test(s)) return true
+  // 历史本地相对路径
+  if (!/^https?:\/\//i.test(s)) return true
+  // 真实上传的 CDN / COS / 云托管文件：禁止自动改写
+  return false
 }
 
 function pickCoverByName(name, role) {
   const n = String(name || '')
   if (/超市|百货|便利|日用|邻里/.test(n)) return COVERS.supermarket
-  if (/花|花艺|鲜花/.test(n)) return COVERS.flower
+  // 避免「花生」误命中「花」
+  if (/花艺|鲜花|花店|花束|绿植|玫瑰/.test(n)) return COVERS.flower
   if (/蛋糕|烘焙|甜品|奶油/.test(n)) return COVERS.cake
-  if (/果|果切|鲜果/.test(n)) return COVERS.fruit
+  if (/果切|鲜果|水果/.test(n)) return COVERS.fruit
   if (/奶茶|茶饮|咖啡/.test(n)) return COVERS.milktea
   if (/洗车/.test(n)) return COVERS.carwash
   if (/烤串|烧烤|串/.test(n)) return COVERS.bbq
@@ -77,9 +86,7 @@ function pickBanner(row) {
 }
 
 async function syncBanners() {
-  const rows = await query(
-    `SELECT id, role_scope, title, image_url AS imageUrl FROM banners`
-  )
+  const rows = await query(`SELECT id, role_scope, title, image_url AS imageUrl FROM banners`)
   let updated = 0
   for (const row of rows) {
     if (!isLegacyUrl(row.imageUrl)) continue
@@ -105,7 +112,16 @@ async function syncMerchantCovers() {
 }
 
 async function syncGoodsImages(table) {
-  const rows = await query(`SELECT id, name, image_url AS imageUrl FROM \`${table}\``)
+  // 仅处理未软删商品；已上传真图不会被 isLegacyUrl 命中
+  let rows
+  try {
+    rows = await query(
+      `SELECT id, name, image_url AS imageUrl FROM \`${table}\` WHERE deleted_at IS NULL`
+    )
+  } catch (e) {
+    if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+    rows = await query(`SELECT id, name, image_url AS imageUrl FROM \`${table}\``)
+  }
   let updated = 0
   for (const row of rows) {
     if (!isLegacyUrl(row.imageUrl)) continue

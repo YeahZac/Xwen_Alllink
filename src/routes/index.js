@@ -1333,6 +1333,7 @@ router.get('/admin/ops/screen', ...adminOnly, async (req, res) => {
   res.status(410).json({ code: 410, message: '数据大屏已下线', data: null })
 })
 
+/** 显式同步 mp-static 占位图；不会覆盖商户/运营已上传的真实 CDN 图。勿在启动流程调用。 */
 router.post('/admin/sys/sync-mp-media', ...adminOnly, requirePage('sys_media', { edit: true }), async (req, res, next) => {
   try {
     const mediaSyncService = require('../services/mediaSyncService')
