@@ -109,7 +109,10 @@ async function assertGoodsCanOnSale(type, goodsId) {
   return assertCanOnSale(rows[0].merchantId)
 }
 
-/** 进件完成后：把地摊「到店消费」占位 SKU 自动上架，便于收款码可用并进入首页 */
+/**
+ * 进件完成后：若仍有历史「到店消费」占位草稿则上架（兼容旧数据）。
+ * 不会新建商品；新店请由运营/商家人工建品。
+ */
 async function activateStallPlaceholderOnFinish(merchantId) {
   const id = Number(merchantId)
   if (!id) return { updated: 0 }

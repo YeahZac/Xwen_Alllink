@@ -765,7 +765,7 @@ function merchantOnboardFlowGuide(page) {
     {
       key: 'pay',
       title: '④ 支付配置就绪',
-      text: '进件「已完成」+ 平台支付配置就绪后，才允许上架 SKU。地摊「到店消费」占位商品会在进件完成后自动上架。'
+      text: '进件「已完成」+ 平台支付配置就绪后，才允许上架 SKU。商品须由运营/商家人工新建，系统不会自动生成。'
     },
     {
       key: 'sku',
@@ -1689,7 +1689,7 @@ async function renderGoodsSku() {
           : ''
       }
     </div>
-    <p class="muted">上架门槛：二级商户进件已完成 + 支付配置就绪后才能上架。列表展示「数据来源」与「创建人」；上线后请用「一键清理」清除测试数据（默认不清系统占位「到店消费」）。</p>
+    <p class="muted">上架门槛：二级商户进件已完成 + 支付配置就绪后才能上架。列表展示「数据来源」与「创建人」。删除后不会自动重建；可用「一键清理」清除测试/历史占位数据。</p>
     <div id="list"></div>`
 
   const refreshShops = async () => {

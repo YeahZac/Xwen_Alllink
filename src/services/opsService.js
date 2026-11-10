@@ -1284,10 +1284,19 @@ async function setGoodsOpen(type, id, open) {
 }
 
 async function softDeleteGoods(type, id) {
+  const gid = Number(id)
+  if (!gid) throw new HttpError(400, '商品ID无效')
   const table = type === 'stall' ? 'stall_goods' : type === 'cross' ? 'cross_goods' : 'supply_goods'
   const col = type === 'supply' ? 'status' : 'on_sale'
-  await query(`UPDATE ${table} SET ${col}=0, deleted_at=NOW() WHERE id=:id`, { id })
-  return { id: Number(id), deleted: true }
+  const rows = await query(
+    `SELECT id, merchant_id AS merchantId FROM ${table} WHERE id=:id AND deleted_at IS NULL LIMIT 1`,
+    { id: gid }
+  )
+  if (!rows.length) throw new HttpError(404, '商品不存在或已删除')
+  await query(`UPDATE ${table} SET ${col}=0, deleted_at=NOW() WHERE id=:id AND deleted_at IS NULL`, {
+    id: gid
+  })
+  return { id: gid, merchantId: Number(rows[0].merchantId), deleted: true }
 }
 
 async function saveSku(type, body) {

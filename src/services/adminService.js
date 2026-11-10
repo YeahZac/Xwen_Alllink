@@ -359,9 +359,10 @@ async function listStallGoods({ merchantId, page, pageSize, limit } = {}) {
   try {
     list = await query(
       `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name, g.price,
-              g.points_grant AS pointsGrant, g.category, g.category_id AS categoryId, g.desc_text AS description,
-              g.image_url AS imageUrl, g.stock, g.on_sale AS onSale, g.sku_code AS sku,
-              g.sales_count AS sales, IFNULL(g.allow_remark, 1) AS allowRemark,
+              g.points_grant AS pointsGrant, g.category, g.category_id AS categoryId, g.unit,
+              g.desc_text AS description, g.image_url AS imageUrl, g.stock, g.on_sale AS onSale,
+              g.sku_code AS sku, g.sales_count AS sales, IFNULL(g.mix_enabled,1) AS mixEnabled,
+              IFNULL(g.allow_remark, 1) AS allowRemark,
               (SELECT COUNT(*) FROM stall_goods_option_groups og WHERE og.goods_id = g.id) AS optionGroupCount
        FROM stall_goods g JOIN merchants m ON m.id=g.merchant_id${where}
        ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
@@ -373,7 +374,7 @@ async function listStallGoods({ merchantId, page, pageSize, limit } = {}) {
       `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name, g.price,
               g.points_grant AS pointsGrant, g.category, g.desc_text AS description,
               g.image_url AS imageUrl, g.stock, g.on_sale AS onSale, g.sku_code AS sku,
-              g.sales_count AS sales, 1 AS allowRemark, 0 AS optionGroupCount
+              g.sales_count AS sales, 1 AS mixEnabled, 1 AS allowRemark, 0 AS optionGroupCount
        FROM stall_goods g JOIN merchants m ON m.id=g.merchant_id${where}
        ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
       params
@@ -505,7 +506,7 @@ async function listCrossGoods({ merchantId, page, pageSize, limit } = {}) {
     list = await query(
       `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name,
               g.points_need AS pointsNeed, g.cash_price AS cashPrice, g.stock,
-              g.category, g.category_id AS categoryId,
+              g.category, g.category_id AS categoryId, IFNULL(g.allow_mix,1) AS allowMix,
               g.desc_text AS description, g.image_url AS imageUrl, g.on_sale AS onSale,
               g.sku_code AS sku, g.sales_count AS sales
        FROM cross_goods g JOIN merchants m ON m.id=g.merchant_id${where}
@@ -518,7 +519,7 @@ async function listCrossGoods({ merchantId, page, pageSize, limit } = {}) {
       `SELECT g.id, g.merchant_id AS merchantId, m.name AS shopName, g.name,
               g.points_need AS pointsNeed, g.cash_price AS cashPrice,
               g.desc_text AS description, g.image_url AS imageUrl, g.on_sale AS onSale,
-              g.sku_code AS sku, g.sales_count AS sales
+              g.sku_code AS sku, g.sales_count AS sales, 1 AS allowMix
        FROM cross_goods g JOIN merchants m ON m.id=g.merchant_id${where}
        ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
       params
@@ -642,8 +643,8 @@ async function listSupplyGoodsAdmin({ merchantId, page, pageSize, limit } = {}) 
     list = await query(
       `SELECT g.id, g.merchant_id AS merchantId, m.name AS vendor, g.name, g.price, g.stock,
               g.points_grant AS pointsGrant, g.points_ratio_text AS pointsRatio,
-              g.category, g.category_id AS categoryId,
-              g.image_url AS imageUrl, g.status, g.sku_code AS sku, g.sales_count AS sales
+              g.category, g.category_id AS categoryId, g.desc_text AS description,
+              g.image_url AS imageUrl, g.status, g.status AS onSale, g.sku_code AS sku, g.sales_count AS sales
        FROM supply_goods g JOIN merchants m ON m.id=g.merchant_id${where}
        ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
       params
@@ -653,7 +654,7 @@ async function listSupplyGoodsAdmin({ merchantId, page, pageSize, limit } = {}) 
     list = await query(
       `SELECT g.id, g.merchant_id AS merchantId, m.name AS vendor, g.name, g.price, g.stock,
               g.points_grant AS pointsGrant, g.points_ratio_text AS pointsRatio,
-              g.image_url AS imageUrl, g.status, g.sku_code AS sku, g.sales_count AS sales
+              g.image_url AS imageUrl, g.status, g.status AS onSale, g.sku_code AS sku, g.sales_count AS sales
        FROM supply_goods g JOIN merchants m ON m.id=g.merchant_id${where}
        ORDER BY g.id DESC LIMIT ${paging.limit} OFFSET ${paging.offset}`,
       params

@@ -499,55 +499,12 @@ async function appendApplyReviewLog(payload) {
   }
 }
 
-/** 地摊通过后植入「到店消费」占位 SKU，保证空店也能走收款码 */
-async function ensureStallPlaceholderGoods(conn, merchantId, role) {
-  const mid = Number(merchantId)
-  if (!mid || role !== 'stall') return null
-  try {
-    const [exist] = await conn.execute(
-      `SELECT id FROM stall_goods WHERE merchant_id=? AND deleted_at IS NULL LIMIT 1`,
-      [mid]
-    )
-    if (exist.length) return Number(exist[0].id)
-  } catch (_) {
-    try {
-      const [exist] = await conn.execute(
-        `SELECT id FROM stall_goods WHERE merchant_id=? LIMIT 1`,
-        [mid]
-      )
-      if (exist.length) return Number(exist[0].id)
-    } catch (e2) {
-      return null
-    }
-  }
-  try {
-    const [ins] = await conn.execute(
-      `INSERT INTO stall_goods
-        (merchant_id, name, sku_code, price, points_grant, category, unit, desc_text, image_url, stock, on_sale,
-         data_source, created_by_type, created_by_id, created_by_name)
-       VALUES (?, '到店消费', ?, 0.01, 0, '收款', '次', '收款码占位商品：二级商户进件完成后自动上架，也可手动改价', NULL, 9999, 0,
-         'placeholder', 'system', NULL, '系统·入驻审核')`,
-      [mid, `SCAN${mid}`]
-    )
-    return ins.insertId || null
-  } catch (e) {
-    if (e && e.code === 'ER_BAD_FIELD_ERROR') {
-      try {
-        const [ins] = await conn.execute(
-          `INSERT INTO stall_goods
-            (merchant_id, name, sku_code, price, points_grant, category, unit, desc_text, image_url, stock, on_sale)
-           VALUES (?, '到店消费', ?, 0.01, 0, '收款', '次', '收款码占位商品：二级商户进件完成后自动上架，也可手动改价', NULL, 9999, 0)`,
-          [mid, `SCAN${mid}`]
-        )
-        return ins.insertId || null
-      } catch (e2) {
-        console.warn('[apply] placeholder goods', e2.message)
-        return null
-      }
-    }
-    console.warn('[apply] placeholder goods', e.message)
-    return null
-  }
+/**
+ * 历史：入驻通过后自动植入「到店消费」占位 SKU。
+ * 现已改为纯人工建品：删除商品后不得再自动新建，故此函数固定 no-op。
+ */
+async function ensureStallPlaceholderGoods(_conn, _merchantId, _role) {
+  return null
 }
 
 /** 运营审核通过：创建商户 + 额度池 + 账户 + 邀请码（支持驳回后改审通过） */

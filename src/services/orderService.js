@@ -747,49 +747,25 @@ async function createScanPayOrder({ userId, merchantId, amount }) {
 
   await feeService.assertCanTransact(mid, { action: '接单' })
 
-  async function ensureScanGoodsId(conn) {
+  /** 仅复用已有人工商品；禁止扫码收款时自动新建占位 SKU（删除后也不再复活） */
+  async function resolveScanGoodsId(conn) {
     try {
-      const [grows] = await conn.execute(
+      const [onSale] = await conn.execute(
+        `SELECT id FROM stall_goods
+         WHERE merchant_id=? AND deleted_at IS NULL AND IFNULL(on_sale,0)=1
+         ORDER BY id ASC LIMIT 1`,
+        [mid]
+      )
+      if (onSale.length) return Number(onSale[0].id)
+      const [any] = await conn.execute(
         `SELECT id FROM stall_goods WHERE merchant_id=? AND deleted_at IS NULL ORDER BY id ASC LIMIT 1`,
         [mid]
       )
-      if (grows.length) return Number(grows[0].id)
-    } catch (_) {
-      const [grows] = await conn.execute(
-        `SELECT id FROM stall_goods WHERE merchant_id=? ORDER BY id ASC LIMIT 1`,
-        [mid]
-      )
-      if (grows.length) return Number(grows[0].id)
-    }
-    try {
-      // 与入驻占位一致：默认 on_sale=0，进件 FINISH 后由 activateStallPlaceholderOnFinish 上架
-      const [ins] = await conn.execute(
-        `INSERT INTO stall_goods
-          (merchant_id, name, sku_code, price, points_grant, category, unit, desc_text, stock, on_sale,
-           data_source, created_by_type, created_by_id, created_by_name)
-         VALUES (?, '到店消费', ?, 0.01, 0, '收款', '次', '收款码占位', 9999, 0,
-           'placeholder', 'system', NULL, '系统·扫码收款')`,
-        [mid, `SCAN${mid}`]
-      )
-      return Number(ins.insertId) || 0
+      if (any.length) return Number(any[0].id)
     } catch (e) {
-      if (e && e.code === 'ER_BAD_FIELD_ERROR') {
-        try {
-          const [ins] = await conn.execute(
-            `INSERT INTO stall_goods
-              (merchant_id, name, sku_code, price, points_grant, category, unit, desc_text, stock, on_sale)
-             VALUES (?, '到店消费', ?, 0.01, 0, '收款', '次', '收款码占位', 9999, 0)`,
-            [mid, `SCAN${mid}`]
-          )
-          return Number(ins.insertId) || 0
-        } catch (e2) {
-          console.warn('[scan-pay] placeholder goods', e2.message)
-          return 0
-        }
-      }
-      console.warn('[scan-pay] placeholder goods', e.message)
-      return 0
+      console.warn('[scan-pay] resolve goods', e.message)
     }
+    return 0
   }
 
   assertPaySimulateAllowed(cash)
@@ -824,7 +800,7 @@ async function createScanPayOrder({ userId, merchantId, amount }) {
         }
       }
       const orderId = ins.insertId
-      const gid = await ensureScanGoodsId(conn)
+      const gid = await resolveScanGoodsId(conn)
       try {
         await conn.execute(
           `INSERT INTO consumer_order_items
@@ -888,7 +864,7 @@ async function createScanPayOrder({ userId, merchantId, amount }) {
       }
     }
     const orderId = ins.insertId
-    const gid = await ensureScanGoodsId(conn)
+    const gid = await resolveScanGoodsId(conn)
     try {
       await conn.execute(
         `INSERT INTO consumer_order_items

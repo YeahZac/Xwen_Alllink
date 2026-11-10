@@ -270,66 +270,30 @@ async function saveMerchantGoodsOptions(merchantId, goodsId, groups) {
   return stallOptionsService.saveGoodsOptionGroups(Number(goodsId), groups || [])
 }
 
+/**
+ * 商家端商品列表与运营台「门店商品」同源：同一 merchant_id + deleted_at IS NULL。
+ * 地摊/异业/供应链均走 adminService 列表查询，避免两端字段与过滤条件漂移。
+ */
 async function listGoods(merchantId, role) {
   const mid = Number(merchantId)
+  if (!mid) throw new HttpError(400, '缺少商户ID')
+  const pageSize = 200
   if (role === 'stall') {
-    try {
-      return await query(
-        `SELECT id, name, price, points_grant AS pointsGrant, category, category_id AS categoryId, unit, stock, on_sale AS onSale,
-                mix_enabled AS mixEnabled, IFNULL(allow_remark,1) AS allowRemark,
-                image_url AS imageUrl, sku_code AS sku, sales_count AS sales,
-                desc_text AS description,
-                (SELECT COUNT(*) FROM stall_goods_option_groups og WHERE og.goods_id = stall_goods.id) AS optionGroupCount
-         FROM stall_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
-        { id: mid }
-      )
-    } catch (e) {
-      if (e && e.code !== 'ER_BAD_FIELD_ERROR') throw e
-      return query(
-        `SELECT id, name, price, points_grant AS pointsGrant, category, stock, on_sale AS onSale,
-                image_url AS imageUrl, sku_code AS sku, sales_count AS sales, desc_text AS description,
-                1 AS allowRemark, 0 AS optionGroupCount
-         FROM stall_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
-        { id: mid }
-      )
-    }
+    const page = await adminService.listStallGoods({ merchantId: mid, page: 1, pageSize })
+    return page.list || []
   }
   if (role === 'cross') {
-    try {
-      return await query(
-        `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice, on_sale AS onSale,
-                allow_mix AS allowMix, category, category_id AS categoryId, stock, image_url AS imageUrl, sku_code AS sku,
-                sales_count AS sales, desc_text AS description
-         FROM cross_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
-        { id: mid }
-      )
-    } catch (e) {
-      if (e && e.code !== 'ER_BAD_FIELD_ERROR') throw e
-      return query(
-        `SELECT id, name, points_need AS pointsNeed, cash_price AS cashPrice, on_sale AS onSale,
-                image_url AS imageUrl, sku_code AS sku, sales_count AS sales, desc_text AS description
-         FROM cross_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
-        { id: mid }
-      )
-    }
+    const page = await adminService.listCrossGoods({ merchantId: mid, page: 1, pageSize })
+    return page.list || []
   }
-  try {
-    return await query(
-      `SELECT id, name, price, stock, points_grant AS pointsGrant, points_ratio_text AS pointsRatio,
-              category, category_id AS categoryId, desc_text AS description, status AS onSale, image_url AS imageUrl,
-              sku_code AS sku, sales_count AS sales
-       FROM supply_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
-      { id: mid }
-    )
-  } catch (e) {
-    if (e && e.code !== 'ER_BAD_FIELD_ERROR') throw e
-    return query(
-      `SELECT id, name, price, stock, points_grant AS pointsGrant, points_ratio_text AS pointsRatio,
-              status AS onSale, image_url AS imageUrl, sku_code AS sku, sales_count AS sales
-       FROM supply_goods WHERE merchant_id=:id AND deleted_at IS NULL ORDER BY id DESC`,
-      { id: mid }
-    )
+  if (role === 'supply') {
+    const page = await adminService.listSupplyGoodsAdmin({ merchantId: mid, page: 1, pageSize })
+    return (page.list || []).map((g) => ({
+      ...g,
+      onSale: g.onSale != null ? g.onSale : g.status
+    }))
   }
+  throw new HttpError(400, '门店角色无效')
 }
 
 async function saveGoods(merchantId, role, body, auth = null) {
