@@ -199,13 +199,16 @@ async function getStallMenu(merchantId) {
   if (!merchants.length) throw new HttpError(404, '摊位不存在')
   enrichCoverRow(merchants[0])
   if (Number(merchants[0].status) !== 1) throw new HttpError(400, '本店已歇业，暂不能收款')
+  const { C_END_EXCLUDE_TEST_NAME_SQL, isTestGoodsName } = require('../utils/goodsName')
   let goods
   try {
     goods = await query(
       `SELECT id, name, price, points_grant AS pointsGrant, category, desc_text AS \`desc\`,
               image_url AS coverImage, image_url AS imageUrl, stock, sku_code AS sku,
               IFNULL(allow_remark, 1) AS allowRemark
-       FROM stall_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
+       FROM stall_goods
+       WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL
+         AND ${C_END_EXCLUDE_TEST_NAME_SQL}`,
       { id: merchantId }
     )
   } catch (e) {
@@ -218,6 +221,7 @@ async function getStallMenu(merchantId) {
        FROM stall_goods WHERE merchant_id=:id AND on_sale=1 AND deleted_at IS NULL`,
       { id: merchantId }
     )
+    goods = goods.filter((g) => !isTestGoodsName(g.name))
   }
   const menu = await stallOptionsService.attachMenuOptions(goods)
   return { stall: merchants[0], menu }

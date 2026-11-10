@@ -6,6 +6,7 @@ const accountService = require('./accountService')
 const catalogService = require('./catalogService')
 const { getCashRate, pointsToCash, listConfigs, setConfig } = require('./configService')
 const { assertCanOnSale } = require('./merchantReady')
+const { assertProductionGoodsName } = require('../utils/goodsName')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链' }
 
@@ -276,8 +277,7 @@ async function listStallGoods({ merchantId, page, pageSize, limit } = {}) {
 async function saveStallGoods(body) {
   const merchantId = Number(body.merchantId)
   await assertMerchantForGoods(merchantId, 'stall')
-  const name = String(body.name || '').trim()
-  if (!name) throw new HttpError(400, '请填写商品名称')
+  const name = assertProductionGoodsName(body.name)
   const payload = {
     id: body.id ? Number(body.id) : 0,
     mid: merchantId,
@@ -390,8 +390,7 @@ async function listCrossGoods({ merchantId, page, pageSize, limit } = {}) {
 async function saveCrossGoods(body) {
   const merchantId = Number(body.merchantId)
   await assertMerchantForGoods(merchantId, 'cross')
-  const name = String(body.name || '').trim()
-  if (!name) throw new HttpError(400, '请填写商品名称')
+  const name = assertProductionGoodsName(body.name)
   const payload = {
     id: body.id ? Number(body.id) : 0,
     mid: merchantId,
@@ -486,8 +485,7 @@ async function listSupplyGoodsAdmin({ merchantId, page, pageSize, limit } = {}) 
 async function saveSupplyGoods(body) {
   const merchantId = Number(body.merchantId)
   await assertMerchantForGoods(merchantId, 'supply')
-  const name = String(body.name || '').trim()
-  if (!name) throw new HttpError(400, '请填写商品名称')
+  const name = assertProductionGoodsName(body.name)
   const payload = {
     id: body.id ? Number(body.id) : 0,
     mid: merchantId,

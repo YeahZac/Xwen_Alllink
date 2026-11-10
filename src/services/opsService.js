@@ -5,6 +5,7 @@ const { enrichScreen } = require('./screenSim')
 const { orderNo, shortCode } = require('../utils/id')
 const { assertCanOnSale, assertGoodsCanOnSale, evaluateMerchantReady } = require('./merchantReady')
 const { pickCoverFromLicenses, resolveMerchantCover, parseMaybeJson } = require('../utils/mediaPick')
+const { assertProductionGoodsName } = require('../utils/goodsName')
 
 const ROLE_LABEL = { stall: '地摊', cross: '异业', supply: '供应链', consumer: 'C端用户' }
 const PLATFORM_ROLE_LABEL = { partner: '合伙人', founder: '创始人', lead: '负责人' }
@@ -966,8 +967,7 @@ async function updateMerchantMaterials(id, materials) {
 async function createSku(type, body = {}) {
   const merchantId = Number(body.merchantId)
   if (!merchantId) throw new HttpError(400, '缺少商户ID')
-  const name = String(body.name || '').trim()
-  if (!name) throw new HttpError(400, '请填写商品名称')
+  const name = assertProductionGoodsName(body.name)
   const mrows = await query(
     'SELECT id, role FROM merchants WHERE id=:id AND deleted_at IS NULL',
     { id: merchantId }
@@ -1162,13 +1162,14 @@ async function saveSku(type, body) {
   if (!body.id) throw new HttpError(400, '缺少商品ID')
   const onSale = body.onSale === 0 ? 0 : 1
   if (onSale) await assertGoodsCanOnSale(type, body.id)
+  const safeName = body.name != null ? assertProductionGoodsName(body.name) : null
   if (type === 'stall') {
     await query(
       `UPDATE stall_goods SET name=:n, sku_code=:sku, price=:p, points_grant=:pg, stock=:s,
        sales_count=:sales, image_url=:img, on_sale=:onSale WHERE id=:id`,
       {
         id: body.id,
-        n: body.name,
+        n: safeName != null ? safeName : body.name,
         sku: body.sku || null,
         p: Number(body.price),
         pg: Number(body.pointsGrant) || 0,
@@ -1184,7 +1185,7 @@ async function saveSku(type, body) {
        stock=:s, sales_count=:sales, image_url=:img, on_sale=:onSale WHERE id=:id`,
       {
         id: body.id,
-        n: body.name,
+        n: safeName != null ? safeName : body.name,
         sku: body.sku || null,
         pn: Number(body.pointsNeed) || 0,
         cp: Number(body.price || body.cashPrice) || 0,
@@ -1200,7 +1201,7 @@ async function saveSku(type, body) {
        sales_count=:sales, image_url=:img, status=:st WHERE id=:id`,
       {
         id: body.id,
-        n: body.name,
+        n: safeName != null ? safeName : body.name,
         sku: body.sku || null,
         p: Number(body.price),
         s: Number(body.stock) || 0,
