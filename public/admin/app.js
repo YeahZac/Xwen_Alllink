@@ -469,8 +469,8 @@ function bindToggleSwitch(root, selector, handler) {
 function selectOnOff(name, value, { onLabel = '启用', offLabel = '停用', onValue = 1, offValue = 0 } = {}) {
   const on = Number(value) === Number(onValue)
   return `<div class="form-field form-field--compact">
-    <label class="form-field__label" for="f_${esc(name)}">${esc(onLabel)} / ${esc(offLabel)}</label>
-    <select id="f_${esc(name)}" name="${esc(name)}">
+    <label class="form-field__label" for="f_${esc(name)}">${esc(onLabel)}</label>
+    <select id="f_${esc(name)}" name="${esc(name)}" aria-label="${esc(onLabel)}">
       <option value="${onValue}" ${on ? 'selected' : ''}>${esc(onLabel)}</option>
       <option value="${offValue}" ${!on ? 'selected' : ''}>${esc(offLabel)}</option>
     </select>

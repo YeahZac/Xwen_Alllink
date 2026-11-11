@@ -115,10 +115,24 @@ label { display: block; font-size: 13px; color: var(--muted); margin: 0; }
   line-height: 1.45;
   font-weight: 400;
 }
-.form-field--compact select { max-width: 220px; }
+.form-field--compact select {
+  max-width: 100%;
+  width: min(280px, 100%);
+}
 .form-field input,
 .form-field select,
-.form-field textarea { margin: 0; }
+.form-field textarea {
+  margin: 0;
+  position: relative;
+  z-index: 1;
+}
+.form-field select {
+  appearance: auto;
+  -webkit-appearance: menulist;
+  background-color: #fff;
+  cursor: pointer;
+  pointer-events: auto;
+}
 .flow-guide {
   margin: 0 0 14px;
   padding: 12px 14px;
@@ -570,12 +584,12 @@ tr:hover td { background: #fafbfc; }
 }
 .modal-card {
   width: min(560px, 100%);
-  max-height: 90vh;
-  overflow: auto;
+  max-height: min(90vh, 920px);
+  overflow: hidden; /* 只让中间 body 滚，避免 footer 浮在表单中间挡住下拉 */
   background: #fff;
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 18px 20px 16px;
+  padding: 0;
   box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
@@ -590,24 +604,38 @@ tr:hover td { background: #fafbfc; }
   align-items: center;
   gap: 8px;
   flex: 0 0 auto;
+  background: #fff;
+  position: relative;
+  z-index: 2;
 }
 .modal-card header {
-  padding-bottom: 12px;
-  margin-bottom: 4px;
+  padding: 16px 20px 12px;
   border-bottom: 1px solid var(--line);
 }
 .modal-card h3 { margin: 0; font-size: 17px; }
 .modal-card footer {
-  margin-top: 16px;
-  padding-top: 12px;
+  margin-top: 0;
+  padding: 12px 20px 16px;
   border-top: 1px solid var(--line);
   justify-content: flex-end;
   gap: 10px;
 }
+#modalBody,
 #modalBody.form-stack {
-  padding: 12px 0 4px;
+  padding: 14px 20px;
   flex: 1 1 auto;
   min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  z-index: 1;
+}
+#modalBody .form-field,
+#modalBody .form-field select,
+#modalBody .form-field input {
+  position: relative;
+  z-index: 1;
 }
 .empty { padding: 28px; text-align: center; color: var(--muted); }
 
