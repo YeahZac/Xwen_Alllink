@@ -20,7 +20,7 @@
 
     <view class="menu-panel__head">
       <text class="menu-panel__title">点餐</text>
-      <text class="menu-panel__hint">可选口味/分量/数量，结算前可写备注</text>
+      <text class="menu-panel__hint">选择规格与数量，需要时可加备注</text>
     </view>
 
     <view wx:if="{{loading}}" class="empty-state">
@@ -48,10 +48,7 @@
           </view>
           <view class="dish__main">
             <text class="dish__name ellipsis-1">{{g.name}}</text>
-            <text class="dish__sku muted" wx:if="{{g.sku}}">SKU {{g.sku}}</text>
-            <text class="dish__desc muted ellipsis-1">
-              {{g.desc || '现做'}} · 可得 {{g.pointsGrant}} 积分{{g.pointsUsable > 0 ? ' · 可用抵 ' + g.pointsUsable : ''}}
-            </text>
+            <text class="dish__desc muted ellipsis-1" wx:if="{{g.desc}}">{{g.desc}}</text>
             <text class="dish__opts muted ellipsis-1" wx:if="{{g.optionHint}}">可选 {{g.optionHint}}</text>
             <view class="dish__foot">
               <text class="price"><text class="price__yen">¥</text>{{g.price}}{{g.hasOptions ? '起' : ''}}</text>
@@ -81,7 +78,7 @@
   <view class="fixed-bar" wx:if="{{summary.totalQty && !sheetShow}}">
     <view class="fixed-bar__info">
       <text class="price cart-bar__total"><text class="price__yen">¥</text>{{summary.totalPrice}}</text>
-      <text class="cart-bar__qty">已选 {{summary.totalQty}} 件 · 预计得 {{summary.totalPoints}} 积分</text>
+      <text class="cart-bar__qty">已选 {{summary.totalQty}} 件{{summary.totalPoints > 0 ? ' · 预计得 ' + summary.totalPoints + ' 积分' : ''}}</text>
     </view>
     <button class="btn-primary fixed-bar__btn" bindtap="goConfirm">去结算</button>
   </view>
@@ -100,7 +97,7 @@
     </view>
     <scroll-view scroll-y class="sheet__body" show-scrollbar="{{false}}">
       <view class="sheet__body-inner">
-        <view wx:if="{{!sheetGoods.optionGroups.length}}" class="sheet-empty muted">本菜暂无口味/分量配置，可直接选数量与备注</view>
+        <view wx:if="{{!sheetGoods.optionGroups.length}}" class="sheet-empty muted">可直接选择数量{{sheetAllowRemark ? '与备注' : ''}}</view>
         <view wx:for="{{sheetGoods.optionGroups}}" wx:for-item="gr" wx:key="id" class="sheet-group">
           <text class="sheet-group__name">
             {{gr.name}}
@@ -143,7 +140,7 @@
     <view class="sheet__foot">
       <view class="sheet__price">
         <text class="price"><text class="price__yen">¥</text>{{sheetUnit.price}}</text>
-        <text class="muted">可得 {{sheetUnit.pointsGrant}} 积分</text>
+        <text class="muted" wx:if="{{sheetUnit.pointsGrant > 0}}">预计得 {{sheetUnit.pointsGrant}} 积分</text>
       </view>
       <view class="qty">
         <view class="qty__btn" catchtap="sheetQtyChange" data-d="-1">−</view>

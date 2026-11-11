@@ -84,7 +84,7 @@ Page({
       this.setData({ acting: false })
       wx.showModal({
         title: '支付成功',
-        content: `本单积分划拨 ${paid.pointsAllocated != null ? paid.pointsAllocated : paid.pointsWant || 0}`,
+        content: `本单获得积分 ${paid.pointsAllocated != null ? paid.pointsAllocated : paid.pointsWant || 0}`,
         showCancel: false,
         success: () => this.loadDetail()
       })

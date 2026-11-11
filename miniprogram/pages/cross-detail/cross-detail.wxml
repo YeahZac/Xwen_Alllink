@@ -18,7 +18,7 @@
   <text class="muted rate">{{cashRateText}} · 积分不足可全额现金，也可组合支付</text>
 
   <text class="section-title">可兑换商品</text>
-  <text class="section-desc">门店自定积分与现金价 · 支持积分 + 微信支付</text>
+  <text class="section-desc">支持积分兑换、微信支付或组合支付</text>
 
   <view wx:if="{{!items.length}}" class="empty-state surface">
     <text class="empty-state__title">暂无可兑换商品</text>

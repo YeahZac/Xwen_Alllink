@@ -129,15 +129,13 @@ Page({
       if (result && result.autoFallback) {
         this.showOrderSuccess(`积分不足，已按微信价 ¥${result.cashAmount} 成交`)
       } else if (mode === 'mix') {
-        const sim = (paid && paid.simulated) || result.simulated ? '（模拟微信支付）' : ''
         this.showOrderSuccess(
-          `组合支付：积分 ${result.pointsSpend || 0} + 微信 ¥${result.cashAmount}${sim}`
+          `组合支付：积分 ${result.pointsSpend || 0} + 微信 ¥${result.cashAmount}`
         )
       } else if (mode === 'cash') {
-        const sim = (paid && paid.simulated) || result.simulated ? '（模拟微信支付）' : ''
-        this.showOrderSuccess(`微信支付 ¥${result.cashAmount || item.cashPrice}${sim}`)
+        this.showOrderSuccess(`微信支付 ¥${result.cashAmount || item.cashPrice}`)
       } else {
-        this.showOrderSuccess(`已扣 ${result.pointsSpend || item.pointsNeed} 积分`)
+        this.showOrderSuccess(`已使用 ${result.pointsSpend || item.pointsNeed} 积分`)
       }
       await this.refreshPoints().catch(() => {})
     } catch (err) {

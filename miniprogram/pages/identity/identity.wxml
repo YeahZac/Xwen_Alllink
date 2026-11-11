@@ -1,5 +1,5 @@
 <view class="page identity">
-  <text class="identity__lead">同一微信可切换消费者 / 商家 / 合伙人 / 创始人 / 负责人。未开通可在线申请；审核通过后身份自动开通，后台也会生成对应运营账号（可用账号密码登录运营台）</text>
+  <text class="identity__lead">同一微信可切换消费者、商家、合伙人等身份。未开通可在线申请，审核通过后即可使用。</text>
 
   <view class="id-cards">
     <view

@@ -18,7 +18,7 @@
 
     <view wx:elif="{{!categories.length}}" class="empty-state surface">
       <text class="empty-state__title">暂无商品类目</text>
-      <text class="empty-state__desc">请运营在后台「商品类目」启用类目并配置封面</text>
+      <text class="empty-state__desc">类目即将上线，请稍后再来</text>
     </view>
 
     <view wx:else class="cat-grid">

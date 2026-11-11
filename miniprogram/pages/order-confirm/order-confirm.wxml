@@ -1,6 +1,6 @@
 <view class="page confirm">
   <text class="section-title">确认订单</text>
-  <text class="section-desc">{{stall.name}} · 核对商品；积分可部分抵现，剩余须微信支付（至少 ¥0.01）</text>
+  <text class="section-desc">{{stall.name}} · 请核对商品，可用积分抵扣部分金额</text>
 
   <view wx:if="{{loading}}" class="empty-state">
     <text class="empty-state__title">正在核对订单</text>
@@ -41,45 +41,43 @@
       <text>账户积分</text>
       <text class="pts">{{points}}</text>
     </view>
-    <view class="row-between line">
-      <text>商品可用积分</text>
-      <text class="pts">{{summary.totalUsablePoints}}</text>
-    </view>
-    <view class="row-between line">
-      <text>本单最多抵扣</text>
+    <view class="row-between line" wx:if="{{summary.totalUsablePoints > 0}}">
+      <text>本单可抵积分</text>
       <text class="pts">{{maxPoints}}</text>
     </view>
-    <view class="mix">
-      <view class="row-between">
-        <text>使用积分</text>
-        <view class="mix__acts">
-          <text class="mix__chip" bindtap="useNone">不抵</text>
-          <text class="mix__chip" bindtap="useHalf">一半</text>
-          <text class="mix__chip" bindtap="useAll">最大</text>
+    <block wx:if="{{maxPoints > 0}}">
+      <view class="mix">
+        <view class="row-between">
+          <text>使用积分</text>
+          <view class="mix__acts">
+            <text class="mix__chip" bindtap="useNone">不抵</text>
+            <text class="mix__chip" bindtap="useHalf">一半</text>
+            <text class="mix__chip" bindtap="useAll">最大</text>
+          </view>
         </view>
+        <input
+          class="mix__input"
+          type="number"
+          value="{{pointsUse}}"
+          bindinput="onPointsInput"
+          placeholder="输入抵扣积分"
+        />
       </view>
-      <input
-        class="mix__input"
-        type="number"
-        value="{{pointsUse}}"
-        bindinput="onPointsInput"
-        placeholder="输入抵扣积分"
-      />
-    </view>
-    <view class="row-between line">
-      <text>积分抵现</text>
-      <text>−¥{{offsetCash}}</text>
-    </view>
+      <view class="row-between line">
+        <text>积分抵现</text>
+        <text>−¥{{offsetCash}}</text>
+      </view>
+    </block>
     <view class="row-between line">
       <text>微信支付</text>
       <text class="price"><text class="price__yen">¥</text>{{cashDue}}</text>
     </view>
-    <view class="row-between line">
-      <text>预计划拨积分</text>
+    <view class="row-between line" wx:if="{{summary.totalPoints > 0}}">
+      <text>预计获得积分</text>
       <text class="pts">+{{summary.totalPoints}}</text>
     </view>
     <view class="hint muted">
-      {{mixHint}}积分立即抵扣；现金走微信支付（未配商户号时模拟入账）。摊主完成出餐后，再从额度池划入消费积分。{{cashRateText}}
+      {{mixHint}}{{cashRateText ? ' · ' + cashRateText : ''}}
     </view>
   </view>
 

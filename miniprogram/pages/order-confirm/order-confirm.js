@@ -114,12 +114,12 @@ Page({
     if (pointsUse > 0) {
       payLabel = `积分抵 ¥${offsetCash.toFixed(2)} + 微信 ¥${cashDue.toFixed(2)}`
     }
-    let mixHint = '组合支付须保留至少 ¥0.01 现金，不可全额积分为 0 元单。'
+    let mixHint = '积分可抵部分金额，剩余用微信支付；出餐完成后到账消费积分。'
     if (maxPoints <= 0) {
       mixHint =
         Number(this.data.summary.totalUsablePoints) <= 0
-          ? '本单商品未配置可用积分或未开启抵现，将全额微信支付。'
-          : '当前积分不足或订单金额过低，将全额微信支付。'
+          ? '本单暂不支持积分抵扣，将使用微信支付。'
+          : '当前积分不足或金额过低，将使用微信支付。'
     }
     this.setData({
       maxPoints,
@@ -145,12 +145,12 @@ Page({
   showPaySuccess(result) {
     const cash = result.cashPaid != null ? result.cashPaid : result.cashAmount
     const pts = result.pointsSpend || 0
-    const sim = result.simulated ? '（模拟微信支付）' : ''
     const allocated =
       result.pointsAllocated != null ? result.pointsAllocated : result.pointsWant || 0
+    const earn = allocated > 0 ? `预计获得 ${allocated} 积分。` : ''
     wx.showModal({
       title: '支付成功',
-      content: `积分抵扣 ${pts}，微信收款 ¥${cash}${sim}。本单预计/已划拨积分 ${allocated}。`,
+      content: `积分抵扣 ${pts}，实付 ¥${cash}。${earn}`,
       showCancel: false,
       confirmText: '查看订单',
       success: () => {

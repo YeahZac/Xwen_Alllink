@@ -48,11 +48,11 @@
         <text class="price"><text class="price__yen">¥</text>{{order.cashPaid}}</text>
       </view>
       <view class="row-between line" wx:if="{{order.pointsAllocated}}">
-        <text>已划拨积分</text>
+        <text>已获得积分</text>
         <text class="pts">+{{order.pointsAllocated}}</text>
       </view>
       <view class="row-between line" wx:elif="{{order.pointsWant && order.payStatus !== 'paid'}}">
-        <text>预计划拨积分</text>
+        <text>预计获得积分</text>
         <text class="pts">+{{order.pointsWant}}</text>
       </view>
     </view>

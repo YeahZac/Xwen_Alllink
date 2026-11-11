@@ -24,10 +24,9 @@
     <text class="info__desc">{{goods.desc || '现点现做，规格可按口味调整'}}</text>
     <view class="info__price-row">
       <text class="price"><text class="price__yen">¥</text>{{unit.price}}</text>
-      <text class="info__pts">可得 {{unit.pointsGrant}} 积分</text>
+      <text class="info__pts" wx:if="{{unit.pointsGrant > 0}}">预计得 {{unit.pointsGrant}} 积分</text>
     </view>
     <text class="info__spec muted" wx:if="{{unit.optionsText}}">已选：{{unit.optionsText}}</text>
-    <text class="chip chip--soft" wx:if="{{demoSpecs}}">演示规格（选配仅展示）· 结算按原价，真实加价请后台配置</text>
   </view>
 
   <view class="surface opts" wx:if="{{optionGroups.length}}">

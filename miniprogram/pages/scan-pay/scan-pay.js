@@ -174,7 +174,7 @@ Page({
       !!this.data.loadError
     this.setData({
       displayAmount: formatDisplay(amountText),
-      pointsHint: hasAmount ? `预计到账 ${pts} 积分（按当前汇率，以到账为准）` : '输入金额后显示预计积分',
+      pointsHint: hasAmount ? `预计到账 ${pts} 积分（以实际到账为准）` : '输入金额后显示预计积分',
       payPrimary,
       payDisabled,
       payText: payPrimary && hasAmount ? `支付 ¥${cash.toFixed(2)}` : '支付'

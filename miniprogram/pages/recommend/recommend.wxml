@@ -3,7 +3,7 @@
     <text class="hero__title">邀请好友</text>
     <text class="hero__desc">
       <block wx:if="{{inviteFriendEnabled}}">每成功邀请 1 位好友绑定，您得 {{inviteFriendPoints}} 积分</block>
-      <block wx:else>登录即推广员 · 单级推荐 · 规则由平台后台配置</block>
+      <block wx:else>登录后即可邀请好友，奖励规则以页面展示为准</block>
     </text>
     <view class="qr-wrap" wx:if="{{qrcodeUrl}}">
       <image class="qr-img" src="{{qrcodeUrl}}" mode="aspectFit" show-menu-by-longpress="{{true}}" bindtap="onPreviewQr" />

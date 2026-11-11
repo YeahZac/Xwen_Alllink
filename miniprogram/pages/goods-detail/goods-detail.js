@@ -42,23 +42,10 @@ Page({
         wx.showToast({ title: '商品不存在或已下架', icon: 'none' })
         return
       }
-      let demoSpecs = false
-      let groups = goods.optionGroups || []
-      if (!groups.length) {
-        groups = opts.demoOptionGroups(goods.id)
-        demoSpecs = true
-      }
-      groups = opts.decorateGroups(groups)
+      // C 端只展示后台真实规格，不再注入演示规格
+      const groups = opts.decorateGroups(goods.optionGroups || [])
       const selected = opts.defaultSelected(groups)
-      // 演示规格：界面可选，但计价与结算均按商品原价（无真实 optionId），避免购物车价 ≠ 实付
-      const unit = demoSpecs
-        ? {
-            price: Number(goods.price) || 0,
-            pointsGrant: Number(goods.pointsGrant) || 0,
-            optionsText: opts.calcUnit(goods.price, goods.pointsGrant, groups, selected).optionsText,
-            optionIds: []
-          }
-        : opts.calcUnit(goods.price, goods.pointsGrant, groups, selected)
+      const unit = opts.calcUnit(goods.price, goods.pointsGrant, groups, selected)
       this.setData({
         loading: false,
         stall: {
@@ -70,7 +57,7 @@ Page({
         selected,
         flags: opts.buildFlags(selected),
         unit,
-        demoSpecs,
+        demoSpecs: false,
         qty: 1
       })
       wx.setNavigationBarTitle({ title: goods.name || '商品详情' })
@@ -96,15 +83,7 @@ Page({
     }
     selected[groupId] = cur
     const g = this.data.goods
-    const raw = opts.calcUnit(g.price, g.pointsGrant, this.data.optionGroups, selected)
-    const unit = this.data.demoSpecs
-      ? {
-          price: Number(g.price) || 0,
-          pointsGrant: Number(g.pointsGrant) || 0,
-          optionsText: raw.optionsText,
-          optionIds: []
-        }
-      : raw
+    const unit = opts.calcUnit(g.price, g.pointsGrant, this.data.optionGroups, selected)
     this.setData({
       selected,
       flags: opts.buildFlags(selected),
@@ -129,7 +108,6 @@ Page({
     }
     const g = this.data.goods
     const unit = this.data.unit || {}
-    const demoSpecs = this.data.demoSpecs
     this.setData({ adding: true })
     try {
       store.addToCart(
@@ -142,13 +120,12 @@ Page({
           pointsUsable: g.pointsUsable,
           mixEnabled: g.mixEnabled,
           optionsText: unit.optionsText || '',
-          // 演示规格无真实 optionId，避免后端报「规格无效」
-          optionIds: demoSpecs ? [] : unit.optionIds || []
+          optionIds: unit.optionIds || []
         },
         this.data.qty || 1
       )
       wx.showToast({
-        title: demoSpecs ? '已加入购物车（演示规格）' : '已加入购物车',
+        title: '已加入购物车',
         icon: 'success'
       })
       setTimeout(() => {
