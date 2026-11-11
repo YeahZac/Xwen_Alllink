@@ -69,6 +69,11 @@
       <text class="price"><text class="price__yen">¥</text>{{unit.price}}</text>
       <text class="muted">× {{qty}} 件</text>
     </view>
-    <button class="btn-primary footer__btn" loading="{{adding}}" bindtap="addCart">加入购物车</button>
+    <view
+      class="btn-primary footer__btn {{adding ? 'footer__btn--busy' : ''}}"
+      hover-class="footer__btn--pressed"
+      hover-stay-time="80"
+      catchtap="addCart"
+    >{{adding ? '加入中…' : '加入购物车'}}</view>
   </view>
 </view>

@@ -199,6 +199,19 @@
 .footer__btn {
   width: 280rpx;
   flex-shrink: 0;
+  height: 80rpx;
+  line-height: 80rpx;
+  text-align: center;
+  margin: 0;
+}
+
+.footer__btn--pressed {
+  opacity: 0.92;
+}
+
+.footer__btn--busy {
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 .empty-state {

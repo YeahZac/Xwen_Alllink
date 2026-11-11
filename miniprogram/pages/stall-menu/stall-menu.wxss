@@ -232,7 +232,10 @@
 
 .sheet-mask {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background: rgba(18, 20, 26, 0.45);
   z-index: 200;
 }
@@ -245,10 +248,15 @@
   z-index: 210;
   background: var(--color-surface);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  /* 固定高度 + 内部 flex，避免安卓 scroll-view 撑破后挡住底部按钮 */
+  height: 78vh;
   max-height: 78vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  padding-bottom: constant(safe-area-inset-bottom);
   padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: border-box;
 }
 
 .sheet__head {
@@ -281,9 +289,14 @@
 }
 
 .sheet__body {
-  flex: 0 1 auto;
-  min-height: 0;
-  max-height: 48vh;
+  flex: 1 1 auto;
+  height: 0;
+  min-height: 160rpx;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.sheet__body-inner {
   padding: var(--space-xs) var(--space-page) var(--space-md);
   box-sizing: border-box;
 }
@@ -329,12 +342,15 @@
 }
 
 .sheet__foot {
+  position: relative;
+  z-index: 6;
   display: flex;
   align-items: center;
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-page) var(--space-md);
   border-top: 1rpx solid var(--color-border);
   flex-shrink: 0;
+  background: var(--color-surface);
 }
 
 .sheet__price {
@@ -355,6 +371,16 @@
   font-size: var(--font-subtitle);
   margin: 0;
   flex-shrink: 0;
+  text-align: center;
+}
+
+.sheet__add--pressed {
+  opacity: 0.92;
+}
+
+.sheet__add--busy {
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 .sheet-empty {
@@ -364,7 +390,8 @@
 
 .sheet-remark {
   width: 100%;
-  min-height: 120rpx;
+  height: 140rpx;
+  min-height: 140rpx;
   padding: var(--space-sm) var(--space-md);
   box-sizing: border-box;
   background: var(--color-surface-soft);

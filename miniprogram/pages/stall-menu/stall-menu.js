@@ -3,19 +3,29 @@ const api = require('../../utils/api')
 const scan = require('../../utils/scan')
 const coverPack = require('../../utils/cover-pack')
 
+function toId(v) {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+function pickSelectedIds(selectedMap, groupId) {
+  const raw = (selectedMap && (selectedMap[groupId] || selectedMap[String(groupId)])) || []
+  return raw.map(toId).filter(Boolean)
+}
+
 function calcUnit(basePrice, basePts, groups, selectedMap) {
   let price = Number(basePrice) || 0
   let points = Number(basePts) || 0
   const names = []
   const optionIds = []
   ;(groups || []).forEach((g) => {
-    const ids = selectedMap[g.id] || []
+    const ids = pickSelectedIds(selectedMap, g.id)
     ;(g.options || []).forEach((o) => {
-      if (ids.indexOf(o.id) >= 0) {
-        price += Number(o.priceDelta) || 0
-        points += Number(o.pointsDelta) || 0
+      if (ids.indexOf(toId(o.id)) >= 0) {
+        const delta = Number(o.priceDelta)
+        price += Number.isFinite(delta) && delta > 0 ? delta : 0
         names.push(o.name)
-        optionIds.push(o.id)
+        optionIds.push(toId(o.id))
       }
     })
   })
@@ -31,7 +41,7 @@ function buildFlags(selected) {
   const flags = {}
   Object.keys(selected || {}).forEach((gid) => {
     ;(selected[gid] || []).forEach((oid) => {
-      flags[`${gid}_${oid}`] = true
+      flags[`${toId(gid)}_${toId(oid)}`] = true
     })
   })
   return flags
@@ -40,10 +50,11 @@ function buildFlags(selected) {
 function defaultSelected(groups) {
   const map = {}
   ;(groups || []).forEach((g) => {
-    const defs = (g.options || []).filter((o) => o.isDefault).map((o) => o.id)
-    if (defs.length) map[g.id] = g.multiSelect ? defs : [defs[0]]
-    else if (g.required && g.options && g.options[0]) map[g.id] = [g.options[0].id]
-    else map[g.id] = []
+    const gid = toId(g.id)
+    const defs = (g.options || []).filter((o) => o.isDefault).map((o) => toId(o.id)).filter(Boolean)
+    if (defs.length) map[gid] = g.multiSelect ? defs : [defs[0]]
+    else if (g.required && g.options && g.options[0]) map[gid] = [toId(g.options[0].id)]
+    else map[gid] = []
   })
   return map
 }
@@ -66,8 +77,10 @@ Page({
     sheetQty: 1,
     sheetRemark: '',
     sheetAllowRemark: true,
+    sheetAdding: false,
     loading: true
   },
+  preventMove() {},
   async onLoad(query) {
     const scene = require('../../utils/scene')
     const stallId = scene.merchantIdFromQuery(query)
@@ -188,10 +201,28 @@ Page({
     return null
   },
   openSheet(goods) {
-    const groups = (goods.optionGroups || []).map((g) => ({
-      ...g,
-      options: (g.options || []).map((o) => ({ ...o, flagKey: `${g.id}_${o.id}` }))
-    }))
+    const groups = (goods.optionGroups || []).map((g) => {
+      const gid = toId(g.id)
+      return {
+        ...g,
+        id: gid,
+        required: !!(g.required === true || g.required === 1),
+        multiSelect: !!(g.multiSelect === true || g.multiSelect === 1),
+        minSelect: Number(g.minSelect) || 0,
+        maxSelect: Number(g.maxSelect) || 1,
+        options: (g.options || []).map((o) => {
+          const oid = toId(o.id)
+          const delta = Number(o.priceDelta)
+          return {
+            ...o,
+            id: oid,
+            isDefault: !!(o.isDefault === true || o.isDefault === 1),
+            priceDelta: Number.isFinite(delta) && delta > 0 ? delta : 0,
+            flagKey: `${gid}_${oid}`
+          }
+        })
+      }
+    })
     const goodsView = { ...goods, optionGroups: groups }
     const selected = defaultSelected(groups)
     const unit = calcUnit(goods.price, goods.pointsGrant, groups, selected)
@@ -204,18 +235,20 @@ Page({
       sheetUnit: unit,
       sheetQty: 1,
       sheetRemark: '',
-      sheetAllowRemark: allowRemark
+      sheetAllowRemark: allowRemark,
+      sheetAdding: false
     })
   },
   closeSheet() {
-    this.setData({ sheetShow: false, sheetGoods: null, sheetRemark: '' })
+    this.setData({ sheetShow: false, sheetGoods: null, sheetRemark: '', sheetAdding: false })
   },
   onPickOpt(e) {
-    const { gid, oid, multi } = e.currentTarget.dataset
-    const groupId = Number(gid)
-    const optionId = Number(oid)
+    const { gid, oid, multi } = e.currentTarget.dataset || {}
+    const groupId = toId(gid)
+    const optionId = toId(oid)
+    if (!groupId || !optionId) return
     const selected = { ...(this.data.sheetSelected || {}) }
-    let cur = (selected[groupId] || []).slice()
+    let cur = pickSelectedIds(selected, groupId)
     if (Number(multi)) {
       const idx = cur.indexOf(optionId)
       if (idx >= 0) cur.splice(idx, 1)
@@ -225,11 +258,12 @@ Page({
     }
     selected[groupId] = cur
     const g = this.data.sheetGoods
+    if (!g) return
     const unit = calcUnit(g.price, g.pointsGrant, g.optionGroups, selected)
     this.setData({ sheetSelected: selected, sheetFlags: buildFlags(selected), sheetUnit: unit })
   },
   sheetQtyChange(e) {
-    const d = Number(e.currentTarget.dataset.d) || 0
+    const d = Number((e.currentTarget.dataset || {}).d) || 0
     const q = Math.max(1, (this.data.sheetQty || 1) + d)
     this.setData({ sheetQty: q })
   },
@@ -238,43 +272,58 @@ Page({
   },
   validateSheet() {
     const g = this.data.sheetGoods
+    if (!g) {
+      wx.showToast({ title: '规格已关闭，请重试', icon: 'none' })
+      return false
+    }
     const selected = this.data.sheetSelected || {}
     for (const gr of g.optionGroups || []) {
-      const n = (selected[gr.id] || []).length
-      const min = gr.required ? Math.max(1, gr.minSelect || 1) : gr.minSelect || 0
-      const max = gr.multiSelect ? gr.maxSelect || 9 : 1
+      const n = pickSelectedIds(selected, gr.id).length
+      const min = gr.required ? Math.max(1, Number(gr.minSelect) || 1) : Number(gr.minSelect) || 0
+      const max = gr.multiSelect ? Number(gr.maxSelect) || 9 : 1
       if (n < min) {
-        wx.showToast({ title: `请选择${gr.name}`, icon: 'none' })
+        wx.showToast({ title: `请选择${gr.name || '规格'}`, icon: 'none' })
         return false
       }
       if (n > max) {
-        wx.showToast({ title: `${gr.name}最多选${max}项`, icon: 'none' })
+        wx.showToast({ title: `${gr.name || '规格'}最多选${max}项`, icon: 'none' })
         return false
       }
     }
     return true
   },
   confirmSheet() {
+    if (this.data.sheetAdding) return
     if (!this.validateSheet()) return
     const g = this.data.sheetGoods
-    const unit = this.data.sheetUnit
-    store.addToCart(
-      this.data.stallId,
-      {
-        id: g.id,
-        name: g.name,
-        price: unit.price,
-        pointsGrant: unit.pointsGrant,
-        pointsUsable: g.pointsUsable,
-        mixEnabled: g.mixEnabled,
-        optionsText: unit.optionsText,
-        optionIds: unit.optionIds,
-        remark: this.data.sheetAllowRemark ? this.data.sheetRemark : ''
-      },
-      this.data.sheetQty || 1
-    )
-    this.closeSheet()
-    this.afterCartChange('已加入')
+    const unit = this.data.sheetUnit || {}
+    if (!this.data.stallId || !g || !g.id) {
+      wx.showToast({ title: '门店或菜品异常，请返回重进', icon: 'none' })
+      return
+    }
+    this.setData({ sheetAdding: true })
+    try {
+      store.addToCart(
+        this.data.stallId,
+        {
+          id: g.id,
+          name: g.name,
+          price: unit.price,
+          pointsGrant: unit.pointsGrant,
+          pointsUsable: g.pointsUsable,
+          mixEnabled: g.mixEnabled,
+          optionsText: unit.optionsText || '',
+          optionIds: unit.optionIds || [],
+          remark: this.data.sheetAllowRemark ? this.data.sheetRemark : ''
+        },
+        this.data.sheetQty || 1
+      )
+      this.closeSheet()
+      this.afterCartChange('已加入')
+    } catch (err) {
+      this.setData({ sheetAdding: false })
+      wx.showToast({ title: (err && err.message) || '加入失败，请重试', icon: 'none' })
+    }
   },
   inc(e) {
     const id = e.currentTarget.dataset.id

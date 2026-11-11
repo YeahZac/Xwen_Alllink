@@ -87,48 +87,57 @@
   </view>
   <view class="page-spacer--bar" wx:if="{{summary.totalQty}}"></view>
 
-  <view class="sheet-mask" wx:if="{{sheetShow}}" bindtap="closeSheet"></view>
-  <view class="sheet" wx:if="{{sheetShow}}">
+  <view
+    class="sheet-mask"
+    wx:if="{{sheetShow}}"
+    catchtouchmove="preventMove"
+    catchtap="closeSheet"
+  ></view>
+  <view class="sheet" wx:if="{{sheetShow}}" catchtouchmove="preventMove">
     <view class="sheet__head">
       <text class="sheet__title">{{sheetGoods.name}}</text>
-      <text class="sheet__close" bindtap="closeSheet">关闭</text>
+      <text class="sheet__close" catchtap="closeSheet">关闭</text>
     </view>
-    <scroll-view scroll-y class="sheet__body">
-      <view wx:if="{{!sheetGoods.optionGroups.length}}" class="sheet-empty muted">本菜暂无口味/分量配置，可直接选数量与备注</view>
-      <view wx:for="{{sheetGoods.optionGroups}}" wx:for-item="gr" wx:key="id" class="sheet-group">
-        <text class="sheet-group__name">
-          {{gr.name}}
-          <text class="muted">{{gr.required ? '必选' : '可选'}}{{gr.multiSelect ? ' · 可多选' : ''}}</text>
-        </text>
-        <view class="sheet-opts">
-          <view
-            wx:for="{{gr.options}}"
-            wx:for-item="op"
-            wx:key="id"
-            class="sheet-opt {{sheetFlags[op.flagKey] ? 'sheet-opt--on' : ''}}"
-            bindtap="onPickOpt"
-            data-gid="{{gr.id}}"
-            data-oid="{{op.id}}"
-            data-multi="{{gr.multiSelect ? 1 : 0}}"
-          >
-            <text>{{op.name}}</text>
-            <text class="sheet-opt__delta" wx:if="{{op.priceDelta}}">
-              {{op.priceDelta > 0 ? '+' : ''}}¥{{op.priceDelta}}
-            </text>
+    <scroll-view scroll-y class="sheet__body" show-scrollbar="{{false}}">
+      <view class="sheet__body-inner">
+        <view wx:if="{{!sheetGoods.optionGroups.length}}" class="sheet-empty muted">本菜暂无口味/分量配置，可直接选数量与备注</view>
+        <view wx:for="{{sheetGoods.optionGroups}}" wx:for-item="gr" wx:key="id" class="sheet-group">
+          <text class="sheet-group__name">
+            {{gr.name}}
+            <text class="muted">{{gr.required ? '必选' : '可选'}}{{gr.multiSelect ? ' · 可多选' : ''}}</text>
+          </text>
+          <view class="sheet-opts">
+            <view
+              wx:for="{{gr.options}}"
+              wx:for-item="op"
+              wx:key="id"
+              class="sheet-opt {{sheetFlags[op.flagKey] ? 'sheet-opt--on' : ''}}"
+              catchtap="onPickOpt"
+              data-gid="{{gr.id}}"
+              data-oid="{{op.id}}"
+              data-multi="{{gr.multiSelect ? 1 : 0}}"
+            >
+              <text>{{op.name}}</text>
+              <text class="sheet-opt__delta" wx:if="{{op.priceDelta}}">
+                {{op.priceDelta > 0 ? '+' : ''}}¥{{op.priceDelta}}
+              </text>
+            </view>
           </view>
         </view>
-      </view>
 
-      <view class="sheet-group" wx:if="{{sheetAllowRemark}}">
-        <text class="sheet-group__name">备注 <text class="muted">可选</text></text>
-        <textarea
-          class="sheet-remark"
-          placeholder="如：少盐、不要香菜、打包…"
-          maxlength="50"
-          value="{{sheetRemark}}"
-          bindinput="onSheetRemark"
-          auto-height
-        />
+        <view class="sheet-group" wx:if="{{sheetAllowRemark}}">
+          <text class="sheet-group__name">备注 <text class="muted">可选</text></text>
+          <textarea
+            class="sheet-remark"
+            placeholder="如：少盐、不要香菜、打包…"
+            maxlength="50"
+            value="{{sheetRemark}}"
+            bindinput="onSheetRemark"
+            adjust-position="{{false}}"
+            hold-keyboard="{{false}}"
+            show-confirm-bar="{{false}}"
+          />
+        </view>
       </view>
     </scroll-view>
     <view class="sheet__foot">
@@ -137,11 +146,17 @@
         <text class="muted">可得 {{sheetUnit.pointsGrant}} 积分</text>
       </view>
       <view class="qty">
-        <view class="qty__btn" bindtap="sheetQtyChange" data-d="-1">−</view>
+        <view class="qty__btn" catchtap="sheetQtyChange" data-d="-1">−</view>
         <text class="qty__n">{{sheetQty}}</text>
-        <view class="qty__btn qty__btn--plus" bindtap="sheetQtyChange" data-d="1">+</view>
+        <view class="qty__btn qty__btn--plus" catchtap="sheetQtyChange" data-d="1">+</view>
       </view>
-      <button class="btn-primary sheet__add" bindtap="confirmSheet">加入购物车</button>
+      <!-- 用 view+catchtap：安卓/荣耀上原生 button 易被 scroll-view 命中层挡住 -->
+      <view
+        class="btn-primary sheet__add {{sheetAdding ? 'sheet__add--busy' : ''}}"
+        hover-class="sheet__add--pressed"
+        hover-stay-time="80"
+        catchtap="confirmSheet"
+      >{{sheetAdding ? '加入中…' : '加入购物车'}}</view>
     </view>
   </view>
 </view>

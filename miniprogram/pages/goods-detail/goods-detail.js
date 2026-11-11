@@ -80,11 +80,13 @@ Page({
     }
   },
   onPick(e) {
-    const { gid, oid, multi } = e.currentTarget.dataset
+    const { gid, oid, multi } = e.currentTarget.dataset || {}
     const groupId = Number(gid)
     const optionId = Number(oid)
+    if (!groupId || !optionId) return
     const selected = { ...(this.data.selected || {}) }
-    let cur = (selected[groupId] || []).slice()
+    const prev = selected[groupId] || selected[String(groupId)] || []
+    let cur = prev.map(Number).filter(Boolean)
     if (Number(multi)) {
       const idx = cur.indexOf(optionId)
       if (idx >= 0) cur.splice(idx, 1)
@@ -116,47 +118,56 @@ Page({
   },
   addCart() {
     if (this.data.adding || !this.data.goods) return
+    if (!this.data.stallId) {
+      wx.showToast({ title: '缺少门店信息', icon: 'none' })
+      return
+    }
     const check = opts.validateSelected(this.data.optionGroups, this.data.selected)
     if (!check.ok) {
-      wx.showToast({ title: check.message, icon: 'none' })
+      wx.showToast({ title: check.message || '请完善规格', icon: 'none' })
       return
     }
     const g = this.data.goods
-    const unit = this.data.unit
+    const unit = this.data.unit || {}
     const demoSpecs = this.data.demoSpecs
     this.setData({ adding: true })
-    store.addToCart(
-      this.data.stallId,
-      {
-        id: g.id,
-        name: g.name,
-        price: unit.price,
-        pointsGrant: unit.pointsGrant,
-        pointsUsable: g.pointsUsable,
-        mixEnabled: g.mixEnabled,
-        optionsText: unit.optionsText,
-        // 演示规格无真实 optionId，避免后端报「规格无效」
-        optionIds: demoSpecs ? [] : unit.optionIds || []
-      },
-      this.data.qty || 1
-    )
-    this.setData({ adding: false })
-    wx.showToast({
-      title: demoSpecs ? '已加入购物车（演示规格）' : '已加入购物车',
-      icon: 'success'
-    })
-    setTimeout(() => {
-      wx.showActionSheet({
-        itemList: ['继续点餐', '去结算'],
-        success: (r) => {
-          if (r.tapIndex === 1) {
-            wx.navigateTo({ url: '/pages/order-confirm/order-confirm' })
-          } else {
-            wx.navigateBack({ fail: () => {} })
-          }
+    try {
+      store.addToCart(
+        this.data.stallId,
+        {
+          id: g.id,
+          name: g.name,
+          price: unit.price,
+          pointsGrant: unit.pointsGrant,
+          pointsUsable: g.pointsUsable,
+          mixEnabled: g.mixEnabled,
+          optionsText: unit.optionsText || '',
+          // 演示规格无真实 optionId，避免后端报「规格无效」
+          optionIds: demoSpecs ? [] : unit.optionIds || []
         },
-        fail: () => wx.navigateBack({ fail: () => {} })
+        this.data.qty || 1
+      )
+      wx.showToast({
+        title: demoSpecs ? '已加入购物车（演示规格）' : '已加入购物车',
+        icon: 'success'
       })
-    }, 400)
+      setTimeout(() => {
+        this.setData({ adding: false })
+        wx.showActionSheet({
+          itemList: ['继续点餐', '去结算'],
+          success: (r) => {
+            if (r.tapIndex === 1) {
+              wx.navigateTo({ url: '/pages/order-confirm/order-confirm' })
+            } else {
+              wx.navigateBack({ fail: () => {} })
+            }
+          },
+          fail: () => wx.navigateBack({ fail: () => {} })
+        })
+      }, 400)
+    } catch (err) {
+      this.setData({ adding: false })
+      wx.showToast({ title: (err && err.message) || '加入失败，请重试', icon: 'none' })
+    }
   }
 })
