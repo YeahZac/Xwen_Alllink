@@ -139,6 +139,9 @@ async function saveGoodsOptionGroups(goodsId, groups) {
       for (let j = 0; j < opts.length; j++) {
         const o = opts[j]
         if (!o || !String(o.name || '').trim()) continue
+        const priceDeltaRaw = Number(o.priceDelta)
+        // 规格加价只允许 ≥ 0；积分增减已下线，统一存 0
+        const priceDelta = Number.isFinite(priceDeltaRaw) ? Math.max(0, Math.round(priceDeltaRaw * 100) / 100) : 0
         await conn.execute(
           `INSERT INTO stall_goods_options
             (group_id, name, price_delta, points_delta, is_default, sort_order, status)
@@ -146,8 +149,8 @@ async function saveGoodsOptionGroups(goodsId, groups) {
           [
             groupId,
             String(o.name).trim(),
-            Number.isFinite(Number(o.priceDelta)) ? Number(o.priceDelta) : 0,
-            Number.isFinite(Number(o.pointsDelta)) ? Number(o.pointsDelta) : 0,
+            priceDelta,
+            0,
             o.isDefault ? 1 : 0,
             Number(o.sortOrder) || j + 1
           ]
@@ -235,8 +238,9 @@ async function resolveStallLine(conn, { merchantId, goodsId, optionIds, qty, ite
   let unitPrice = Number(g.price)
   let unitPoints = Number(g.points_grant) || 0
   for (const o of selected) {
-    unitPrice += Number(o.priceDelta) || 0
-    unitPoints += Number(o.pointsDelta) || 0
+    const pd = Number(o.priceDelta)
+    unitPrice += Number.isFinite(pd) && pd > 0 ? pd : 0
+    // 规格积分增减已下线，计价不再叠加 pointsDelta
   }
   unitPrice = Math.round(unitPrice * 100) / 100
   unitPoints = Math.max(0, Math.floor(unitPoints))
@@ -248,8 +252,11 @@ async function resolveStallLine(conn, { merchantId, goodsId, optionIds, qty, ite
     groupName: o.groupName,
     type: o.groupType,
     name: o.name,
-    priceDelta: Number(o.priceDelta) || 0,
-    pointsDelta: Number(o.pointsDelta) || 0
+    priceDelta: (() => {
+      const n = Number(o.priceDelta)
+      return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0
+    })(),
+    pointsDelta: 0
   }))
   const mixOn = Number(g.mix_enabled) !== 0
   const pointsUsable = mixOn ? Math.max(0, Math.floor(Number(g.points_usable) || 0)) : 0

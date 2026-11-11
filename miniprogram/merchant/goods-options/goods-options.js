@@ -9,6 +9,12 @@ const TYPE_OPTIONS = [
   { value: 'custom', label: '自定义' }
 ]
 
+function clampPriceDelta(v) {
+  const n = Number(v)
+  if (!Number.isFinite(n) || n < 0) return 0
+  return Math.round(n * 100) / 100
+}
+
 function normalizeGroups(raw) {
   return (raw || []).map((g, gi) => ({
     _key: `g${gi}_${Date.now()}`,
@@ -25,8 +31,7 @@ function normalizeGroups(raw) {
     options: (g.options || []).map((o, oi) => ({
       _key: `o${gi}_${oi}_${Date.now()}`,
       name: o.name || '',
-      priceDelta: o.priceDelta != null ? String(o.priceDelta) : '0',
-      pointsDelta: o.pointsDelta != null ? String(o.pointsDelta) : '0',
+      priceDelta: String(clampPriceDelta(o.priceDelta)),
       isDefault: !!(o.isDefault === true || o.isDefault === 1)
     }))
   }))
@@ -48,8 +53,8 @@ function toPayload(groups) {
         .filter((o) => String(o.name || '').trim())
         .map((o, j) => ({
           name: String(o.name).trim(),
-          priceDelta: Number.isFinite(Number(o.priceDelta)) ? Number(o.priceDelta) : 0,
-          pointsDelta: Number.isFinite(Number(o.pointsDelta)) ? Number(o.pointsDelta) : 0,
+          priceDelta: clampPriceDelta(o.priceDelta),
+          pointsDelta: 0,
           isDefault: !!o.isDefault,
           sortOrder: j + 1
         }))
@@ -185,7 +190,6 @@ Page({
       _key: `o${gi}_${Date.now()}`,
       name: '',
       priceDelta: '0',
-      pointsDelta: '0',
       isDefault: false
     })
     groups[gi].options = opts
@@ -206,9 +210,11 @@ Page({
     const { gi, oi } = e.currentTarget.dataset
     this.setData({ [`groups[${gi}].options[${oi}].priceDelta`]: e.detail.value })
   },
-  onOptPoints(e) {
+  onOptPriceBlur(e) {
     const { gi, oi } = e.currentTarget.dataset
-    this.setData({ [`groups[${gi}].options[${oi}].pointsDelta`]: e.detail.value })
+    this.setData({
+      [`groups[${gi}].options[${oi}].priceDelta`]: String(clampPriceDelta(e.detail.value))
+    })
   },
   onOptDefault(e) {
     const gi = Number(e.currentTarget.dataset.gi)

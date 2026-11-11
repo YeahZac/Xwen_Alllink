@@ -946,12 +946,27 @@ img.thumb.lg {
 }
 .opt-row {
   display: grid;
-  grid-template-columns: minmax(100px, 1.4fr) 90px 90px auto auto;
+  grid-template-columns: minmax(120px, 1.6fr) 110px 72px 56px;
   gap: 8px;
   align-items: center;
 }
+.opt-row--head {
+  margin-bottom: 2px;
+  padding: 0 2px 4px;
+  border-bottom: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.opt-row--head span:last-child {
+  text-align: center;
+}
 .opt-row input {
   margin: 0;
+}
+.opt-row input[data-k='priceDelta'] {
+  min-width: 0;
+  width: 100%;
 }
 .opt-row .chk,
 .opt-group__head .chk {
@@ -974,7 +989,8 @@ img.thumb.lg {
   border: 1px solid #fdba74;
 }
 @media (max-width: 720px) {
-  .opt-row {
+  .opt-row,
+  .opt-row--head {
     grid-template-columns: 1fr 1fr;
   }
 }

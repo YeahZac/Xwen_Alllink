@@ -3092,9 +3092,9 @@ function stallOptionTemplates() {
         minSelect: 1,
         maxSelect: 1,
         options: [
-          { name: '微辣', priceDelta: 0, pointsDelta: 0, isDefault: 1 },
-          { name: '中辣', priceDelta: 0, pointsDelta: 0, isDefault: 0 },
-          { name: '特辣', priceDelta: 0.5, pointsDelta: 0, isDefault: 0 }
+          { name: '微辣', priceDelta: 0, isDefault: 1 },
+          { name: '中辣', priceDelta: 0, isDefault: 0 },
+          { name: '特辣', priceDelta: 0.5, isDefault: 0 }
         ]
       },
       {
@@ -3105,9 +3105,9 @@ function stallOptionTemplates() {
         minSelect: 1,
         maxSelect: 1,
         options: [
-          { name: '标准', priceDelta: 0, pointsDelta: 0, isDefault: 1 },
-          { name: '大份', priceDelta: 2, pointsDelta: 1, isDefault: 0 },
-          { name: '小份', priceDelta: -1, pointsDelta: 0, isDefault: 0 }
+          { name: '标准', priceDelta: 0, isDefault: 1 },
+          { name: '大份', priceDelta: 2, isDefault: 0 },
+          { name: '小份', priceDelta: 0, isDefault: 0 }
         ]
       },
       {
@@ -3118,9 +3118,9 @@ function stallOptionTemplates() {
         minSelect: 0,
         maxSelect: 5,
         options: [
-          { name: '加蛋', priceDelta: 1.5, pointsDelta: 0, isDefault: 0 },
-          { name: '加肠', priceDelta: 2, pointsDelta: 0, isDefault: 0 },
-          { name: '加豆皮', priceDelta: 1, pointsDelta: 0, isDefault: 0 }
+          { name: '加蛋', priceDelta: 1.5, isDefault: 0 },
+          { name: '加肠', priceDelta: 2, isDefault: 0 },
+          { name: '加豆皮', priceDelta: 1, isDefault: 0 }
         ]
       }
     ],
@@ -3133,9 +3133,9 @@ function stallOptionTemplates() {
         minSelect: 1,
         maxSelect: 1,
         options: [
-          { name: '正常糖', priceDelta: 0, pointsDelta: 0, isDefault: 1 },
-          { name: '少糖', priceDelta: 0, pointsDelta: 0, isDefault: 0 },
-          { name: '无糖', priceDelta: 0, pointsDelta: 0, isDefault: 0 }
+          { name: '正常糖', priceDelta: 0, isDefault: 1 },
+          { name: '少糖', priceDelta: 0, isDefault: 0 },
+          { name: '无糖', priceDelta: 0, isDefault: 0 }
         ]
       },
       {
@@ -3146,9 +3146,9 @@ function stallOptionTemplates() {
         minSelect: 1,
         maxSelect: 1,
         options: [
-          { name: '热饮', priceDelta: 0, pointsDelta: 0, isDefault: 1 },
-          { name: '常温', priceDelta: 0, pointsDelta: 0, isDefault: 0 },
-          { name: '冰', priceDelta: 0, pointsDelta: 0, isDefault: 0 }
+          { name: '热饮', priceDelta: 0, isDefault: 1 },
+          { name: '常温', priceDelta: 0, isDefault: 0 },
+          { name: '冰', priceDelta: 0, isDefault: 0 }
         ]
       },
       {
@@ -3159,8 +3159,8 @@ function stallOptionTemplates() {
         minSelect: 0,
         maxSelect: 4,
         options: [
-          { name: '珍珠', priceDelta: 2, pointsDelta: 0, isDefault: 0 },
-          { name: '椰果', priceDelta: 1.5, pointsDelta: 0, isDefault: 0 }
+          { name: '珍珠', priceDelta: 2, isDefault: 0 },
+          { name: '椰果', priceDelta: 1.5, isDefault: 0 }
         ]
       }
     ]
@@ -3179,19 +3179,25 @@ async function editStallOptions(goodsId, goodsName, reload) {
     groups = stallOptionTemplates().meal.map((g) => JSON.parse(JSON.stringify(g)))
   }
 
+  const clampPriceDelta = (v) => {
+    const n = Number(v)
+    if (!Number.isFinite(n) || n < 0) return 0
+    return Math.round(n * 100) / 100
+  }
+
   const renderBody = () => {
     const blocks = groups
       .map((g, gi) => {
         const opts = (g.options || [])
-          .map(
-            (o, oi) => `<div class="opt-row" data-gi="${gi}" data-oi="${oi}">
-            <input data-k="name" value="${esc(o.name || '')}" placeholder="选项名，如微辣" />
-            <input data-k="priceDelta" type="number" step="0.01" value="${o.priceDelta ?? 0}" placeholder="加价" title="价格增减" />
-            <input data-k="pointsDelta" type="number" value="${o.pointsDelta ?? 0}" placeholder="积分增减" title="积分增减" />
+          .map((o, oi) => {
+            const price = clampPriceDelta(o.priceDelta)
+            return `<div class="opt-row" data-gi="${gi}" data-oi="${oi}">
+            <input data-k="name" value="${esc(o.name || '')}" placeholder="选项名，如微辣 / 加蛋" />
+            <input data-k="priceDelta" type="number" min="0" step="0.01" value="${price}" placeholder="0" title="在商品基础价上加多少钱，最低 0" />
             <label class="chk"><input data-k="isDefault" type="checkbox" ${o.isDefault ? 'checked' : ''}/>默认</label>
             <button type="button" class="btn sm danger" data-del-opt="${gi}:${oi}">删</button>
           </div>`
-          )
+          })
           .join('')
         return `<div class="opt-group" data-gi="${gi}">
           <div class="opt-group__head">
@@ -3206,12 +3212,20 @@ async function editStallOptions(goodsId, goodsName, reload) {
             <label class="chk"><input data-gk="multiSelect" type="checkbox" ${g.multiSelect ? 'checked' : ''}/>多选</label>
             <button type="button" class="btn sm danger" data-del-group="${gi}">删除组</button>
           </div>
-          <div class="opt-list">${opts || '<p class="muted">暂无选项，请添加</p>'}</div>
+          <div class="opt-list">
+            <div class="opt-row opt-row--head" aria-hidden="true">
+              <span>选项名称</span>
+              <span>加价（元）</span>
+              <span>默认项</span>
+              <span>操作</span>
+            </div>
+            ${opts || '<p class="muted">暂无选项，请添加</p>'}
+          </div>
           <button type="button" class="btn sm" data-add-opt="${gi}">+ 选项</button>
         </div>`
       })
       .join('')
-    return `<p class="muted">小程序点餐会弹出规格层：口味 / 分量 / 配料 + 数量 + 备注。单价 = 基础价 + 所选加价。</p>
+    return `<p class="muted">点餐弹层会展示规格组。成交单价 = 商品基础价 + 所选选项「加价」（加价最低 0，不可为负）。</p>
       <div class="opt-toolbar">
         <button type="button" class="btn sm" id="btnTplMeal">套用正餐模板</button>
         <button type="button" class="btn sm" id="btnTplDrink">套用饮品模板</button>
@@ -3234,11 +3248,11 @@ async function editStallOptions(goodsId, goodsName, reload) {
       groups[gi].minSelect = groups[gi].required ? 1 : 0
       groups[gi].maxSelect = groups[gi].multiSelect ? 5 : 1
       groups[gi].options = []
-      el.querySelectorAll('.opt-row').forEach((row) => {
+      el.querySelectorAll('.opt-row:not(.opt-row--head)').forEach((row) => {
         groups[gi].options.push({
           name: row.querySelector('[data-k="name"]').value,
-          priceDelta: Number(row.querySelector('[data-k="priceDelta"]').value || 0),
-          pointsDelta: Number(row.querySelector('[data-k="pointsDelta"]').value || 0),
+          priceDelta: clampPriceDelta(row.querySelector('[data-k="priceDelta"]').value || 0),
+          pointsDelta: 0,
           isDefault: row.querySelector('[data-k="isDefault"]').checked ? 1 : 0
         })
       })
@@ -3288,6 +3302,11 @@ async function editStallOptions(goodsId, goodsName, reload) {
         groups[gi].options.push({ name: '', priceDelta: 0, pointsDelta: 0, isDefault: 0 })
         rebind()
       }
+    })
+    root.querySelectorAll('[data-k="priceDelta"]').forEach((input) => {
+      input.addEventListener('change', () => {
+        input.value = String(clampPriceDelta(input.value))
+      })
     })
     root.querySelectorAll('[data-del-opt]').forEach((b) => {
       b.onclick = () => {
