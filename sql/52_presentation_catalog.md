@@ -5,6 +5,7 @@
 `src/services/presentationCatalogService.js`
 
 在启动时幂等写入（`merchant_no` 前缀 `PRES_`，商品 `data_source=presentation`）。
+目录版本见 `home_presentation_catalog_version`；升版本会自动刷新店名/封面/菜品图，旧菜名软删。
 
 ## 一键改回「必须进件才上首页」
 

@@ -13,6 +13,7 @@ const { HttpError } = require('../utils/response')
 const MP_STATIC =
   'https://7072-prod-d3g1vkrj3290d085e-1467541248.tcb.qcloud.la/admin/mp-static/20261102'
 
+/** 云托管已上传的实景素材；门店封面与菜品尽量错开，避免整页同图 */
 const IMG = {
   supermarket: `${MP_STATIC}/b348459d6195838b.webp`,
   noodles: `${MP_STATIC}/26ff62910b5f2547.webp`,
@@ -26,172 +27,183 @@ const IMG = {
   cake: `${MP_STATIC}/e85759a7147886c8.webp`,
   tofu: `${MP_STATIC}/768037b9e15b0223.webp`,
   carwash: `${MP_STATIC}/4c20198e1c0cf66a.webp`,
-  stallNight: `${MP_STATIC}/809fc9e17ef933b6.webp`
+  stallNight: `${MP_STATIC}/809fc9e17ef933b6.webp`,
+  mall: `${MP_STATIC}/c24ce20a00c6790e.webp`,
+  points: `${MP_STATIC}/bcf4837bfb8f2347.webp`,
+  scan: `${MP_STATIC}/3cdd06ea70c160cb.webp`,
+  crossShop: `${MP_STATIC}/742baf46d2be8680.webp`,
+  supplyBay: `${MP_STATIC}/821f8b62aeaa627a.webp`,
+  login: `${MP_STATIC}/8f773fae68a0ba0e.webp`
 }
 
 const CONFIG_KEY = 'home_presentation_relax'
+const CATALOG_VERSION_KEY = 'home_presentation_catalog_version'
+/** 升版本会在启动/播种时刷新店名与图片 */
+const CATALOG_VERSION = '3'
 const MERCHANT_NO_PREFIX = 'PRES_'
-const INVITE_PREFIX = 'PRES'
 
-/** 演示门店清单：类型不重复，坐标落在已开通深圳商场附近 */
+/**
+ * 演示门店：每店独立封面；店内菜品图尽量与封面不同、彼此不同。
+ * 坐标落在已开通深圳商场附近。
+ */
 const DEMO_MERCHANTS = [
   {
     merchantNo: 'PRES_STALL_01',
     invite: 'PRES01',
     role: 'stall',
-    name: '海岸城石锅拌饭',
+    name: '阿彪深夜烧烤档',
     bizType: '餐饮',
     city: '深圳·南山',
-    address: '海岸城负一楼美食区 B1-18',
+    address: '海岸城负一美食区外摆 18 号',
     lat: 22.5172,
     lng: 113.9345,
-    cover: IMG.noodles,
+    cover: IMG.bbq,
     hue: '#C45A2A',
     goods: [
-      { name: '牛肉石锅拌饭', price: 28, pts: 28, usable: 10, cat: '主食', desc: '韩式辣酱 · 配蛋', img: IMG.noodles },
-      { name: '芝士芝士蛋包饭', price: 26, pts: 26, usable: 8, cat: '主食', desc: '双层芝士', img: IMG.noodles },
-      { name: '韩式泡菜汤', price: 12, pts: 12, usable: 4, cat: '汤', desc: '酸辣开胃', img: IMG.malatang },
-      { name: '冰美式', price: 9, pts: 9, usable: 3, cat: '饮品', desc: '中杯', img: IMG.milktea }
+      { name: '秘制羊肉串（5 串）', price: 28, pts: 28, usable: 10, cat: '烧烤', desc: '现烤孜然味', img: IMG.stallNight },
+      { name: '蒜蓉生蚝（4 只）', price: 32, pts: 32, usable: 10, cat: '烧烤', desc: '带壳现烤', img: IMG.scan },
+      { name: '烤茄子', price: 14, pts: 14, usable: 4, cat: '烧烤', desc: '蒜香酱', img: IMG.tofu },
+      { name: '冰镇扎啤 500ml', price: 12, pts: 12, usable: 3, cat: '酒水', desc: '冰杯', img: IMG.milktea }
     ]
   },
   {
     merchantNo: 'PRES_STALL_02',
     invite: 'PRES02',
     role: 'stall',
-    name: '万象城手工水饺',
+    name: '老周豆浆油条铺',
     bizType: '餐饮',
     city: '深圳·罗湖',
-    address: '万象城 B1 美食广场',
+    address: '万象城 B1 早市档口',
     lat: 22.5398,
     lng: 114.1112,
-    cover: IMG.noodles,
+    cover: IMG.jianbing,
     hue: '#B86A1C',
     goods: [
-      { name: '猪肉白菜饺（12只）', price: 18, pts: 18, usable: 6, cat: '主食', desc: '现包现煮', img: IMG.noodles },
-      { name: '牛肉香菜饺（12只）', price: 22, pts: 22, usable: 8, cat: '主食', desc: '偏咸鲜', img: IMG.noodles },
-      { name: '酸汤水饺', price: 20, pts: 20, usable: 6, cat: '主食', desc: '番茄酸汤', img: IMG.noodles },
-      { name: '紫菜蛋花汤', price: 6, pts: 6, usable: 2, cat: '汤', desc: '可续', img: IMG.tofu }
+      { name: '现磨热豆浆', price: 5, pts: 5, usable: 2, cat: '饮品', desc: '无糖/微甜', img: IMG.points },
+      { name: '现炸油条（2 根）', price: 6, pts: 6, usable: 2, cat: '主食', desc: '外脆里软', img: IMG.tofu },
+      { name: '鸡蛋灌饼', price: 10, pts: 10, usable: 3, cat: '主食', desc: '加薄脆', img: IMG.noodles },
+      { name: '茶叶蛋', price: 3, pts: 3, usable: 1, cat: '小吃', desc: '卤香入味', img: IMG.cake }
     ]
   },
   {
     merchantNo: 'PRES_STALL_03',
     invite: 'PRES03',
     role: 'stall',
-    name: '壹方城重庆小面',
+    name: '渝味麻辣烫',
     bizType: '餐饮',
     city: '深圳·宝安',
-    address: '壹方城 B2 小吃街',
+    address: '壹方城 B2 小吃街 07',
     lat: 22.5601,
     lng: 113.8872,
-    cover: IMG.noodles,
+    cover: IMG.malatang,
     hue: '#D4532B',
     goods: [
-      { name: '红油抄手', price: 16, pts: 16, usable: 5, cat: '主食', desc: '微辣/中辣', img: IMG.noodles },
-      { name: '豌杂小面', price: 15, pts: 15, usable: 5, cat: '主食', desc: '豌豆肉臊', img: IMG.noodles },
-      { name: '牛肉小面', price: 18, pts: 18, usable: 6, cat: '主食', desc: '宽汤', img: IMG.noodles },
-      { name: '冰粉', price: 8, pts: 8, usable: 2, cat: '小吃', desc: '红糖冰粉', img: IMG.fruit }
+      { name: '麻辣烫小份（自选）', price: 22, pts: 22, usable: 8, cat: '主食', desc: '微辣起步', img: IMG.noodles },
+      { name: '麻辣烫大份（加料）', price: 32, pts: 32, usable: 10, cat: '主食', desc: '含宽粉', img: IMG.stallNight },
+      { name: '关东煮三件套', price: 12, pts: 12, usable: 3, cat: '小吃', desc: '萝卜/蛋/鱼饼', img: IMG.tofu },
+      { name: '酸梅汤', price: 8, pts: 8, usable: 2, cat: '饮品', desc: '解辣', img: IMG.fruit }
     ]
   },
   {
     merchantNo: 'PRES_STALL_04',
     invite: 'PRES04',
     role: 'stall',
-    name: '大悦城现炒牛河',
+    name: '港记干炒牛河',
     bizType: '餐饮',
     city: '深圳·龙华',
-    address: '大悦城 L1 餐饮走廊',
+    address: '大悦城 L1 餐饮走廊 22',
     lat: 22.6575,
     lng: 114.0368,
     cover: IMG.noodles,
     hue: '#E08A1E',
     goods: [
-      { name: '干炒牛河', price: 24, pts: 24, usable: 8, cat: '主食', desc: '镬气足', img: IMG.noodles },
-      { name: '滑蛋牛肉饭', price: 22, pts: 22, usable: 7, cat: '主食', desc: '配时蔬', img: IMG.noodles },
-      { name: '姜葱炒时蔬', price: 12, pts: 12, usable: 3, cat: '小菜', desc: '时令蔬菜', img: IMG.fruit },
-      { name: '冻柠茶', price: 8, pts: 8, usable: 2, cat: '饮品', desc: '大杯', img: IMG.milktea }
+      { name: '干炒牛河', price: 26, pts: 26, usable: 8, cat: '主食', desc: '镬气足 · 少油', img: IMG.bbq },
+      { name: '滑蛋牛肉饭', price: 24, pts: 24, usable: 7, cat: '主食', desc: '配时蔬', img: IMG.jianbing },
+      { name: '姜葱炒通菜', price: 14, pts: 14, usable: 4, cat: '小菜', desc: '时令', img: IMG.fruit },
+      { name: '冻柠茶大杯', price: 9, pts: 9, usable: 2, cat: '饮品', desc: '少冰', img: IMG.milktea }
     ]
   },
   {
     merchantNo: 'PRES_STALL_05',
     invite: 'PRES05',
     role: 'stall',
-    name: '星河COCO章鱼小丸子',
+    name: '巷口臭豆腐',
     bizType: '餐饮',
     city: '深圳·龙岗',
-    address: '星河 COCO Park 一层外摆',
+    address: '星河 COCO 一层外摆',
     lat: 22.7204,
     lng: 114.2471,
-    cover: IMG.bbq,
-    hue: '#E24E12',
+    cover: IMG.tofu,
+    hue: '#8A6A2F',
     goods: [
-      { name: '原味章鱼小丸子', price: 15, pts: 15, usable: 5, cat: '小吃', desc: '8粒', img: IMG.bbq },
-      { name: '芝士章鱼小丸子', price: 18, pts: 18, usable: 6, cat: '小吃', desc: '拉丝芝士', img: IMG.bbq },
-      { name: '烤肠串', price: 6, pts: 6, usable: 2, cat: '小吃', desc: '一根', img: IMG.bbq },
-      { name: '可乐', price: 5, pts: 5, usable: 1, cat: '饮品', desc: '听装', img: IMG.milktea }
+      { name: '香辣臭豆腐', price: 12, pts: 12, usable: 4, cat: '小吃', desc: '外酥内嫩', img: IMG.malatang },
+      { name: '原味臭豆腐', price: 10, pts: 10, usable: 3, cat: '小吃', desc: '配辣酱', img: IMG.bbq },
+      { name: '炸年糕', price: 8, pts: 8, usable: 2, cat: '小吃', desc: '甜辣酱', img: IMG.cake },
+      { name: '豆浆一杯', price: 4, pts: 4, usable: 1, cat: '饮品', desc: '热', img: IMG.jianbing }
     ]
   },
   {
     merchantNo: 'PRES_STALL_06',
     invite: 'PRES06',
     role: 'stall',
-    name: '前海夜市烤生蚝',
+    name: '夜市灯笼炸串',
     bizType: '餐饮',
     city: '深圳·宝安',
     address: '前海合作区夜市 C06',
     lat: 22.5268,
     lng: 113.8915,
-    cover: IMG.bbq,
+    cover: IMG.stallNight,
     hue: '#A33B1F',
     goods: [
-      { name: '蒜蓉烤生蚝', price: 12, pts: 12, usable: 4, cat: '烧烤', desc: '一只', img: IMG.bbq },
-      { name: '烤鱿鱼须', price: 18, pts: 18, usable: 6, cat: '烧烤', desc: '一份', img: IMG.bbq },
-      { name: '烤茄子', price: 14, pts: 14, usable: 4, cat: '烧烤', desc: '蒜香', img: IMG.bbq },
-      { name: '扎啤', price: 10, pts: 10, usable: 3, cat: '酒水', desc: '500ml', img: IMG.milktea }
+      { name: '炸鸡翅（2 只）', price: 16, pts: 16, usable: 5, cat: '炸物', desc: '香辣', img: IMG.bbq },
+      { name: '炸鱿鱼圈', price: 18, pts: 18, usable: 6, cat: '炸物', desc: '椒盐', img: IMG.scan },
+      { name: '薯条大份', price: 10, pts: 10, usable: 3, cat: '炸物', desc: '番茄酱', img: IMG.noodles },
+      { name: '可乐听装', price: 5, pts: 5, usable: 1, cat: '饮品', desc: '冰镇', img: IMG.milktea }
     ]
   },
   {
     merchantNo: 'PRES_STALL_07',
     invite: 'PRES07',
     role: 'stall',
-    name: '东门步行街酸辣粉',
+    name: '川妹子酸辣粉',
     bizType: '餐饮',
     city: '深圳·罗湖',
-    address: '东门步行街美食城 2 楼',
+    address: '东门步行街美食城 2F',
     lat: 22.5456,
     lng: 114.1208,
-    cover: IMG.malatang,
+    cover: IMG.scan,
     hue: '#C23B22',
     goods: [
-      { name: '招牌酸辣粉', price: 14, pts: 14, usable: 5, cat: '主食', desc: '红薯粉', img: IMG.malatang },
-      { name: '肥肠酸辣粉', price: 19, pts: 19, usable: 6, cat: '主食', desc: '加肥肠', img: IMG.malatang },
-      { name: '凉皮', price: 12, pts: 12, usable: 4, cat: '小吃', desc: '芝麻酱', img: IMG.tofu },
-      { name: '豆浆', price: 4, pts: 4, usable: 1, cat: '饮品', desc: '热/冰', img: IMG.jianbing }
+      { name: '招牌酸辣粉', price: 15, pts: 15, usable: 5, cat: '主食', desc: '红薯粉 · 中辣', img: IMG.malatang },
+      { name: '肥肠酸辣粉', price: 22, pts: 22, usable: 7, cat: '主食', desc: '加肥肠', img: IMG.bbq },
+      { name: '麻酱凉皮', price: 13, pts: 13, usable: 4, cat: '小吃', desc: '黄瓜丝', img: IMG.tofu },
+      { name: '冰粉（红糖）', price: 8, pts: 8, usable: 2, cat: '小吃', desc: '夏季限定', img: IMG.fruit }
     ]
   },
   {
     merchantNo: 'PRES_STALL_08',
     invite: 'PRES08',
     role: 'stall',
-    name: '深圳湾轻食沙拉',
+    name: '湾区轻食碗',
     bizType: '餐饮',
     city: '深圳·南山',
-    address: '深圳湾万象城 L2',
+    address: '深圳湾万象城 L2-09',
     lat: 22.4856,
     lng: 113.9452,
     cover: IMG.fruit,
     hue: '#2F8F6B',
     goods: [
-      { name: '鸡胸谷物碗', price: 32, pts: 32, usable: 12, cat: '轻食', desc: '低脂', img: IMG.fruit },
-      { name: '牛油果虾仁沙拉', price: 36, pts: 36, usable: 12, cat: '轻食', desc: '油醋汁', img: IMG.fruit },
-      { name: '鲜榨橙汁', price: 16, pts: 16, usable: 5, cat: '饮品', desc: '现榨', img: IMG.fruit },
-      { name: '希腊酸奶杯', price: 18, pts: 18, usable: 6, cat: '小吃', desc: '配坚果', img: IMG.cake }
+      { name: '鸡胸藜麦碗', price: 34, pts: 34, usable: 12, cat: '轻食', desc: '低脂酱', img: IMG.noodles },
+      { name: '牛油果虾仁沙拉', price: 38, pts: 38, usable: 12, cat: '轻食', desc: '油醋汁', img: IMG.cake },
+      { name: '鲜榨橙汁 400ml', price: 18, pts: 18, usable: 5, cat: '饮品', desc: '现榨', img: IMG.milktea },
+      { name: '希腊酸奶杯', price: 16, pts: 16, usable: 5, cat: '小吃', desc: '坚果燕麦', img: IMG.jianbing }
     ]
   },
   {
     merchantNo: 'PRES_CROSS_01',
     invite: 'PRES21',
     role: 'cross',
-    name: '海岸城花艺馆',
+    name: '花间集花艺',
     bizType: '鲜花',
     city: '深圳·南山',
     address: '海岸城 L3-12',
@@ -200,16 +212,16 @@ const DEMO_MERCHANTS = [
     cover: IMG.flower,
     hue: '#3D8B4A',
     goods: [
-      { name: '日常鲜花束', pointsNeed: 800, cash: 68, cat: '鲜花', desc: '当季混搭', img: IMG.flower },
-      { name: '红玫瑰 11 支', pointsNeed: 1200, cash: 98, cat: '鲜花', desc: '含包装', img: IMG.flower },
-      { name: '绿植小盆栽', pointsNeed: 500, cash: 45, cat: '绿植', desc: '易养活', img: IMG.flower }
+      { name: '当季混搭花束', pointsNeed: 880, cash: 78, cat: '鲜花', desc: '含包装袋', img: IMG.points },
+      { name: '红玫瑰 11 支', pointsNeed: 1280, cash: 108, cat: '鲜花', desc: '情人节款', img: IMG.crossShop },
+      { name: '多肉组合盆栽', pointsNeed: 560, cash: 49, cat: '绿植', desc: '含盆', img: IMG.mall }
     ]
   },
   {
     merchantNo: 'PRES_CROSS_02',
     invite: 'PRES22',
     role: 'cross',
-    name: '万象城烘焙工坊',
+    name: '奶油社烘焙',
     bizType: '蛋糕',
     city: '深圳·罗湖',
     address: '万象城 L1 甜品区',
@@ -218,34 +230,34 @@ const DEMO_MERCHANTS = [
     cover: IMG.cake,
     hue: '#C9A227',
     goods: [
-      { name: '招牌芝士蛋糕（切角）', pointsNeed: 420, cash: 38, cat: '蛋糕', desc: '冷藏', img: IMG.cake },
-      { name: '焦糖布蕾塔', pointsNeed: 360, cash: 32, cat: '甜品', desc: '当日烤', img: IMG.cake },
-      { name: '手冲美式', pointsNeed: 180, cash: 16, cat: '饮品', desc: '热/冰', img: IMG.milktea }
+      { name: '巴斯克芝士切角', pointsNeed: 420, cash: 39, cat: '蛋糕', desc: '冷藏保存', img: IMG.fruit },
+      { name: '焦糖布丁塔', pointsNeed: 360, cash: 32, cat: '甜品', desc: '当日烤制', img: IMG.jianbing },
+      { name: '手冲美式', pointsNeed: 180, cash: 16, cat: '饮品', desc: '热/冰可选', img: IMG.milktea }
     ]
   },
   {
     merchantNo: 'PRES_CROSS_03',
     invite: 'PRES23',
     role: 'cross',
-    name: '壹方城鲜切果盘',
+    name: '鲜果切 FreshCut',
     bizType: '百货商店',
     city: '深圳·宝安',
     address: '壹方城 B1 生鲜档',
     lat: 22.5612,
     lng: 113.888,
-    cover: IMG.fruit,
+    cover: IMG.mall,
     hue: '#3D8B4A',
     goods: [
-      { name: '综合果切小份', pointsNeed: 280, cash: 25, cat: '果切', desc: '西瓜/蜜瓜', img: IMG.fruit },
-      { name: '芒果盒', pointsNeed: 320, cash: 28, cat: '果切', desc: '当季芒果', img: IMG.fruit },
-      { name: '椰子水', pointsNeed: 150, cash: 12, cat: '饮品', desc: '冷藏', img: IMG.fruit }
+      { name: '综合果切盒（小）', pointsNeed: 280, cash: 26, cat: '果切', desc: '西瓜/蜜瓜/提子', img: IMG.fruit },
+      { name: '芒果杯', pointsNeed: 320, cash: 29, cat: '果切', desc: '当季芒果', img: IMG.cake },
+      { name: '鲜榨椰子水', pointsNeed: 160, cash: 14, cat: '饮品', desc: '冷藏柜', img: IMG.milktea }
     ]
   },
   {
     merchantNo: 'PRES_CROSS_04',
     invite: 'PRES24',
     role: 'cross',
-    name: '大悦城邻里便利',
+    name: '邻里便利购',
     bizType: '百货商店',
     city: '深圳·龙华',
     address: '大悦城 B1-06',
@@ -254,16 +266,16 @@ const DEMO_MERCHANTS = [
     cover: IMG.supermarket,
     hue: '#2E6B8A',
     goods: [
-      { name: '日用品兑换券 50 元', pointsNeed: 5000, cash: 50, cat: '券', desc: '店内核销', img: IMG.supermarket },
-      { name: '进口零食礼盒', pointsNeed: 2800, cash: 68, cat: '零食', desc: '混合装', img: IMG.supermarket },
-      { name: '瓶装水 12 件', pointsNeed: 900, cash: 22, cat: '饮品', desc: '整提', img: IMG.supermarket }
+      { name: '店内满减券 50 元', pointsNeed: 5000, cash: 50, cat: '券', desc: '满 80 可用', img: IMG.crossShop },
+      { name: '进口零食礼盒', pointsNeed: 2800, cash: 69, cat: '零食', desc: '混合装', img: IMG.cake },
+      { name: '矿泉水整提 12 瓶', pointsNeed: 900, cash: 22, cat: '饮品', desc: '提装', img: IMG.points }
     ]
   },
   {
     merchantNo: 'PRES_CROSS_05',
     invite: 'PRES25',
     role: 'cross',
-    name: '福田中心洗车养车',
+    name: '捷途精洗车行',
     bizType: '百货商店',
     city: '深圳·福田',
     address: '福田中心二路停车场旁',
@@ -272,16 +284,16 @@ const DEMO_MERCHANTS = [
     cover: IMG.carwash,
     hue: '#3A6EA5',
     goods: [
-      { name: '标准洗车一次', pointsNeed: 1500, cash: 35, cat: '洗车', desc: '轿车', img: IMG.carwash },
-      { name: '精洗内饰', pointsNeed: 3200, cash: 88, cat: '洗车', desc: '约 40 分钟', img: IMG.carwash },
-      { name: '打蜡护理', pointsNeed: 4800, cash: 128, cat: '养护', desc: '轿车', img: IMG.carwash }
+      { name: '标准外观洗车', pointsNeed: 1500, cash: 35, cat: '洗车', desc: '轿车', img: IMG.login },
+      { name: '精洗内饰套餐', pointsNeed: 3200, cash: 88, cat: '洗车', desc: '约 40 分钟', img: IMG.supermarket },
+      { name: '打蜡护理一次', pointsNeed: 4800, cash: 128, cat: '养护', desc: '轿车', img: IMG.crossShop }
     ]
   },
   {
     merchantNo: 'PRES_CROSS_06',
     invite: 'PRES26',
     role: 'cross',
-    name: '南山手作茶馆',
+    name: '慢煮茶室',
     bizType: '餐饮',
     city: '深圳·南山',
     address: '海岸城 L2 茶饮区',
@@ -290,16 +302,16 @@ const DEMO_MERCHANTS = [
     cover: IMG.milktea,
     hue: '#C45A2A',
     goods: [
-      { name: '桂花乌龙', pointsNeed: 220, cash: 18, cat: '茶饮', desc: '少糖可调', img: IMG.milktea },
-      { name: '杨枝甘露', pointsNeed: 260, cash: 22, cat: '茶饮', desc: '芒果椰奶', img: IMG.milktea },
-      { name: '烤奶布丁', pointsNeed: 180, cash: 15, cat: '甜品', desc: '杯装', img: IMG.cake }
+      { name: '桂花乌龙（少糖）', pointsNeed: 220, cash: 19, cat: '茶饮', desc: '可调糖度', img: IMG.flower },
+      { name: '杨枝甘露', pointsNeed: 260, cash: 23, cat: '茶饮', desc: '芒果椰奶', img: IMG.fruit },
+      { name: '烤奶布丁', pointsNeed: 180, cash: 15, cat: '甜品', desc: '杯装冷藏', img: IMG.cake }
     ]
   },
   {
     merchantNo: 'PRES_SUPPLY_01',
     invite: 'PRES31',
     role: 'supply',
-    name: '龙华冻品集配仓',
+    name: '龙华鲜冻集配中心',
     bizType: '百货商店',
     city: '深圳·龙华',
     address: '龙华物流园 3 号冷库',
@@ -308,26 +320,26 @@ const DEMO_MERCHANTS = [
     cover: IMG.warehouse,
     hue: '#3A6EA5',
     goods: [
-      { name: '冷冻鸡翅中（10kg）', price: 268, pts: 80, cat: '冻品', desc: 'B2B 箱装', img: IMG.warehouse },
-      { name: '速冻水饺（5kg）', price: 98, pts: 30, cat: '冻品', desc: '猪肉白菜', img: IMG.warehouse },
-      { name: '冷冻薯条（10kg）', price: 128, pts: 40, cat: '冻品', desc: '餐饮装', img: IMG.warehouse }
+      { name: '冷冻鸡翅中 10kg', price: 268, pts: 80, cat: '冻品', desc: '餐饮箱装', img: IMG.bbq },
+      { name: '速冻水饺 5kg', price: 98, pts: 30, cat: '冻品', desc: '猪肉白菜', img: IMG.noodles },
+      { name: '冷冻薯条 10kg', price: 128, pts: 40, cat: '冻品', desc: '直薯条', img: IMG.stallNight }
     ]
   },
   {
     merchantNo: 'PRES_SUPPLY_02',
     invite: 'PRES32',
     role: 'supply',
-    name: '宝安粮油调味仓',
+    name: '西乡粮油调味仓',
     bizType: '百货商店',
     city: '深圳·宝安',
     address: '宝安西乡工业区 8 栋',
     lat: 22.568,
     lng: 113.875,
-    cover: IMG.warehouse,
+    cover: IMG.supplyBay,
     hue: '#3E7A3A',
     goods: [
-      { name: '花生油 20L', price: 218, pts: 60, cat: '粮油', desc: '餐饮装', img: IMG.warehouse },
-      { name: '生抽 15kg', price: 86, pts: 25, cat: '调味', desc: '桶装', img: IMG.warehouse },
+      { name: '花生油 20L 桶', price: 218, pts: 60, cat: '粮油', desc: '餐饮装', img: IMG.supermarket },
+      { name: '生抽 15kg 桶', price: 86, pts: 25, cat: '调味', desc: '餐饮装', img: IMG.malatang },
       { name: '火锅底料箱（20 袋）', price: 160, pts: 45, cat: '调味', desc: '微辣', img: IMG.warehouse }
     ]
   }
@@ -697,6 +709,40 @@ async function upsertSupplyGoods(merchantId, goods) {
   return n
 }
 
+async function pruneOrphanPresentationGoods(merchantId, role, keepNames) {
+  const table = role === 'stall' ? 'stall_goods' : role === 'cross' ? 'cross_goods' : 'supply_goods'
+  const saleCol = role === 'supply' ? 'status' : 'on_sale'
+  const names = (keepNames || []).map((n) => String(n || '').trim()).filter(Boolean)
+  if (!names.length) return 0
+  const ph = names.map((_, i) => `:n${i}`).join(',')
+  const params = { mid: merchantId }
+  names.forEach((n, i) => {
+    params[`n${i}`] = n
+  })
+  try {
+    const r = await query(
+      `UPDATE ${table}
+       SET ${saleCol}=0, deleted_at=NOW()
+       WHERE merchant_id=:mid AND deleted_at IS NULL
+         AND IFNULL(data_source,'manual')='presentation'
+         AND name NOT IN (${ph})`,
+      params
+    )
+    return Number(r.affectedRows) || 0
+  } catch (e) {
+    if (!(e && e.code === 'ER_BAD_FIELD_ERROR')) throw e
+    const r = await query(
+      `UPDATE ${table}
+       SET ${saleCol}=0, deleted_at=NOW()
+       WHERE merchant_id=:mid AND deleted_at IS NULL
+         AND (sku_code LIKE 'PRES-%')
+         AND name NOT IN (${ph})`,
+      params
+    )
+    return Number(r.affectedRows) || 0
+  }
+}
+
 async function seedPresentationCatalog({ confirm, enableRelax = true } = {}) {
   if (confirm !== 'SEED_PRESENTATION') {
     throw new HttpError(400, '播种呈现数据请传 confirm=SEED_PRESENTATION')
@@ -706,18 +752,27 @@ async function seedPresentationCatalog({ confirm, enableRelax = true } = {}) {
   }
   let merchants = 0
   let goods = 0
+  let pruned = 0
   for (const seed of DEMO_MERCHANTS) {
     const mid = await upsertMerchant(seed)
     merchants += 1
     if (seed.role === 'stall') goods += await upsertStallGoods(mid, seed.goods)
     else if (seed.role === 'cross') goods += await upsertCrossGoods(mid, seed.goods)
     else goods += await upsertSupplyGoods(mid, seed.goods)
+    pruned += await pruneOrphanPresentationGoods(
+      mid,
+      seed.role,
+      (seed.goods || []).map((g) => g.name)
+    )
   }
   await setConfig('home_presentation_seeded', '1', '呈现演示目录已写入')
+  await setConfig(CATALOG_VERSION_KEY, CATALOG_VERSION, '呈现演示目录版本')
   return {
     ...(await getStatus()),
+    catalogVersion: CATALOG_VERSION,
     seededMerchants: merchants,
-    seededGoods: goods
+    seededGoods: goods,
+    prunedOrphans: pruned
   }
 }
 
@@ -797,25 +852,25 @@ async function purgePresentationCatalog({ confirm } = {}) {
   }
 }
 
-/** 启动时幂等：确保呈现模式开启 + 演示目录存在（不覆盖正式数据） */
+/** 启动时幂等：确保呈现模式开启 + 演示目录为最新版本（不覆盖正式数据） */
 async function ensurePresentationBootstrap() {
   const enabled = await isPresentationRelaxEnabled()
   if (enabled) {
     const v = await getConfig(CONFIG_KEY)
     if (v == null) await setConfig(CONFIG_KEY, '1', '呈现模式默认开启（可一键改回）')
   }
-  const seeded = await getConfig('home_presentation_seeded')
+  const ver = await getConfig(CATALOG_VERSION_KEY)
   const count = await countPresentationMerchants()
-  if (seeded === '1' && count > 0) return { skipped: true, reason: 'already_seeded', count }
-  if (count > 0) {
-    await setConfig('home_presentation_seeded', '1', '检测到呈现演示门店')
-    return { skipped: true, reason: 'merchants_exist', count }
+  if (ver === CATALOG_VERSION && count > 0) {
+    return { skipped: true, reason: 'catalog_up_to_date', count, catalogVersion: ver }
   }
+  // 版本变化或尚未播种：刷新店名/封面/菜品图（upsert + 清理旧菜名）
   return seedPresentationCatalog({ confirm: 'SEED_PRESENTATION', enableRelax: true })
 }
 
 module.exports = {
   CONFIG_KEY,
+  CATALOG_VERSION,
   DEMO_MERCHANTS,
   isPresentationRelaxEnabled,
   setPresentationRelax,
