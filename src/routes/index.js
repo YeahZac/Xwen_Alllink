@@ -1624,6 +1624,54 @@ router.post(
   }
 )
 
+/** 呈现模式：放宽进件门槛 / 播种演示目录 / 一键改回 / 一键清除（小程序无需改） */
+router.get('/admin/ops/presentation/status', ...adminOnly, async (req, res, next) => {
+  try {
+    const presentation = require('../services/presentationCatalogService')
+    res.json(ok(await presentation.getStatus()))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/ops/presentation/mode', ...adminOnly, async (req, res, next) => {
+  try {
+    const presentation = require('../services/presentationCatalogService')
+    const body = req.body || {}
+    const enabled = !(body.enabled === false || body.enabled === 0 || body.enabled === '0')
+    res.json(ok(await presentation.setPresentationRelax(enabled, { confirm: body.confirm })))
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/ops/presentation/seed', ...adminOnly, async (req, res, next) => {
+  try {
+    const presentation = require('../services/presentationCatalogService')
+    const body = req.body || {}
+    res.json(
+      ok(
+        await presentation.seedPresentationCatalog({
+          confirm: body.confirm,
+          enableRelax: body.enableRelax !== false
+        })
+      )
+    )
+  } catch (e) {
+    next(e)
+  }
+})
+
+router.post('/admin/ops/presentation/purge', ...adminOnly, async (req, res, next) => {
+  try {
+    const presentation = require('../services/presentationCatalogService')
+    const body = req.body || {}
+    res.json(ok(await presentation.purgePresentationCatalog({ confirm: body.confirm })))
+  } catch (e) {
+    next(e)
+  }
+})
+
 router.post(
   '/admin/ops/skus/:type/:id/open',
   ...adminOnly,

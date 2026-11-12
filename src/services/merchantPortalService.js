@@ -441,7 +441,8 @@ async function listFlow(merchantId, { limit = 50 } = {}) {
 
 async function listSupplyMerchants(opts = {}) {
   const { enrichCoverRow } = require('../utils/mediaPick')
-  const { HOME_VISIBLE_SQL } = require('./merchantReady')
+  const { getHomeVisibleSql } = require('./merchantReady')
+  const homeSql = await getHomeVisibleSql()
   let rows
   try {
     rows = await query(
@@ -454,7 +455,7 @@ async function listSupplyMerchants(opts = {}) {
               (SELECT IFNULL(SUM(g.sales_count),0) FROM supply_goods g WHERE g.merchant_id=m.id) AS monthSales
        FROM merchants m
        WHERE m.role='supply' AND m.status=1 AND m.deleted_at IS NULL
-         AND ${HOME_VISIBLE_SQL}
+         AND ${homeSql}
        ORDER BY m.id DESC`
     )
   } catch (e) {
@@ -467,7 +468,8 @@ async function listSupplyMerchants(opts = {}) {
 
 async function getCrossStoreDetail(id) {
   const { enrichCoverRow } = require('../utils/mediaPick')
-  const { HOME_VISIBLE_SQL } = require('./merchantReady')
+  const { getHomeVisibleSql } = require('./merchantReady')
+  const homeSql = await getHomeVisibleSql()
   let stores
   try {
     stores = await query(
@@ -477,7 +479,7 @@ async function getCrossStoreDetail(id) {
               IFNULL(NULLIF(m.biz_type,''), '百货商店') AS category
        FROM merchants m
        WHERE m.id=:id AND m.role='cross' AND m.status=1 AND m.deleted_at IS NULL
-         AND ${HOME_VISIBLE_SQL}`,
+         AND ${homeSql}`,
       { id }
     )
   } catch (e) {

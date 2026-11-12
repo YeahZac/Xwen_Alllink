@@ -2,7 +2,7 @@ const { query } = require('../utils/db')
 const { HttpError } = require('../utils/response')
 const { applyGeo } = require('../utils/geo')
 const { enrichCoverRow } = require('../utils/mediaPick')
-const { HOME_VISIBLE_SQL: PAY_READY_SQL } = require('./merchantReady')
+const { getHomeVisibleSql } = require('./merchantReady')
 
 const ROLE_LABEL = {
   stall: '地摊',
@@ -134,6 +134,7 @@ async function listMerchantsByCategory(categoryId, opts = {}) {
   const cat = await getCategoryById(categoryId)
   if (Number(cat.status) === 0) throw new HttpError(404, '类目已停用')
   const role = cat.role
+  const homeSql = await getHomeVisibleSql()
   const goodsTable =
     role === 'cross' ? 'cross_goods' : role === 'supply' ? 'supply_goods' : 'stall_goods'
   const saleSql =
@@ -160,12 +161,12 @@ async function listMerchantsByCategory(categoryId, opts = {}) {
               ) AS goodsCount
        FROM merchants m
        WHERE m.role=:role AND m.status=1 AND m.deleted_at IS NULL
-         AND ${PAY_READY_SQL}
+         AND ${homeSql}
        ORDER BY m.id DESC`,
       { role, cid: Number(cat.id), cname: cat.name }
     )
   } catch (e) {
-    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || /Unknown column.*wx_sub_mch|category_id/i.test(String(e.message || ''))))) {
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || /Unknown column.*wx_sub_mch|category_id|operating_cities/i.test(String(e.message || ''))))) {
       throw e
     }
     rows = await query(
@@ -183,7 +184,7 @@ async function listMerchantsByCategory(categoryId, opts = {}) {
               ) AS goodsCount
        FROM merchants m
        WHERE m.role=:role AND m.status=1 AND m.deleted_at IS NULL
-         AND ${PAY_READY_SQL}
+         AND ${homeSql}
        ORDER BY m.id DESC`,
       { role, cname: cat.name }
     ).catch(async () =>
@@ -225,6 +226,7 @@ async function listGoodsByCategory(categoryId, opts = {}) {
   const cat = await getCategoryById(categoryId)
   if (Number(cat.status) === 0) throw new HttpError(404, '类目已停用')
   const role = cat.role
+  const homeSql = await getHomeVisibleSql()
   const limit = Math.min(Math.max(Number(opts.limit) || 100, 1), 200)
   let rows = []
   if (role === 'stall') {
@@ -238,13 +240,13 @@ async function listGoodsByCategory(categoryId, opts = {}) {
          JOIN merchants m ON m.id=g.merchant_id
          WHERE g.deleted_at IS NULL AND IFNULL(g.on_sale,0)=1
            AND m.status=1 AND m.deleted_at IS NULL AND m.role='stall'
-           AND ${PAY_READY_SQL}
+           AND ${homeSql}
            AND (g.category_id=:cid OR (IFNULL(g.category_id,0)=0 AND g.category=:cname))
          ORDER BY g.id DESC LIMIT ${limit}`,
         { cid: Number(cat.id), cname: cat.name }
       )
     } catch (e) {
-      if (!/Unknown column.*category_id|wx_sub/i.test(String(e.message || ''))) throw e
+      if (!/Unknown column.*category_id|wx_sub|operating_cities/i.test(String(e.message || ''))) throw e
       rows = await query(
         `SELECT g.id, g.name, g.price, g.points_grant AS pointsGrant, g.category, NULL AS categoryId,
                 g.image_url AS coverImage, g.image_url AS imageUrl, g.sku_code AS sku, g.stock,
@@ -254,7 +256,7 @@ async function listGoodsByCategory(categoryId, opts = {}) {
          JOIN merchants m ON m.id=g.merchant_id
          WHERE g.deleted_at IS NULL AND IFNULL(g.on_sale,0)=1
            AND m.status=1 AND m.deleted_at IS NULL AND m.role='stall'
-           AND ${PAY_READY_SQL}
+           AND ${homeSql}
            AND g.category=:cname
          ORDER BY g.id DESC LIMIT ${limit}`,
         { cname: cat.name }
@@ -272,7 +274,7 @@ async function listGoodsByCategory(categoryId, opts = {}) {
          JOIN merchants m ON m.id=g.merchant_id
          WHERE g.deleted_at IS NULL AND IFNULL(g.on_sale,0)=1
            AND m.status=1 AND m.deleted_at IS NULL AND m.role='cross'
-           AND ${PAY_READY_SQL}
+           AND ${homeSql}
            AND (g.category_id=:cid OR (IFNULL(g.category_id,0)=0 AND g.category=:cname))
          ORDER BY g.id DESC LIMIT ${limit}`,
         { cid: Number(cat.id), cname: cat.name }
@@ -289,7 +291,7 @@ async function listGoodsByCategory(categoryId, opts = {}) {
          JOIN merchants m ON m.id=g.merchant_id
          WHERE g.deleted_at IS NULL AND IFNULL(g.on_sale,0)=1
            AND m.status=1 AND m.deleted_at IS NULL AND m.role='cross'
-           AND ${PAY_READY_SQL}
+           AND ${homeSql}
            AND g.category=:cname
          ORDER BY g.id DESC LIMIT ${limit}`,
         { cname: cat.name }
@@ -306,7 +308,7 @@ async function listGoodsByCategory(categoryId, opts = {}) {
          JOIN merchants m ON m.id=g.merchant_id
          WHERE g.deleted_at IS NULL AND IFNULL(g.status,0)=1
            AND m.status=1 AND m.deleted_at IS NULL AND m.role='supply'
-           AND ${PAY_READY_SQL}
+           AND ${homeSql}
            AND (g.category_id=:cid OR (IFNULL(g.category_id,0)=0 AND g.category=:cname))
          ORDER BY g.id DESC LIMIT ${limit}`,
         { cid: Number(cat.id), cname: cat.name }
@@ -322,7 +324,7 @@ async function listGoodsByCategory(categoryId, opts = {}) {
          JOIN merchants m ON m.id=g.merchant_id
          WHERE g.deleted_at IS NULL AND IFNULL(g.status,0)=1
            AND m.status=1 AND m.deleted_at IS NULL AND m.role='supply'
-           AND ${PAY_READY_SQL}
+           AND ${homeSql}
            AND g.category=:cname
          ORDER BY g.id DESC LIMIT ${limit}`,
         { cname: cat.name }

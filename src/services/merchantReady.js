@@ -1,6 +1,9 @@
 /**
  * 门店 C 端可见 / SKU 上架就绪判定
  * 标准链路：入驻审核通过 → 二级商户进件 FINISH + 二级商户号 → 平台支付就绪 → 上架 SKU → 首页展示
+ *
+ * 呈现模式（临时）：可通过 platform_config.home_presentation_relax=1 放宽 C 端列表进件门槛，
+ * 正式上线用 POST /admin/ops/presentation/mode {enabled:false, confirm:'REVERT_PRESENTATION'} 一键改回。
  */
 const { query } = require('../utils/db')
 const { HttpError } = require('../utils/response')
@@ -34,9 +37,43 @@ function merchantHasOnSaleGoodsSql(alias = 'm') {
   )`
 }
 
-const HOME_VISIBLE_SQL = `${MERCHANT_PAY_READY_SQL}
+/** 正式规则：进件完成 + 城市开通 + 有上架商品 */
+const HOME_VISIBLE_STRICT_SQL = `${MERCHANT_PAY_READY_SQL}
        AND ${CITY_OPEN_SQL}
        AND ${merchantHasOnSaleGoodsSql('m')}`
+
+/**
+ * 呈现放宽：不卡二级商户进件；仍要求城市开通。
+ * 有上架商品优先，但允许无商品门店也露出（方便演示空店壳）。
+ */
+const HOME_VISIBLE_RELAXED_SQL = `${CITY_OPEN_SQL}`
+
+/** @deprecated 请改用 getHomeVisibleSql()；默认导出正式规则，避免误用 */
+const HOME_VISIBLE_SQL = HOME_VISIBLE_STRICT_SQL
+
+let _relaxCache = { at: 0, enabled: null }
+
+async function isHomePresentationRelaxed() {
+  const now = Date.now()
+  if (_relaxCache.enabled != null && now - _relaxCache.at < 5000) return _relaxCache.enabled
+  try {
+    const { isPresentationRelaxEnabled } = require('./presentationCatalogService')
+    const enabled = await isPresentationRelaxEnabled()
+    _relaxCache = { at: now, enabled }
+    return enabled
+  } catch (_) {
+    return true
+  }
+}
+
+function clearHomeVisibleCache() {
+  _relaxCache = { at: 0, enabled: null }
+}
+
+async function getHomeVisibleSql() {
+  const relaxed = await isHomePresentationRelaxed()
+  return relaxed ? HOME_VISIBLE_RELAXED_SQL : HOME_VISIBLE_STRICT_SQL
+}
 
 function evaluateMerchantReady(row = {}) {
   const sub = String(row.wx_sub_mch_id || row.wxSubMchId || '').trim()
@@ -52,7 +89,7 @@ function evaluateMerchantReady(row = {}) {
     platformPayReady,
     /** 可上架 SKU（进件完成 + 平台支付配置就绪） */
     catalogReady: merchantFinished && platformPayReady,
-    /** 门店具备上首页资格（仍需有上架商品） */
+    /** 门店具备上首页资格（仍需有上架商品；呈现模式另见 getHomeVisibleSql） */
     homeEligible: merchantFinished
   }
 }
@@ -121,6 +158,11 @@ module.exports = {
   MERCHANT_PAY_READY_SQL,
   CITY_OPEN_SQL,
   HOME_VISIBLE_SQL,
+  HOME_VISIBLE_STRICT_SQL,
+  HOME_VISIBLE_RELAXED_SQL,
+  getHomeVisibleSql,
+  clearHomeVisibleCache,
+  isHomePresentationRelaxed,
   merchantHasOnSaleGoodsSql,
   evaluateMerchantReady,
   getMerchantReady,

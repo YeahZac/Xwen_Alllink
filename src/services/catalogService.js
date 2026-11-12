@@ -103,7 +103,8 @@ async function listBanners(role, page) {
 }
 
 async function listSupplyGoods() {
-  const { HOME_VISIBLE_SQL } = require('./merchantReady')
+  const { getHomeVisibleSql } = require('./merchantReady')
+  const homeSql = await getHomeVisibleSql()
   try {
     return await query(
       `SELECT g.id, g.name, g.price, g.stock, g.points_grant AS pointsGrant,
@@ -112,7 +113,7 @@ async function listSupplyGoods() {
        FROM supply_goods g
        JOIN merchants m ON m.id = g.merchant_id
        WHERE g.status = 1 AND m.status = 1 AND g.deleted_at IS NULL AND m.deleted_at IS NULL
-         AND ${HOME_VISIBLE_SQL}
+         AND ${homeSql}
        ORDER BY g.id`
     )
   } catch (e) {

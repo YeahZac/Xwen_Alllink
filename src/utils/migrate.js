@@ -302,6 +302,16 @@ async function ensureSchema() {
   } catch (e) {
     console.warn('[schema] purge test goods', e.message)
   }
+  // 呈现模式：放宽首页进件门槛 + 幂等写入演示门店/商品（data_source=presentation，可一键清除）
+  // 正式上线：POST /admin/ops/presentation/mode {enabled:false,confirm:REVERT_PRESENTATION}
+  //           POST /admin/ops/presentation/purge {confirm:PURGE_PRESENTATION}
+  try {
+    const presentation = require('../services/presentationCatalogService')
+    const r = await presentation.ensurePresentationBootstrap()
+    console.log('[schema] presentation bootstrap', r && (r.skipped ? r.reason : `seeded ${r.seededMerchants}/${r.seededGoods}`))
+  } catch (e) {
+    console.warn('[schema] presentation bootstrap', e.message)
+  }
   // 禁止在 ensureSchema / 服务启动时自动改写 Banner/门店/商品图或复活软删商品：
   // - 旧 29_cdn_media_backfill 曾用「非 mp-static 一律替换」冲掉运营上传 Banner
   // - 旧 33_ensure_open_ops_content 曾复活测试 SKU / 种子门店

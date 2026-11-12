@@ -1,6 +1,6 @@
 /**
  * 商品数据来源 / 创建人
- * data_source: manual | placeholder | system | test
+ * data_source: manual | placeholder | system | test | presentation
  * created_by_type: admin | merchant | system | script
  */
 const { isTestGoodsName } = require('./goodsName')
@@ -9,7 +9,8 @@ const SOURCE_LABEL = {
   manual: '人工维护',
   placeholder: '系统占位',
   system: '系统自动',
-  test: '测试数据'
+  test: '测试数据',
+  presentation: '呈现演示'
 }
 
 const ACTOR_TYPE_LABEL = {
@@ -22,7 +23,7 @@ const ACTOR_TYPE_LABEL = {
 
 function normalizeSource(raw, { name, sku } = {}) {
   const s = String(raw || '').trim().toLowerCase()
-  if (['manual', 'placeholder', 'system', 'test'].includes(s)) return s
+  if (['manual', 'placeholder', 'system', 'test', 'presentation'].includes(s)) return s
   if (isTestGoodsName(name)) return 'test'
   const n = String(name || '').trim()
   const code = String(sku || '').trim()

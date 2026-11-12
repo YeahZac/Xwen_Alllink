@@ -1,4 +1,5 @@
 -- 软删测试/占位商品；可重复执行。不碰 manual 正式商品。
+-- 注意：不清理 data_source=presentation（呈现演示），请用 POST /admin/ops/presentation/purge。
 UPDATE stall_goods
 SET on_sale = 0, deleted_at = NOW()
 WHERE deleted_at IS NULL

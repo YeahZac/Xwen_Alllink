@@ -13,7 +13,7 @@ const wxService = require('./wxService')
 const config = require('../config')
 const { applyGeo } = require('../utils/geo')
 const { enrichCoverRow } = require('../utils/mediaPick')
-const { HOME_VISIBLE_SQL: HOME_PAY_READY_SQL } = require('./merchantReady')
+const { getHomeVisibleSql } = require('./merchantReady')
 
 function assertPaySimulateAllowed(cashAmount) {
   if (!(Number(cashAmount) > 0)) return
@@ -94,9 +94,10 @@ async function recordCommission(conn, { bizType, bizId, payerMerchantId, amountG
   return res.commission
 }
 
-/** 首页可见：二级商户进件完成 + 至少 1 个上架 SKU（见 merchantReady.HOME_VISIBLE_SQL） */
+/** 首页可见：默认需进件完成；呈现模式可放宽（见 merchantReady.getHomeVisibleSql） */
 
 async function listNearbyStalls(opts = {}) {
+  const homeSql = await getHomeVisibleSql()
   let rows
   try {
     rows = await query(
@@ -110,11 +111,11 @@ async function listNearbyStalls(opts = {}) {
               IFNULL(NULLIF(m.biz_type,''), '餐饮') AS category
        FROM merchants m
        WHERE m.role='stall' AND m.status=1 AND m.deleted_at IS NULL
-         AND ${HOME_PAY_READY_SQL}
+         AND ${homeSql}
        ORDER BY m.id DESC`
     )
   } catch (e) {
-    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || /Unknown column.*wx_sub_mch/i.test(String(e.message || ''))))) {
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || /Unknown column.*wx_sub_mch|operating_cities/i.test(String(e.message || ''))))) {
       throw e
     }
     rows = await query(
@@ -148,6 +149,7 @@ async function listCrossStores(opts = {}) {
     opts.includeStall === '1' ||
     opts.includeStall === 1
   const roleSql = includeStall ? `m.role IN ('cross', 'stall')` : `m.role='cross'`
+  const homeSql = await getHomeVisibleSql()
   let stores
   try {
     stores = await query(
@@ -161,11 +163,11 @@ async function listCrossStores(opts = {}) {
               ) AS category
        FROM merchants m
        WHERE ${roleSql} AND m.status=1 AND m.deleted_at IS NULL
-         AND ${HOME_PAY_READY_SQL}
+         AND ${homeSql}
        ORDER BY m.id DESC`
     )
   } catch (e) {
-    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || /Unknown column.*wx_sub_mch/i.test(String(e.message || ''))))) {
+    if (!(e && (e.code === 'ER_BAD_FIELD_ERROR' || /Unknown column.*wx_sub_mch|operating_cities/i.test(String(e.message || ''))))) {
       throw e
     }
     stores = await query(

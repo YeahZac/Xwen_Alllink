@@ -1718,11 +1718,11 @@ async function renderGoodsSku() {
       <button class="btn" id="btnReload">查询</button>
       ${
         editable
-          ? '<button class="btn danger" id="btnCleanupTest">一键清理测试/系统数据</button>'
+          ? '<button class="btn danger" id="btnCleanupTest">一键清理测试/系统数据</button><button class="btn" id="btnPresStatus">呈现模式状态</button><button class="btn" id="btnPresSeed">播种呈现演示</button><button class="btn danger" id="btnPresPurge">清除呈现演示</button><button class="btn danger" id="btnPresRevert">改回进件门槛</button>'
           : ''
       }
     </div>
-    <p class="muted">上架门槛：二级商户进件已完成 + 支付配置就绪后才能上架。列表展示「数据来源」与「创建人」。删除后不会自动重建；可用「一键清理」清除测试/历史占位数据。</p>
+    <p class="muted">上架门槛：二级商户进件已完成 + 支付配置就绪后才能上架。列表展示「数据来源」与「创建人」。删除后不会自动重建；可用「一键清理」清除测试/历史占位数据。呈现演示（presentation）另有播种/清除/改回进件门槛按钮，不碰人工商品。</p>
     <div id="list"></div>`
 
   const refreshShops = async () => {
@@ -1904,6 +1904,46 @@ async function renderGoodsSku() {
     pageState.page = 1
     runAction(load)
   }
+  const bindPres = (id, fn) => {
+    const el = $(id)
+    if (el) el.onclick = () => runAction(fn)
+  }
+  bindPres('btnPresStatus', async () => {
+    const s = await api('/admin/ops/presentation/status')
+    alert(
+      `呈现模式：${s.enabled ? '已开启（不卡进件）' : '已关闭（需进件）'}\n演示门店：${
+        s.presentationMerchants || 0
+      }\nenv：${s.envOverride || '无'}\n\n改回：${s.howToRevert}\n清除：${s.howToPurge}`
+    )
+  })
+  bindPres('btnPresSeed', async () => {
+    if (!confirm('确认播种呈现演示门店/商品？已存在的 PRES_ 门店会更新，不碰人工数据。')) return
+    const r = await api('/admin/ops/presentation/seed', {
+      method: 'POST',
+      body: JSON.stringify({ confirm: 'SEED_PRESENTATION' })
+    })
+    alert(
+      `已播种门店 ${r.seededMerchants || 0} · 商品 ${r.seededGoods || 0}；呈现模式=${
+        r.enabled ? '开' : '关'
+      }`
+    )
+  })
+  bindPres('btnPresPurge', async () => {
+    if (!confirm('确认软删全部呈现演示门店/商品（PRES_ / presentation）？')) return
+    const r = await api('/admin/ops/presentation/purge', {
+      method: 'POST',
+      body: JSON.stringify({ confirm: 'PURGE_PRESENTATION' })
+    })
+    alert(`已清除演示门店 ${r.purgedMerchants || 0} · 商品 ${r.purgedGoods || 0}`)
+  })
+  bindPres('btnPresRevert', async () => {
+    if (!confirm('确认改回正式规则：C 端列表必须二级商户进件完成才展示？')) return
+    const r = await api('/admin/ops/presentation/mode', {
+      method: 'POST',
+      body: JSON.stringify({ enabled: false, confirm: 'REVERT_PRESENTATION' })
+    })
+    alert(`呈现模式已关闭：enabled=${r.enabled}`)
+  })
   const btnCleanup = $('btnCleanupTest')
   if (btnCleanup) {
     btnCleanup.onclick = () =>
